@@ -66,12 +66,21 @@ async def login(
         cognito = CognitoAuth()
         token_response = await cognito.authenticate(email, password)
         
+        # Extract validated username from the ID token (not raw user input)
+        # This prevents cookie injection by ensuring the username comes from Cognito
+        user_info = cognito.validate_token(
+            token_response.access_token,
+            verify_exp=True,
+            id_token=token_response.id_token
+        )
+        validated_username = user_info.username or user_info.email or user_info.user_id
+        
         # Create session data - split into two cookies to stay under 4KB limit
         # Main session cookie (access + id tokens)
         session_data = {
             "access_token": token_response.access_token,
             "id_token": token_response.id_token,
-            "username": email,  # Store for token refresh
+            "username": validated_username,  # Use validated username from token
         }
         
         # Redirect to chat page with session cookies
