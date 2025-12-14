@@ -1,0 +1,286 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard{% endblock %}
+
+{% block body %}
+<div class="min-h-screen bg-gray-50">
+    {% set breadcrumbs = [
+        {'label': 'Admin', 'url': '/admin'},
+        {'label': 'Dashboard'}
+    ] %}
+    {% include "components/admin_header.html" %}
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Time Range Selector -->
+        <div class="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <div class="flex flex-wrap items-center gap-4">
+                <span class="text-sm font-medium text-gray-700">Time Range:</span>
+                <div class="flex gap-2" id="preset-buttons">
+                    <button onclick="setTimeRange(1)" id="btn-1" class="px-3 py-1.5 text-sm rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">Today</button>
+                    <button onclick="setTimeRange(7)" id="btn-7" class="px-3 py-1.5 text-sm rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">7 Days</button>
+                    <button onclick="setTimeRange(30)" id="btn-30" class="px-3 py-1.5 text-sm rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">30 Days</button>
+                </div>
+                <div class="flex items-center gap-2 ml-auto">
+                    <label class="text-xs text-gray-500">From:</label>
+                    <input type="date" id="start-date" class="px-2 py-1 text-sm border border-gray-300 rounded-md" value="{{ start_time[:10] }}">
+                    <label class="text-xs text-gray-500">To:</label>
+                    <input type="date" id="end-date" class="px-2 py-1 text-sm border border-gray-300 rounded-md" value="{{ end_time[:10] }}">
+                    <button onclick="applyCustomRange()" class="px-3 py-1.5 text-sm rounded-md bg-primary-600 hover:bg-primary-700 text-white transition-colors">Apply</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Key Metrics -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">Cost</p>
+                        <p class="text-2xl font-bold text-gray-900 mt-1">${{ "%.2f"|format(stats.total_cost) }}</p>
+                    </div>
+                    <div class="p-3 bg-green-100 rounded-full">
+                        <svg class="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </div>
+                </div>
+                <p class="mt-3 text-xs text-gray-500">{{ days_in_period }} day{{ 's' if days_in_period != 1 else '' }} period</p>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">Tokens</p>
+                        <p class="text-2xl font-bold text-gray-900 mt-1">{{ "{:,}".format(stats.total_tokens) }}</p>
+                    </div>
+                    <div class="p-3 bg-primary-100 rounded-full">
+                        <svg class="w-6 h-6 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                        </svg>
+                    </div>
+                </div>
+                <div class="mt-3 flex gap-4 text-xs text-gray-500">
+                    <span>In: {{ "{:,}".format(stats.total_input_tokens) }}</span>
+                    <span>Out: {{ "{:,}".format(stats.total_output_tokens) }}</span>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">Users</p>
+                        <p class="text-2xl font-bold text-gray-900 mt-1">{{ stats.unique_users }}</p>
+                    </div>
+                    <div class="p-3 bg-blue-100 rounded-full">
+                        <svg class="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                        </svg>
+                    </div>
+                </div>
+                <p class="mt-3 text-xs text-gray-500">{{ stats.unique_sessions }} session{{ 's' if stats.unique_sessions != 1 else '' }}</p>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">Projected Monthly</p>
+                        <p class="text-2xl font-bold text-gray-900 mt-1">${{ "%.2f"|format(stats.projected_monthly_cost) }}</p>
+                    </div>
+                    <div class="p-3 bg-amber-100 rounded-full">
+                        <svg class="w-6 h-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                    </div>
+                </div>
+                <p class="mt-3 text-xs text-gray-500">Based on {{ days_in_period }}-day average</p>
+            </div>
+        </div>
+
+        <!-- Feedback & Guardrails Row -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <!-- User Feedback -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-semibold text-gray-900">User Feedback</h2>
+                    <a href="/admin/feedback?start_time={{ start_time }}&end_time={{ end_time }}" class="text-xs text-primary-600 hover:text-primary-800">View all →</a>
+                </div>
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-6">
+                        <div class="text-center">
+                            <p class="text-2xl font-bold text-gray-900">{{ feedback_stats.total_count }}</p>
+                            <p class="text-xs text-gray-500">Total</p>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-2xl font-bold text-green-600">{{ feedback_stats.positive_count }}</p>
+                            <p class="text-xs text-gray-500">Positive</p>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-2xl font-bold text-red-600">{{ feedback_stats.negative_count }}</p>
+                            <p class="text-xs text-gray-500">Negative</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        {% if feedback_stats.total_count > 0 %}
+                        <div class="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
+                            <div class="h-full bg-green-500 rounded-full" style="width: {{ feedback_stats.positive_percentage|int }}%"></div>
+                        </div>
+                        <span class="text-sm font-medium text-green-600">{{ "%.0f"|format(feedback_stats.positive_percentage) }}%</span>
+                        {% else %}
+                        <span class="text-sm text-gray-400">No data</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Guardrails -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-semibold text-gray-900">Guardrails</h2>
+                    <a href="/admin/guardrails?start_time={{ start_time }}&end_time={{ end_time }}" class="text-xs text-primary-600 hover:text-primary-800">View all →</a>
+                </div>
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-6">
+                        <div class="text-center">
+                            <p class="text-2xl font-bold text-amber-600">{{ guardrail_stats.violation_count }}</p>
+                            <p class="text-xs text-gray-500">Violations</p>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-2xl font-bold text-gray-900">{{ guardrail_stats.unique_users }}</p>
+                            <p class="text-xs text-gray-500">Users</p>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-2xl font-bold text-gray-900">{{ guardrail_stats.unique_sessions }}</p>
+                            <p class="text-xs text-gray-500">Sessions</p>
+                        </div>
+                    </div>
+                    {% if guardrail_stats.top_filter %}
+                    <div class="text-right">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">{{ guardrail_stats.top_filter }}</span>
+                        <p class="text-xs text-gray-500 mt-1">Top violation</p>
+                    </div>
+                    {% else %}
+                    <span class="text-sm text-gray-400">No violations</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Three Column Layout for Highlights -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+<!-- Top Models -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                    <h2 class="text-sm font-semibold text-gray-900">Top Models</h2>
+                    <a href="/admin/tokens?start_time={{ start_time }}&end_time={{ end_time }}" class="text-xs text-primary-600 hover:text-primary-800">View all →</a>
+                </div>
+                {% if top_models %}
+                <ul class="divide-y divide-gray-100">
+                    {% for model in top_models %}
+                    <li class="px-4 py-3 hover:bg-gray-50">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2 min-w-0">
+                                <div class="flex-shrink-0 h-7 w-7 bg-blue-100 rounded-full flex items-center justify-center">
+                                    <svg class="w-3.5 h-3.5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                    </svg>
+                                </div>
+                                <span class="text-sm text-gray-900 truncate">{{ model.model_id.split('.')[-1] if '.' in model.model_id else model.model_id }}</span>
+                            </div>
+                            <span class="text-xs font-medium text-green-600">${{ "%.2f"|format(model.cost) }}</span>
+                        </div>
+                        <div class="mt-1 flex gap-3 text-xs text-gray-500 ml-9">
+                            <span>{{ "{:,}".format(model.total_tokens) }} tokens</span>
+                            <span>{{ model.invocation_count }} invocation{{ 's' if model.invocation_count != 1 else '' }}</span>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="px-4 py-8 text-center text-sm text-gray-500">No model data</div>
+                {% endif %}
+            </div>
+                        
+            <!-- Top Users -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                    <h2 class="text-sm font-semibold text-gray-900">Top Users</h2>
+                    <a href="/admin/users?start_time={{ start_time }}&end_time={{ end_time }}" class="text-xs text-primary-600 hover:text-primary-800">View all →</a>
+                </div>
+                {% if top_users %}
+                <ul class="divide-y divide-gray-100">
+                    {% for user in top_users %}
+                    <li class="px-4 py-3 hover:bg-gray-50">
+                        <a href="/admin/users/{{ user.user_id }}?start_time={{ start_time }}&end_time={{ end_time }}" class="block">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-2 min-w-0">
+                                    <div class="flex-shrink-0 h-7 w-7 bg-primary-100 rounded-full flex items-center justify-center">
+                                        <span class="text-xs font-medium text-primary-700">{{ (user_emails.get(user.user_id) or user.user_id)[0]|upper }}</span>
+                                    </div>
+                                    <span class="text-sm text-gray-900 truncate">{{ user_emails.get(user.user_id) or user.user_id }}</span>
+                                    {% if user.user_id == current_user_id %}
+                                    <svg class="w-4 h-4 text-amber-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24" title="This is you">
+                                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                                    </svg>
+                                    {% endif %}
+                                </div>
+                                <span class="text-xs font-medium text-green-600">${{ "%.2f"|format(user.total_cost) }}</span>
+                            </div>
+                            <div class="mt-1 flex gap-3 text-xs text-gray-500 ml-9">
+                                <span>{{ "{:,}".format(user.total_tokens) }} tokens</span>
+                                <span>{{ user.session_count }} session{{ 's' if user.session_count != 1 else '' }}</span>
+                            </div>
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="px-4 py-8 text-center text-sm text-gray-500">No user data</div>
+                {% endif %}
+            </div>
+
+            <!-- Top Tools -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                    <h2 class="text-sm font-semibold text-gray-900">Top Tools</h2>
+                    <a href="/admin/tools?start_time={{ start_time }}&end_time={{ end_time }}" class="text-xs text-primary-600 hover:text-primary-800">View all →</a>
+                </div>
+                {% if top_tools %}
+                <ul class="divide-y divide-gray-100">
+                    {% for tool in top_tools %}
+                    <li class="px-4 py-3 hover:bg-gray-50">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <div class="flex-shrink-0 h-7 w-7 bg-purple-100 rounded-full flex items-center justify-center">
+                                    <svg class="w-3.5 h-3.5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z" />
+                                    </svg>
+                                </div>
+                                <span class="text-sm text-gray-900">{{ tool.tool_name }}</span>
+                            </div>
+                            <span class="text-xs font-medium text-gray-900">{{ "{:,}".format(tool.call_count) }} calls</span>
+                        </div>
+                        <div class="mt-1 ml-9">
+                            <div class="flex items-center gap-2">
+                                <div class="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                    <div class="h-full bg-green-500 rounded-full" style="width: {{ (tool.success_rate * 100)|int }}%"></div>
+                                </div>
+                                <span class="text-xs text-gray-500">{{ "%.0f"|format(tool.success_rate * 100) }}%</span>
+                            </div>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="px-4 py-8 text-center text-sm text-gray-500">No tool data</div>
+                {% endif %}
+            </div>
+
+        </div>
+    </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/admin-utils.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+
+{% block title %}AgentCore Chat{% endblock %}
+
+{% block body %}
+<div class="h-screen overflow-hidden flex flex-row">
+    <!-- Main chat area -->
+    <div class="flex-1 flex flex-col min-w-0">
+        <!-- Header -->
+        <div class="border-b border-gray-700 bg-gray-900 px-3 sm:px-4 md:px-6 py-1 md:py-2 shadow-sm">
+            <div class="mx-auto flex items-center justify-between gap-2">
+                <!-- Title section -->
+                <div class="min-w-0 shrink">
+                    <h1 class="text-base sm:text-lg md:text-xl font-semibold text-white truncate">
+                        Chat Agent
+                    </h1>
+                    <h2 class="text-xs font-mono text-white truncate">
+                        Bedrock AgentCore + Strands Agents SDK
+                    </h2>
+                </div>
+
+                <!-- Actions section -->
+                <div class="flex items-center gap-2 sm:gap-3 md:gap-4 shrink-0">
+                    {% if is_admin %}
+                    <!-- Admin button (icon only with purple border) - only shown to admins -->
+                    <a
+                        href="/admin"
+                        id="admin-btn"
+                        class="p-1.5 sm:p-2 text-xs sm:text-sm font-medium rounded-lg
+                               transition-all duration-200 flex items-center
+                               bg-gray-700 text-gray-300 hover:bg-gray-600 active:scale-95
+                               border-2 border-primary-500"
+                        aria-label="Admin dashboard"
+                        title="Admin dashboard"
+                    >
+                        <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+                        </svg>
+                    </a>
+                    {% endif %}
+
+                    <!-- New Chat button -->
+                    <button
+                        type="button"
+                        id="new-chat-btn"
+                        onclick="startNewChat()"
+                        class="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-lg
+                               transition-all duration-200 flex items-center gap-1 sm:gap-1.5
+                               bg-primary-600 text-white hover:bg-primary-700 active:scale-95"
+                        aria-label="Start new chat"
+                        title="Start new chat"
+                    >
+                        <svg class="w-3 h-3 sm:w-4 sm:h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                        </svg>
+                        <span class="hidden sm:inline">New Chat</span>
+                    </button>
+                    
+                    <!-- Logout button -->
+                    <form action="/auth/logout" method="POST">
+                        <button
+                            type="submit"
+                            id="logout-btn"
+                            class="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-lg
+                                   transition-all duration-200 flex items-center gap-1 sm:gap-1.5
+                                   bg-gray-700 text-gray-300 hover:bg-gray-600 active:scale-95"
+                            aria-label="Sign out"
+                            title="Sign out"
+                        >
+                            <svg class="w-3 h-3 sm:w-4 sm:h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+                            </svg>
+                            <span class="hidden sm:inline">Logout</span>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Error display area -->
+        <div id="error-container" class="px-3 sm:px-4 md:px-6 pt-3 md:pt-4 hidden">
+            <div class="mx-auto max-w-4xl">
+                <!-- Errors will be inserted here -->
+            </div>
+        </div>
+
+        <!-- Message list -->
+        <div class="flex-1 overflow-hidden relative">
+            <div id="message-list" 
+                 class="h-full overflow-y-auto p-3 sm:p-4 md:p-5 flex flex-col gap-1 scroll-smooth bg-gray-50">
+                <!-- Empty state -->
+                <div id="empty-state" class="flex items-center justify-center h-full p-10">
+                    <div class="text-center">
+                        {% if user_email %}
+                        <p class="text-gray-700 text-lg font-medium mb-2">Welcome, {{ user_email }}</p>
+                        {% endif %}
+                        <p class="text-gray-500 text-base">
+                            Start a conversation by typing a message below
+                        </p>
+                    </div>
+                </div>
+                
+                <!-- Messages will be inserted here -->
+            </div>
+            
+            <!-- Scroll to bottom button (shown when user scrolls up during streaming) -->
+            <button 
+                id="scroll-to-bottom-btn"
+                onclick="forceScrollToBottom()"
+                class="hidden absolute bottom-4 right-4 p-2 bg-primary-600 text-white rounded-full shadow-lg hover:bg-primary-700 transition-all duration-200 z-10"
+                aria-label="Scroll to bottom"
+            >
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                </svg>
+            </button>
+        </div>
+
+        <!-- Message input area -->
+        <div class="border-t border-gray-200 bg-white px-3 sm:px-4 md:px-6 py-3 md:py-4">
+            <div class="mx-auto max-w-4xl">
+                <!-- Input form -->
+                <form id="chat-form" onsubmit="sendMessage(event)" class="flex gap-2 sm:gap-3">
+                    <textarea
+                        id="message-input"
+                        name="message"
+                        placeholder="Ask me anything..."
+                        autocomplete="off"
+                        rows="1"
+                        class="flex-1 px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base
+                               border border-gray-300 rounded-lg
+                               focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+                               placeholder-gray-400 resize-none overflow-hidden"
+                    ></textarea>
+                    
+                    <!-- Model selector button (Requirement 10.1, 10.2, 10.3, 10.4) -->
+                    <div class="relative self-end">
+                        <button
+                            type="button"
+                            id="model-selector-btn"
+                            onclick="toggleModelDropdown()"
+                            class="px-3 py-2 sm:py-3 text-sm font-medium
+                                   bg-gray-100 text-gray-700 rounded-lg border border-gray-300
+                                   hover:bg-gray-200 active:scale-95
+                                   transition-all duration-200
+                                   flex items-center gap-2"
+                            aria-label="Select AI model"
+                            title="Select AI model"
+                        >
+                            <svg class="w-4 h-4 sm:w-5 sm:h-5 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+                            </svg>
+                            <span id="selected-model-name" class="hidden sm:inline text-xs truncate max-w-[160px]">Nova 2 Lite</span>
+                            <svg class="w-3 h-3 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </button>
+                        
+                        <!-- Model dropdown -->
+                        <div id="model-dropdown" class="hidden absolute bottom-full mb-2 right-0 w-72 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                            <div class="px-3 py-2 border-b border-gray-100">
+                                <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Select Model</p>
+                                <p class="text-xs font-light text-gray-500">Cost per million tokens</p>
+                            </div>
+                            <div id="model-options" class="py-1">
+                                <!-- Model options will be populated by JavaScript -->
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button
+                        type="submit"
+                        id="send-btn"
+                        class="px-4 sm:px-6 py-2 sm:py-3 text-sm sm:text-base font-medium self-end
+                               bg-primary-600 text-white rounded-lg
+                               hover:bg-primary-700 active:scale-95
+                               transition-all duration-200
+                               disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    >
+                        Send
+                    </button>
+                </form>
+                
+                <!-- Status bar and hints -->
+                <div class="flex mt-4">
+                    <div class="flex-1 flex items-center justify-between">
+                        <div id="connection-status" class="flex items-center gap-2 text-xs text-gray-500">
+                            <span class="w-2 h-2 rounded-full bg-green-500"></span>
+                            <span>Ready</span>
+                        </div>
+                        <div id="keyboard-hints" class="text-xs text-gray-500">
+                            Press <kbd class="px-1.5 py-0.5 bg-gray-50 border border-gray-200 rounded text-gray-400">Enter</kbd> to send, 
+                            <kbd class="px-1.5 py-0.5 bg-gray-50 border border-gray-200 rounded text-gray-400">Shift+Enter</kbd> for new line
+                        </div>
+                    </div>
+                    <!-- Spacer to match model selector + send button width -->
+                    <div class="shrink-0"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Memory Viewer Sidebar -->
+    <!-- Initial state controlled by JavaScript based on screen size and user preference -->
+    <div id="memory-sidebar" class="hidden">
+        {% include "components/sidebar.html" %}
+    </div>
+    
+    <!-- Collapsed sidebar toggle (visible when sidebar is collapsed) -->
+    <!-- Requirement 4.6: Toggle button to collapse/expand sidebar -->
+    <!-- Uses CSS variables for theme-aware styling -->
+    <div id="memory-toggle-collapsed" class="hidden border-l transition-colors duration-200"
+         style="background: var(--sidebar-bg); border-color: var(--sidebar-border);">
+        <button 
+            onclick="toggleMemorySidebar()"
+            class="h-full px-3 pt-5 flex flex-col items-center justify-start gap-2 transition-colors hover:opacity-80"
+            style="color: var(--sidebar-text-muted);"
+            aria-label="Expand memory viewer"
+            title="Show Memory Viewer"
+        >
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+            </svg>
+            <span class="text-xs font-medium" style="writing-mode: vertical-rl; text-orientation: mixed; color: var(--sidebar-text);">Memory</span>
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Pass user email to JavaScript for new chat empty state -->
+<script>
+    window.userEmail = {{ user_email|tojson if user_email else 'null' }};
+</script>
+<!-- Chat application JavaScript -->
+<script src="/static/js/chat.js"></script>
+{% endblock %}

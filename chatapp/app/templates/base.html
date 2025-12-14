@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#111827">
+    <title>{% block title %}AgentCore Chat{% endblock %}</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    
+    <!-- Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#f5f3ff',
+                            100: '#ede9fe',
+                            200: '#ddd6fe',
+                            300: '#c4b5fd',
+                            400: '#a78bfa',
+                            500: '#8b5cf6',
+                            600: '#7c3aed',
+                            700: '#6d28d9',
+                            800: '#5b21b6',
+                            900: '#4c1d95',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <!-- HTMX SSE Extension -->
+    <script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/sse.js"></script>
+    
+    <!-- Marked.js for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <!-- DOMPurify for XSS protection when rendering markdown -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+    
+    <!-- Custom styles -->
+    <style>
+        :root {
+            --background: #f9fafb;
+            --foreground: #171717;
+            --primary: #7c3aed;
+            --primary-light: rgba(124, 58, 237, 0.1);
+            
+            /* Memory sidebar light theme (default) */
+            --sidebar-bg: #ffffff;
+            --sidebar-border: #e5e7eb;
+            --sidebar-header-bg: #ffffff;
+            --sidebar-text: #111827;
+            --sidebar-text-muted: #6b7280;
+            --sidebar-tab-bg: #f3f4f6;
+            --sidebar-tab-active-bg: #ede9fe;
+            --sidebar-tab-active-text: #7c3aed;
+            --sidebar-card-bg: #ffffff;
+            --sidebar-card-border: #f3f4f6;
+            --sidebar-card-hover-shadow: rgba(0, 0, 0, 0.08);
+            --sidebar-badge-bg: #ede9fe;
+            --sidebar-badge-text: #7c3aed;
+            --sidebar-empty-icon: #d1d5db;
+        }
+        
+        /* Memory sidebar dark theme */
+        [data-sidebar-theme="dark"],
+        [data-sidebar-theme="dark"] *,
+        #memory-sidebar[data-sidebar-theme="dark"],
+        #memory-sidebar[data-sidebar-theme="dark"] * {
+            --sidebar-bg: #1e293b;
+            --sidebar-border: #334155;
+            --sidebar-header-bg: #1e293b;
+            --sidebar-text: #f1f5f9;
+            --sidebar-text-muted: #94a3b8;
+            --sidebar-tab-bg: #334155;
+            --sidebar-tab-active-bg: #4c1d95;
+            --sidebar-tab-active-text: #e9d5ff;
+            --sidebar-card-bg: #334155;
+            --sidebar-card-border: #475569;
+            --sidebar-card-hover-shadow: rgba(0, 0, 0, 0.3);
+            --sidebar-badge-bg: #4c1d95;
+            --sidebar-badge-text: #e9d5ff;
+            --sidebar-empty-icon: #475569;
+        }
+        
+        body {
+            background: var(--background);
+            color: var(--foreground);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.05);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: rgba(124, 58, 237, 0.3);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(124, 58, 237, 0.5);
+        }
+        
+        /* Message animations */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .message-fade-in {
+            animation: fadeIn 0.3s ease;
+        }
+        
+        /* Streaming cursor */
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+        
+        .streaming-cursor {
+            display: inline-block;
+            width: 8px;
+            height: 1em;
+            background: var(--primary);
+            margin-left: 2px;
+            animation: blink 1s step-end infinite;
+            vertical-align: text-bottom;
+        }
+        
+        /* Streaming pulse effect */
+        @keyframes streamPulse {
+            0%, 100% {
+                box-shadow: 0 2px 8px rgba(124, 58, 237, 0.2);
+            }
+            50% {
+                box-shadow: 0 2px 12px rgba(124, 58, 237, 0.4);
+            }
+        }
+        
+        .streaming-pulse {
+            animation: streamPulse 1.5s ease-in-out infinite;
+        }
+        
+        /* Streaming progress bar animation */
+        @keyframes progress {
+            0% {
+                width: 0%;
+                margin-left: 0%;
+            }
+            50% {
+                width: 70%;
+                margin-left: 15%;
+            }
+            100% {
+                width: 0%;
+                margin-left: 100%;
+            }
+        }
+        
+        .progress-animation {
+            animation: progress 2s ease-in-out infinite;
+        }
+        
+        /* Loading dots */
+        @keyframes dotPulse {
+            0%, 60%, 100% { opacity: 0; }
+            30% { opacity: 1; }
+        }
+        
+        .loading-dot {
+            animation: dotPulse 1.4s ease-in-out infinite;
+            opacity: 0;
+        }
+        
+        .loading-dot:nth-child(1) { animation-delay: 0s; }
+        .loading-dot:nth-child(2) { animation-delay: 0.2s; }
+        .loading-dot:nth-child(3) { animation-delay: 0.4s; }
+        
+        /* Shimmer effect for skeleton loaders */
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        
+        .shimmer {
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .shimmer::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(124, 58, 237, 0.08), transparent);
+            animation: shimmer 2s infinite;
+        }
+        
+        /* Refresh icon spin */
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        .spin,
+        .animate-spin {
+            animation: spin 1s linear infinite;
+        }
+        
+        /* User message bubble */
+        .message-user {
+            background: linear-gradient(135deg, #7c3aed 0%, #6b21a8 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(124, 58, 237, 0.25);
+            border-bottom-right-radius: 4px;
+        }
+        
+        /* Assistant message bubble */
+        .message-assistant {
+            background: rgba(255, 255, 255, 0.98);
+            color: #1f2937;
+            border: 1px solid rgba(124, 58, 237, 0.15);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+            border-bottom-left-radius: 4px;
+            position: relative;
+        }
+        
+        /* Copy button - always visible with transition */
+        .message-bubble .copy-message-btn {
+            transition: all 0.2s ease;
+        }
+        
+        /* Markdown content styling */
+        .markdown-content h1,
+        .markdown-content h2,
+        .markdown-content h3 {
+            font-weight: 600;
+            margin-top: 1em;
+            margin-bottom: 0.5em;
+        }
+        
+        .markdown-content h1 { font-size: 1.5em; }
+        .markdown-content h2 { font-size: 1.25em; }
+        .markdown-content h3 { font-size: 1.1em; }
+        
+        .markdown-content p {
+            margin-bottom: 0.75em;
+        }
+        
+        .markdown-content ul {
+            margin-left: 1.5em;
+            margin-bottom: 0.75em;
+            list-style-type: disc;
+        }
+        
+        .markdown-content ol {
+            margin-left: 1.5em;
+            margin-bottom: 0.75em;
+            list-style-type: decimal;
+        }
+        
+        .markdown-content li {
+            margin-bottom: 0.25em;
+            display: list-item;
+        }
+        
+        .markdown-content code {
+            background: rgba(124, 58, 237, 0.1);
+            padding: 0.125em 0.375em;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        
+        .markdown-content pre {
+            background: #1f2937;
+            color: #e5e7eb;
+            padding: 1em;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin-bottom: 0.75em;
+        }
+        
+        .markdown-content pre code {
+            background: transparent;
+            padding: 0;
+            color: inherit;
+        }
+        
+        .markdown-content a {
+            color: #7c3aed;
+            text-decoration: underline;
+        }
+        
+        .markdown-content blockquote {
+            border-left: 4px solid #7c3aed;
+            padding-left: 1em;
+            margin-left: 0;
+            color: #6b7280;
+        }
+        
+        /* Compact markdown for memory sidebar */
+        .memory-markdown {
+            font-size: 0.875rem;
+        }
+        
+        .memory-markdown h1,
+        .memory-markdown h2,
+        .memory-markdown h3 {
+            font-size: 0.9em;
+            margin-top: 0.5em;
+            margin-bottom: 0.25em;
+        }
+        
+        .memory-markdown p {
+            margin-bottom: 0.5em;
+        }
+        
+        .memory-markdown ul,
+        .memory-markdown ol {
+            margin-left: 1.5em;
+            padding-left: 0.5em;
+            margin-bottom: 0.5em;
+        }
+        
+        .memory-markdown pre {
+            padding: 0.5em;
+            font-size: 0.8em;
+        }
+        
+        .memory-markdown code {
+            font-size: 0.85em;
+        }
+        
+        /* Dark mode styles for memory sidebar markdown */
+        [data-sidebar-theme="dark"] .memory-markdown code {
+            background: rgba(139, 92, 246, 0.2);
+            color: #e9d5ff;
+        }
+        
+        [data-sidebar-theme="dark"] .memory-markdown a {
+            color: #c4b5fd;
+        }
+        
+        [data-sidebar-theme="dark"] .memory-markdown blockquote {
+            border-left-color: #8b5cf6;
+            color: #94a3b8;
+        }
+        
+        [data-sidebar-theme="dark"] .markdown-content strong {
+            color: #f1f5f9;
+        }
+        
+        /* Line clamp for memory content */
+        .line-clamp-4 {
+            display: -webkit-box;
+            -webkit-line-clamp: 4;
+            line-clamp: 4;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        
+        /* Tool use indicator (legacy) */
+        .tool-indicator {
+            background: rgba(124, 58, 237, 0.08);
+            border: 1px solid rgba(124, 58, 237, 0.2);
+            border-radius: 8px;
+        }
+        
+        /* Tool card styles */
+        .tool-card {
+            transition: all 0.2s ease;
+        }
+        
+        .tool-card .tool-header:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+        
+        .tool-card .expand-icon {
+            transition: transform 0.2s ease;
+        }
+        
+        .tool-card .tool-details pre {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        /* Hidden tool (for show more/less) */
+        .hidden-tool {
+            display: none !important;
+        }
+        
+        /* Error message */
+        .error-message {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #dc2626;
+        }
+        
+        /* Responsive adjustments for mobile (Requirement 5.6) */
+        @media (max-width: 640px) {
+            /* Smaller padding on mobile */
+            .message-user,
+            .message-assistant {
+                padding: 0.625rem 0.75rem;
+            }
+            
+            /* Adjust message widths for mobile */
+            .message-user {
+                max-width: 90%;
+            }
+            
+            .message-assistant {
+                min-width: 70%;
+                max-width: 95%;
+            }
+            
+            /* Smaller markdown elements on mobile */
+            .markdown-content h1 { font-size: 1.25em; }
+            .markdown-content h2 { font-size: 1.125em; }
+            .markdown-content h3 { font-size: 1em; }
+            
+            .markdown-content pre {
+                padding: 0.75em;
+                font-size: 0.8em;
+            }
+            
+            /* Smaller tool indicators on mobile */
+            .tool-indicator {
+                padding: 0.5rem 0.75rem;
+            }
+        }
+        
+        /* Touch-friendly tap targets */
+        @media (pointer: coarse) {
+            button, 
+            input[type="submit"],
+            .tool-indicator {
+                min-height: 44px;
+            }
+            
+            input[type="text"] {
+                font-size: 16px; /* Prevents zoom on iOS */
+            }
+        }
+        
+        /* Prevent text selection during streaming */
+        .streaming-pulse .message-content {
+            user-select: none;
+        }
+        
+        /* Smooth transitions for sidebar (Requirement 4.6) */
+        #memory-sidebar {
+            transition: transform 0.3s ease, opacity 0.3s ease;
+        }
+        
+        #memory-toggle-collapsed {
+            transition: opacity 0.2s ease;
+        }
+        
+        /* Memory sidebar responsive behavior */
+        @media (max-width: 1023px) {
+            #memory-sidebar {
+                position: fixed;
+                right: 0;
+                top: 0;
+                bottom: 0;
+                z-index: 50;
+                box-shadow: -4px 0 20px rgba(0, 0, 0, 0.1);
+            }
+            
+            /* Overlay when sidebar is open on mobile */
+            #memory-sidebar::before {
+                content: '';
+                position: fixed;
+                left: 0;
+                top: 0;
+                right: 320px;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.3);
+                z-index: -1;
+            }
+        }
+        
+        /* Hide scrollbar during streaming for cleaner look */
+        .streaming-active #message-list::-webkit-scrollbar-thumb {
+            background: rgba(124, 58, 237, 0.5);
+        }
+    </style>
+    
+    {% block head %}{% endblock %}
+</head>
+<body class="min-h-screen">
+    {% block body %}{% endblock %}
+    
+    {% block scripts %}{% endblock %}
+    
+    {% if hot_reload %}
+    <!-- Hot reload script for development -->
+    {{ hot_reload.script(url='/hot-reload') | safe }}
+    {% endif %}
+</body>
+</html>

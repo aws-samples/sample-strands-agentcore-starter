@@ -1,0 +1,46 @@
+# Docker Compose for local HTMX ChatApp testing
+# Usage: docker-compose up --build
+#
+# Prerequisites:
+# - Copy .env.example to .env and fill in values
+# - AWS credentials configured (or set AWS_* env vars)
+
+services:
+  chatapp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: htmx-chatapp
+    ports:
+      - "8080:8080"
+    environment:
+      # AWS Cognito Configuration
+      - COGNITO_USER_POOL_ID=${COGNITO_USER_POOL_ID}
+      - COGNITO_CLIENT_ID=${COGNITO_CLIENT_ID}
+      - COGNITO_CLIENT_SECRET=${COGNITO_CLIENT_SECRET}
+      # AgentCore Configuration
+      - AGENTCORE_RUNTIME_ARN=${AGENTCORE_RUNTIME_ARN}
+      - MEMORY_ID=${MEMORY_ID}
+      # AWS Configuration
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
+      # DynamoDB Tables
+      - USAGE_TABLE_NAME=${USAGE_TABLE_NAME:-agentcore-usage-records}
+      - FEEDBACK_TABLE_NAME=${FEEDBACK_TABLE_NAME:-agentcore-feedback}
+      - GUARDRAIL_TABLE_NAME=${GUARDRAIL_TABLE_NAME:-agentcore-guardrail-violations}
+      # Guardrail Configuration (optional)
+      - GUARDRAIL_ID=${GUARDRAIL_ID:-}
+      - GUARDRAIL_VERSION=${GUARDRAIL_VERSION:-}
+      # Application Configuration
+      - APP_URL=${APP_URL:-http://localhost:8080}
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped

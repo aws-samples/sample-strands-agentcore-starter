@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block title %}Token Analytics - Admin{% endblock %}
+
+{% block body %}
+<div class="min-h-screen bg-gray-50">
+    {% set breadcrumbs = [
+        {'label': 'Admin', 'url': '/admin'},
+        {'label': 'Tokens'}
+    ] %}
+    {% include "components/admin_header.html" %}
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Time Range Selector -->
+        <div class="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <div class="flex flex-wrap items-center gap-4">
+                <span class="text-sm font-medium text-gray-700">Time Range:</span>
+                <div class="flex gap-2" id="preset-buttons">
+                    <button onclick="setTimeRange(1)" id="btn-1" class="px-3 py-1.5 text-sm rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">Today</button>
+                    <button onclick="setTimeRange(7)" id="btn-7" class="px-3 py-1.5 text-sm rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">7 Days</button>
+                    <button onclick="setTimeRange(30)" id="btn-30" class="px-3 py-1.5 text-sm rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">30 Days</button>
+                </div>
+                <div class="flex items-center gap-2 ml-auto">
+                    <label class="text-xs text-gray-500">From:</label>
+                    <input type="date" id="start-date" class="px-2 py-1 text-sm border border-gray-300 rounded-md" value="{{ start_time[:10] }}">
+                    <label class="text-xs text-gray-500">To:</label>
+                    <input type="date" id="end-date" class="px-2 py-1 text-sm border border-gray-300 rounded-md" value="{{ end_time[:10] }}">
+                    <button onclick="applyCustomRange()" class="px-3 py-1.5 text-sm rounded-md bg-primary-600 hover:bg-primary-700 text-white transition-colors">Apply</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">Tokens</p>
+                        <p class="text-2xl font-bold text-gray-900 mt-1">{{ "{:,}".format(stats.total_tokens) }}</p>
+                    </div>
+                    <div class="p-3 bg-primary-100 rounded-full">
+                        <svg class="w-6 h-6 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                        </svg>
+                    </div>
+                </div>
+                <div class="mt-3 flex gap-4 text-xs text-gray-500">
+                    <span>In: {{ "{:,}".format(stats.total_input_tokens) }}</span>
+                    <span>Out: {{ "{:,}".format(stats.total_output_tokens) }}</span>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">Cost</p>
+                        <p class="text-2xl font-bold text-gray-900 mt-1">${{ "%.2f"|format(stats.total_cost) }}</p>
+                    </div>
+                    <div class="p-3 bg-green-100 rounded-full">
+                        <svg class="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </div>
+                </div>
+                <p class="mt-3 text-xs text-gray-500">{{ days_in_period }} day{{ 's' if days_in_period != 1 else '' }} period</p>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">Invocations</p>
+                        <p class="text-2xl font-bold text-gray-900 mt-1">{{ "{:,}".format(stats.invocation_count) }}</p>
+                    </div>
+                    <div class="p-3 bg-blue-100 rounded-full">
+                        <svg class="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                    </div>
+                </div>
+                <div class="mt-3 flex gap-4 text-xs text-gray-500">
+                    <span>{{ stats.unique_users }} user{{ 's' if stats.unique_users != 1 else '' }}</span>
+                    <span>{{ stats.unique_sessions }} session{{ 's' if stats.unique_sessions != 1 else '' }}</span>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">Projected Monthly</p>
+                        <p class="text-2xl font-bold text-gray-900 mt-1">${{ "%.2f"|format(stats.projected_monthly_cost) }}</p>
+                    </div>
+                    <div class="p-3 bg-amber-100 rounded-full">
+                        <svg class="w-6 h-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                    </div>
+                </div>
+                <p class="mt-3 text-xs text-gray-500">Based on {{ days_in_period }}-day average</p>
+            </div>
+        </div>
+
+        <!-- Model Breakdown Table -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-semibold text-gray-900">Usage by Model</h2>
+                <p class="text-sm text-gray-500 mt-1">Token usage and costs broken down by model</p>
+            </div>
+            
+            {% if model_stats %}
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Model</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Input Tokens</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Output Tokens</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total Tokens</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Invocations</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200">
+                        {% for model in model_stats %}
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm font-medium text-gray-900">{{ model.model_id.split('.')[-1] if '.' in model.model_id else model.model_id }}</div>
+                                <div class="text-xs text-gray-500">{{ model.model_id }}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-900">{{ "{:,}".format(model.input_tokens) }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-900">{{ "{:,}".format(model.output_tokens) }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">{{ "{:,}".format(model.total_tokens) }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-900">{{ "{:,}".format(model.invocation_count) }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-green-600">${{ "%.2f"|format(model.cost) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot class="bg-gray-50">
+                        <tr>
+                            <td class="px-6 py-3 text-sm font-semibold text-gray-900">Total</td>
+                            <td class="px-6 py-3 text-right text-sm font-semibold text-gray-900">{{ "{:,}".format(stats.total_input_tokens) }}</td>
+                            <td class="px-6 py-3 text-right text-sm font-semibold text-gray-900">{{ "{:,}".format(stats.total_output_tokens) }}</td>
+                            <td class="px-6 py-3 text-right text-sm font-semibold text-gray-900">{{ "{:,}".format(stats.total_tokens) }}</td>
+                            <td class="px-6 py-3 text-right text-sm font-semibold text-gray-900">{{ "{:,}".format(stats.invocation_count) }}</td>
+                            <td class="px-6 py-3 text-right text-sm font-semibold text-green-600">${{ "%.2f"|format(stats.total_cost) }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            {% else %}
+            <div class="px-6 py-12 text-center">
+                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                <h3 class="mt-2 text-sm font-medium text-gray-900">No usage data</h3>
+                <p class="mt-1 text-sm text-gray-500">No usage records found for the selected time period.</p>
+            </div>
+            {% endif %}
+        </div>
+
+    </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/admin-utils.js') }}"></script>
+{% endblock %}

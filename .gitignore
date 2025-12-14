@@ -1,0 +1,59 @@
+# Environment-specific configuration
+.env
+.env.local
+.env.*.local
+agent/.env
+agent/.bedrock_agentcore.yaml
+
+# Build outputs
+dist/
+build/
+.next/
+
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.Python
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# OS
+**/.DS_Store
+.DS_Store
+Thumbs.db
+*.log
+
+# Testing
+.pytest_cache/
+coverage/
+*.cover
+.coverage
+htmlcov/
+
+# Python
+*.py[cod]
+*$py.class
+*.so
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Bedrock AgentCore
+.bedrock_agentcore/
+agent/dependencies.zip
+agent/dependencies.hash
+
+# CDK asset staging directory
+.cdk.staging
+cdk.out
+cdk.context.json
+packaging/

@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block title %}Tool Analytics - Admin Dashboard{% endblock %}
+
+{% block body %}
+<div class="min-h-screen bg-gray-50">
+    {% set breadcrumbs = [
+        {'label': 'Admin', 'url': '/admin'},
+        {'label': 'Tools'}
+    ] %}
+    {% include "components/admin_header.html" %}
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Time Range Selector -->
+        <div class="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <div class="flex flex-wrap items-center gap-4">
+                <span class="text-sm font-medium text-gray-700">Time Range:</span>
+                <div class="flex gap-2" id="preset-buttons">
+                    <button onclick="setTimeRange(1)" id="btn-1" class="px-3 py-1.5 text-sm rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">Today</button>
+                    <button onclick="setTimeRange(7)" id="btn-7" class="px-3 py-1.5 text-sm rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">7 Days</button>
+                    <button onclick="setTimeRange(30)" id="btn-30" class="px-3 py-1.5 text-sm rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">30 Days</button>
+                </div>
+                <div class="flex items-center gap-2 ml-auto">
+                    <label class="text-xs text-gray-500">From:</label>
+                    <input type="date" id="start-date" class="px-2 py-1 text-sm border border-gray-300 rounded-md" value="{{ start_time[:10] }}">
+                    <label class="text-xs text-gray-500">To:</label>
+                    <input type="date" id="end-date" class="px-2 py-1 text-sm border border-gray-300 rounded-md" value="{{ end_time[:10] }}">
+                    <button onclick="applyCustomRange()" class="px-3 py-1.5 text-sm rounded-md bg-primary-600 hover:bg-primary-700 text-white transition-colors">Apply</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Summary Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <!-- Total Calls Card -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">Tool Calls</p>
+                        <p class="text-2xl font-bold text-gray-900 mt-1">
+                            {{ "{:,}".format(total_calls) }}
+                        </p>
+                    </div>
+                    <div class="p-3 bg-purple-100 rounded-full">
+                        <svg class="w-6 h-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                    </div>
+                </div>
+                <p class="mt-3 text-xs text-gray-500">
+                    Across {{ tools|length }} unique tool{{ 's' if tools|length != 1 else '' }}
+                </p>
+            </div>
+
+            <!-- Total Errors Card -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">Errors</p>
+                        <p class="text-2xl font-bold {% if total_errors > 0 %}text-red-600{% else %}text-gray-900{% endif %} mt-1">
+                            {{ "{:,}".format(total_errors) }}
+                        </p>
+                    </div>
+                    <div class="p-3 {% if total_errors > 0 %}bg-red-100{% else %}bg-gray-100{% endif %} rounded-full">
+                        <svg class="w-6 h-6 {% if total_errors > 0 %}text-red-600{% else %}text-gray-600{% endif %}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                    </div>
+                </div>
+                <p class="mt-3 text-xs text-gray-500">
+                    Failed tool executions
+                </p>
+            </div>
+
+            <!-- Overall Error Rate Card -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">Error Rate</p>
+                        <p class="text-2xl font-bold {% if overall_error_rate > 0.1 %}text-red-600{% elif overall_error_rate > 0.05 %}text-amber-600{% else %}text-green-600{% endif %} mt-1">
+                            {{ "%.2f"|format(overall_error_rate * 100) }}%
+                        </p>
+                    </div>
+                    <div class="p-3 {% if overall_error_rate > 0.1 %}bg-red-100{% elif overall_error_rate > 0.05 %}bg-amber-100{% else %}bg-green-100{% endif %} rounded-full">
+                        <svg class="w-6 h-6 {% if overall_error_rate > 0.1 %}text-red-600{% elif overall_error_rate > 0.05 %}text-amber-600{% else %}text-green-600{% endif %}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                    </div>
+                </div>
+                <p class="mt-3 text-xs text-gray-500">
+                    {% if overall_error_rate <= 0.05 %}Healthy{% elif overall_error_rate <= 0.1 %}Needs attention{% else %}Critical{% endif %}
+                </p>
+            </div>
+        </div>
+
+        <!-- Tools Table -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-semibold text-gray-900">Tool Performance</h2>
+            </div>
+            
+            {% if tools %}
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tool Name</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total Calls</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Successful</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Errors</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Success Rate</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Error Rate</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200">
+                        {% for tool in tools %}
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="inline-flex items-center px-3 py-1 rounded-md text-sm font-medium bg-purple-100 text-purple-800">
+                                    {{ tool.tool_name }}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
+                                {{ "{:,}".format(tool.call_count) }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm text-green-600">
+                                {{ "{:,}".format(tool.success_count) }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm {% if tool.error_count > 0 %}text-red-600 font-medium{% else %}text-gray-500{% endif %}">
+                                {{ "{:,}".format(tool.error_count) }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right">
+                                <div class="flex items-center justify-end gap-2">
+                                    <div class="w-16 bg-gray-200 rounded-full h-2">
+                                        <div class="{% if tool.success_rate >= 0.95 %}bg-green-500{% elif tool.success_rate >= 0.8 %}bg-amber-500{% else %}bg-red-500{% endif %} h-2 rounded-full" style="width: {{ (tool.success_rate * 100)|int }}%"></div>
+                                    </div>
+                                    <span class="text-sm {% if tool.success_rate >= 0.95 %}text-green-600{% elif tool.success_rate >= 0.8 %}text-amber-600{% else %}text-red-600{% endif %}">
+                                        {{ "%.1f"|format(tool.success_rate * 100) }}%
+                                    </span>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm {% if tool.error_rate > 0.1 %}text-red-600 font-medium{% elif tool.error_rate > 0.05 %}text-amber-600{% else %}text-gray-500{% endif %}">
+                                {{ "%.2f"|format(tool.error_rate * 100) }}%
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="px-6 py-12 text-center">
+                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <h3 class="mt-2 text-sm font-medium text-gray-900">No tool usage data</h3>
+                <p class="mt-1 text-sm text-gray-500">No tools have been used in the selected time period.</p>
+            </div>
+            {% endif %}
+        </div>
+    </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/admin-utils.js') }}"></script>
+{% endblock %}

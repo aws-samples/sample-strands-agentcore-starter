@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+
+{% block title %}Feedback - Admin Dashboard{% endblock %}
+
+{% block body %}
+<div class="min-h-screen bg-gray-50">
+    {% set breadcrumbs = [
+        {'label': 'Admin', 'url': '/admin'},
+        {'label': 'Feedback'}
+    ] %}
+    {% include "components/admin_header.html" %}
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Filters -->
+        <div class="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <div class="flex flex-wrap items-center gap-4">
+                <!-- Sentiment Filter -->
+                <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium text-gray-700">Sentiment:</span>
+                    <select id="sentiment-filter" onchange="applyFilters()" class="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500">
+                        <option value="all" {% if sentiment_filter == 'all' %}selected{% endif %}>All</option>
+                        <option value="positive" {% if sentiment_filter == 'positive' %}selected{% endif %}>Positive</option>
+                        <option value="negative" {% if sentiment_filter == 'negative' %}selected{% endif %}>Negative</option>
+                    </select>
+                </div>
+
+                <!-- Time Range -->
+                <div class="flex items-center gap-2 ml-auto">
+                    <span class="text-sm font-medium text-gray-700">Time Range:</span>
+                    <div class="flex gap-2" id="preset-buttons">
+                        <button onclick="setTimeRange(1)" id="btn-1" class="px-3 py-1.5 text-sm rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">Today</button>
+                        <button onclick="setTimeRange(7)" id="btn-7" class="px-3 py-1.5 text-sm rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">7 Days</button>
+                        <button onclick="setTimeRange(30)" id="btn-30" class="px-3 py-1.5 text-sm rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">30 Days</button>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <label class="text-xs text-gray-500">From:</label>
+                    <input type="date" id="start-date" class="px-2 py-1 text-sm border border-gray-300 rounded-md" value="{{ start_time[:10] }}">
+                    <label class="text-xs text-gray-500">To:</label>
+                    <input type="date" id="end-date" class="px-2 py-1 text-sm border border-gray-300 rounded-md" value="{{ end_time[:10] }}">
+                    <button onclick="applyCustomRange()" class="px-3 py-1.5 text-sm rounded-md bg-primary-600 hover:bg-primary-700 text-white transition-colors">Apply</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Summary Statistics -->
+        <div class="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">Total Feedback</p>
+                        <p class="text-2xl font-bold text-gray-900 mt-1">{{ stats.total_count }}</p>
+                    </div>
+                    <div class="p-3 bg-primary-100 rounded-full">
+                        <svg class="w-6 h-6 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                        </svg>
+                    </div>
+                </div>
+                <p class="mt-3 text-xs text-gray-500">{{ days_in_period }} day{{ 's' if days_in_period != 1 else '' }} period</p>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">Positive</p>
+                        <p class="text-2xl font-bold text-green-600 mt-1">{{ stats.positive_count }}</p>
+                    </div>
+                    <div class="p-3 bg-green-100 rounded-full">
+                        <svg class="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
+                        </svg>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">Negative</p>
+                        <p class="text-2xl font-bold text-red-600 mt-1">{{ stats.negative_count }}</p>
+                    </div>
+                    <div class="p-3 bg-red-100 rounded-full">
+                        <svg class="w-6 h-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018a2 2 0 01.485.06l3.76.94m-7 10v5a2 2 0 002 2h.096c.5 0 .905-.405.905-.904 0-.715.211-1.413.608-2.008L17 13V4m-7 10h2m5-10h2a2 2 0 012 2v6a2 2 0 01-2 2h-2.5" />
+                        </svg>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">Positive Rate</p>
+                        <p class="text-2xl font-bold text-gray-900 mt-1">{{ "%.1f"|format(stats.positive_percentage) }}%</p>
+                    </div>
+                    <div class="p-3 bg-amber-100 rounded-full">
+                        <svg class="w-6 h-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Feedback Records Table -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-semibold text-gray-900">
+                    {% if sentiment_filter != 'all' %}
+                    {{ sentiment_filter|capitalize }} Feedback
+                    {% else %}
+                    All Feedback
+                    {% endif %}
+                </h2>
+            </div>
+
+            {% if records %}
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                            <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Sentiment</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User Message</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Comment</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200">
+                        {% for record in records %}
+                        <tr class="hover:bg-gray-50 cursor-pointer" id="row-{{ loop.index }}" onclick="toggleDetails({{ loop.index }})">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="flex items-center">
+                                    <button class="flex-shrink-0 h-8 w-8 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center transition-colors">
+                                        <svg id="expand-icon-{{ loop.index }}" class="w-4 h-4 text-gray-500 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                    </button>
+                                    <div class="ml-3">
+                                        <div class="text-sm font-medium text-gray-900 truncate max-w-[150px]" title="{{ user_emails.get(record.user_id) or record.user_id }}">
+                                            {{ user_emails.get(record.user_id) or record.user_id }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-center">
+                                {% if record.sentiment == 'positive' %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
+                                    </svg>
+                                    Positive
+                                </span>
+                                {% else %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                    <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018a2 2 0 01.485.06l3.76.94m-7 10v5a2 2 0 002 2h.096c.5 0 .905-.405.905-.904 0-.715.211-1.413.608-2.008L17 13V4m-7 10h2m5-10h2a2 2 0 012 2v6a2 2 0 01-2 2h-2.5" />
+                                    </svg>
+                                    Negative
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="text-sm text-gray-900 truncate max-w-[300px]" title="{{ record.user_message }}">
+                                    {{ record.user_message[:80] }}{% if record.user_message|length > 80 %}...{% endif %}
+                                </div>
+                            </td>
+                            <td class="px-6 py-4">
+                                {% if record.user_comment %}
+                                <div class="text-sm text-gray-600 italic truncate max-w-[220px]" title="{{ record.user_comment }}">
+                                    "{{ record.user_comment[:60] }}{% if record.user_comment|length > 60 %}...{% endif %}"
+                                </div>
+                                {% else %}
+                                <span class="text-xs text-gray-400">&nbsp;</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {{ record.timestamp[:16].replace('T', ' ') }}
+                            </td>
+                        </tr>
+                        <!-- Expandable Details Row -->
+                        <tr id="details-{{ loop.index }}" class="hidden bg-gray-50">
+                            <td colspan="6" class="px-6 py-4">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <h4 class="text-sm font-semibold text-gray-700 mb-2">User Message</h4>
+                                        <div class="bg-white p-3 rounded border border-gray-200 text-sm text-gray-800 max-h-40 overflow-y-auto">
+                                            {{ record.user_message }}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <h4 class="text-sm font-semibold text-gray-700 mb-2">Assistant Response</h4>
+                                        <div class="bg-white p-3 rounded border border-gray-200 text-sm text-gray-800 max-h-40 overflow-y-auto">
+                                            {{ record.assistant_response }}
+                                        </div>
+                                    </div>
+                                </div>
+                                {% if record.user_comment %}
+                                <div class="mt-4">
+                                    <h4 class="text-sm font-semibold text-gray-700 mb-2">User Comment</h4>
+                                    <div class="bg-amber-50 p-3 rounded border border-amber-200 text-sm text-gray-800 italic">
+                                        "{{ record.user_comment }}"
+                                    </div>
+                                </div>
+                                {% endif %}                               
+                                {% if record.tools_used %}
+                                <div class="mt-4">
+                                    <h4 class="text-sm font-semibold text-gray-700 mb-2">Tools Used</h4>
+                                    <div class="flex flex-wrap gap-2">
+                                        {% for tool in record.tools_used %}
+                                        <span class="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                                            {{ tool }}
+                                        </span>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                {% endif %}
+                                <div class="my-4">
+                                    <span class="text-xs font-medium text-gray-500 uppercase">Session ID:</span>
+                                    <a href="/admin/sessions/{{ record.session_id }}" class="ml-2 text-sm text-primary-600 hover:text-primary-800 font-mono hover:underline" onclick="event.stopPropagation()">{{ record.session_id }}</a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="px-6 py-12 text-center">
+                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+                <h3 class="mt-2 text-sm font-medium text-gray-900">No feedback found</h3>
+                <p class="mt-1 text-sm text-gray-500">
+                    {% if sentiment_filter != 'all' %}
+                    No {{ sentiment_filter }} feedback found for the selected time period.
+                    {% else %}
+                    No feedback records found for the selected time period.
+                    {% endif %}
+                </p>
+            </div>
+            {% endif %}
+        </div>
+    </main>
+</div>
+{% endblock %}
+
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/admin-utils.js') }}"></script>
+<script>
+    /** Toggle visibility of feedback details row */
+    function toggleDetails(index) {
+        const detailsRow = document.getElementById(`details-${index}`);
+        const icon = document.getElementById(`expand-icon-${index}`);
+        if (detailsRow.classList.contains('hidden')) {
+            detailsRow.classList.remove('hidden');
+            icon.classList.add('rotate-180');
+        } else {
+            detailsRow.classList.add('hidden');
+            icon.classList.remove('rotate-180');
+        }
+    }
+
+    /** Apply filters and reload page */
+    function applyFilters() {
+        const sentiment = document.getElementById('sentiment-filter').value;
+        const startDate = document.getElementById('start-date').value;
+        const endDate = document.getElementById('end-date').value;
+        const params = new URLSearchParams();
+        if (sentiment && sentiment !== 'all') params.set('sentiment', sentiment);
+        if (startDate) params.set('start_time', new Date(startDate + 'T00:00:00').toISOString());
+        if (endDate) params.set('end_time', new Date(endDate + 'T23:59:59').toISOString());
+        window.location.href = `/admin/feedback?${params.toString()}`;
+    }
+
+    // Override setTimeRange to include sentiment filter
+    function setTimeRange(days) {
+        const sentiment = document.getElementById('sentiment-filter').value;
+        const addSentiment = (params) => {
+            if (sentiment && sentiment !== 'all') params.set('sentiment', sentiment);
+        };
+        const startTime = calculateStartTime(days);
+        const params = new URLSearchParams();
+        params.set('start_time', startTime.toISOString());
+        addSentiment(params);
+        window.location.href = `/admin/feedback?${params.toString()}`;
+    }
+
+    // Override applyCustomRange to use applyFilters
+    function applyCustomRange() { applyFilters(); }
+</script>
+{% endblock %}

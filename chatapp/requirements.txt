@@ -1,0 +1,15 @@
+# Core dependencies
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+httpx>=0.26.0
+python-jose[cryptography]>=3.3.0
+boto3>=1.34.0
+python-multipart>=0.0.6
+jinja2>=3.1.0
+python-dotenv>=1.0.0
+
+# Development/Testing dependencies
+pytest>=7.4.0
+pytest-asyncio>=0.23.0
+hypothesis>=6.92.0
+arel>=0.3.0  # Live reload for development

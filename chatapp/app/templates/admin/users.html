@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+
+{% block title %}User Analytics - Admin Dashboard{% endblock %}
+
+{% block body %}
+<div class="min-h-screen bg-gray-50">
+    {% set breadcrumbs = [
+        {'label': 'Admin', 'url': '/admin'},
+        {'label': 'Users'}
+    ] %}
+    {% include "components/admin_header.html" %}
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Search and Time Range -->
+        <div class="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <form method="get" action="/admin/users" class="flex flex-wrap items-center gap-4">
+                <!-- Search Input -->
+                <div class="flex-1 min-w-[200px]">
+                    <label for="search" class="sr-only">Search users</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                        </div>
+                        <input
+                            type="text"
+                            name="search"
+                            id="search"
+                            value="{{ search }}"
+                            placeholder="Search by user email..."
+                            class="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                        />
+                    </div>
+                </div>
+
+                <!-- Hidden time range fields -->
+                <input type="hidden" name="start_time" value="{{ start_time }}" />
+                <input type="hidden" name="end_time" value="{{ end_time }}" />
+                
+                <!-- Search Button -->
+                <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors">
+                    Search
+                </button>
+                
+                {% if search %}
+                <a href="/admin/users?start_time={{ start_time }}&end_time={{ end_time }}" class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors">
+                    Clear
+                </a>
+                {% endif %}
+                
+                <!-- Time Range -->
+                <div class="flex items-center gap-2 ml-auto">
+                    <span class="text-sm font-medium text-gray-700">Time Range:</span>
+                    <div class="flex gap-2">
+                        <button type="button" onclick="setTimeRange(1)" class="px-3 py-1.5 text-sm rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">
+                            Today
+                        </button>
+                        <button type="button" onclick="setTimeRange(7)" class="px-3 py-1.5 text-sm rounded-md bg-primary-100 text-primary-700 font-medium">
+                            7 Days
+                        </button>
+                        <button type="button" onclick="setTimeRange(30)" class="px-3 py-1.5 text-sm rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">
+                            30 Days
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <!-- Summary Stats -->
+        <div class="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">Users</p>
+                        <p class="text-2xl font-bold text-gray-900 mt-1">{{ users|length }}</p>
+                    </div>
+                    <div class="p-3 bg-primary-100 rounded-full">
+                        <svg class="w-6 h-6 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                        </svg>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">Sessions</p>
+                        <p class="text-2xl font-bold text-gray-900 mt-1">{{ users|sum(attribute='session_count') }}</p>
+                    </div>
+                    <div class="p-3 bg-blue-100 rounded-full">
+                        <svg class="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                        </svg>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">Invocations</p>
+                        <p class="text-2xl font-bold text-gray-900 mt-1">{{ users|sum(attribute='invocation_count') }}</p>
+                    </div>
+                    <div class="p-3 bg-amber-100 rounded-full">
+                        <svg class="w-6 h-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">Tokens</p>
+                        <p class="text-2xl font-bold text-gray-900 mt-1">{{ "{:,}".format(users|sum(attribute='total_tokens')) }}</p>
+                    </div>
+                    <div class="p-3 bg-green-100 rounded-full">
+                        <svg class="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Users Table -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-semibold text-gray-900">
+                    {% if search %}
+                    Search Results for "{{ search }}"
+                    {% else %}
+                    All Users
+                    {% endif %}
+                </h2>
+            </div>
+
+            {% if users %}
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Sessions</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Invocations</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Input Tokens</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Output Tokens</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total Tokens</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200">
+                        {% for user in users %}
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <a href="/admin/users/{{ user.user_id }}?start_time={{ start_time }}&end_time={{ end_time }}" class="flex items-center group">
+                                    <div class="flex-shrink-0 h-8 w-8 bg-primary-100 rounded-full flex items-center justify-center">
+                                        <span class="text-sm font-medium text-primary-700">{{ (user_emails.get(user.user_id) or user.user_id)[0]|upper }}</span>
+                                    </div>
+                                    <div class="ml-3 flex items-center gap-2">
+                                        <div class="text-sm font-medium text-primary-600 group-hover:text-primary-800 group-hover:underline">{{ user_emails.get(user.user_id) or user.user_id }}</div>
+                                        {% if user.user_id == current_user_id %}
+                                        <svg class="w-4 h-4 text-amber-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24" title="This is you">
+                                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                                        </svg>
+                                        {% endif %}
+                                    </div>
+                                </a>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-900">
+                                {{ "{:,}".format(user.session_count) }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-900">
+                                {{ "{:,}".format(user.invocation_count) }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-500">
+                                {{ "{:,}".format(user.total_input_tokens) }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-500">
+                                {{ "{:,}".format(user.total_output_tokens) }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
+                                {{ "{:,}".format(user.total_tokens) }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-green-600">
+                                ${{ "%.2f"|format(user.total_cost) }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="px-6 py-12 text-center">
+                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+                <h3 class="mt-2 text-sm font-medium text-gray-900">No users found</h3>
+                <p class="mt-1 text-sm text-gray-500">
+                    {% if search %}
+                    No users match your search "{{ search }}". Try a different search term.
+                    {% else %}
+                    No usage records found for the selected time period.
+                    {% endif %}
+                </p>
+            </div>
+            {% endif %}
+        </div>
+    </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/admin-utils.js') }}"></script>
+{% endblock %}

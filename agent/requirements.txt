@@ -1,0 +1,9 @@
+bedrock-agentcore
+bedrock-agentcore-starter-toolkit
+strands-agents[otel]
+strands-agents-tools
+aws-opentelemetry-distro
+psutil
+httpx
+beautifulsoup4
+lxml
