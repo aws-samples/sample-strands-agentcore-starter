@@ -1,12 +1,12 @@
 /**
  * Admin Dashboard Shared Utilities
- * Common functions for time range filtering across admin pages
+ * Common functions for time range filtering and timezone handling across admin pages
  */
 
 /**
- * Calculate start time for a given number of days
+ * Calculate start time for a given number of days in user's local timezone
  * @param {number} days - Number of days (1=Today, 7=7 Days, 30=30 Days)
- * @returns {Date} Start time set to midnight
+ * @returns {Date} Start time set to midnight local time
  */
 function calculateStartTime(days) {
     const startTime = new Date();
@@ -15,6 +15,79 @@ function calculateStartTime(days) {
     startTime.setDate(startTime.getDate() - daysBack);
     startTime.setHours(0, 0, 0, 0);
     return startTime;
+}
+
+/**
+ * Format a UTC timestamp to local timezone
+ * @param {string} utcTimestamp - ISO timestamp string (UTC)
+ * @param {object} options - Formatting options
+ * @param {boolean} options.includeDate - Include date portion (default: true)
+ * @param {boolean} options.includeTime - Include time portion (default: true)
+ * @param {boolean} options.includeSeconds - Include seconds (default: false)
+ * @returns {string} Formatted local time string
+ */
+function formatLocalTime(utcTimestamp, options = {}) {
+    if (!utcTimestamp) return '';
+    
+    const { includeDate = true, includeTime = true, includeSeconds = false } = options;
+    
+    // Parse the UTC timestamp
+    const date = new Date(utcTimestamp);
+    if (isNaN(date.getTime())) return utcTimestamp;
+    
+    const parts = [];
+    
+    if (includeDate) {
+        // Format: YYYY-MM-DD
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        parts.push(`${year}-${month}-${day}`);
+    }
+    
+    if (includeTime) {
+        // Format: HH:MM or HH:MM:SS
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        let timeStr = `${hours}:${minutes}`;
+        if (includeSeconds) {
+            const seconds = String(date.getSeconds()).padStart(2, '0');
+            timeStr += `:${seconds}`;
+        }
+        parts.push(timeStr);
+    }
+    
+    return parts.join(' ');
+}
+
+/**
+ * Convert all elements with data-utc-timestamp attribute to local time
+ * Call this on page load to convert server-rendered UTC times to local
+ */
+function convertTimestampsToLocal() {
+    document.querySelectorAll('[data-utc-timestamp]').forEach(el => {
+        const utcTimestamp = el.dataset.utcTimestamp;
+        const includeDate = el.dataset.includeDate !== 'false';
+        const includeTime = el.dataset.includeTime !== 'false';
+        const includeSeconds = el.dataset.includeSeconds === 'true';
+        
+        const localTime = formatLocalTime(utcTimestamp, { includeDate, includeTime, includeSeconds });
+        if (localTime) {
+            el.textContent = localTime;
+        }
+    });
+}
+
+/**
+ * Format a date range display (e.g., "from X to Y")
+ * @param {string} startUtc - Start timestamp (UTC)
+ * @param {string} endUtc - End timestamp (UTC)
+ * @returns {string} Formatted range string
+ */
+function formatLocalDateRange(startUtc, endUtc) {
+    const startLocal = formatLocalTime(startUtc, { includeDate: true, includeTime: true });
+    const endLocal = formatLocalTime(endUtc, { includeDate: true, includeTime: true });
+    return `${startLocal} to ${endLocal}`;
 }
 
 /**
@@ -69,19 +142,48 @@ function applyCustomRange(basePath, paramsCallback) {
 
 /**
  * Highlight active time range preset button based on current date range
+ * Also updates date inputs to show local dates instead of UTC dates
  */
 function highlightActivePreset() {
     const startDateEl = document.getElementById('start-date');
     const endDateEl = document.getElementById('end-date');
     const presetButtons = document.getElementById('preset-buttons');
 
-    if (!startDateEl || !endDateEl || !presetButtons) return;
+    if (!startDateEl || !endDateEl) return;
+
+    // Get the UTC timestamps from URL params and convert to local dates
+    const params = new URLSearchParams(window.location.search);
+    const startTimeParam = params.get('start_time');
+    const endTimeParam = params.get('end_time');
+
+    // Convert UTC timestamps to local date strings for the date inputs
+    if (startTimeParam) {
+        const startDate = new Date(startTimeParam);
+        if (!isNaN(startDate.getTime())) {
+            const localStartDate = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`;
+            startDateEl.value = localStartDate;
+        }
+    }
+    if (endTimeParam) {
+        const endDate = new Date(endTimeParam);
+        if (!isNaN(endDate.getTime())) {
+            const localEndDate = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
+            endDateEl.value = localEndDate;
+        }
+    } else {
+        // No end_time means "now" - use today's date
+        const today = new Date();
+        const localToday = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        endDateEl.value = localToday;
+    }
+
+    if (!presetButtons) return;
 
     const startDateStr = startDateEl.value;
     const endDateStr = endDateEl.value;
     if (!startDateStr || !endDateStr) return;
 
-    // Parse dates as local time (add T00:00:00 to avoid UTC interpretation)
+    // Parse dates as local time
     const start = new Date(startDateStr + 'T00:00:00');
     const end = new Date(endDateStr + 'T00:00:00');
     const today = new Date();
@@ -110,4 +212,7 @@ function highlightActivePreset() {
 }
 
 // Auto-initialize on DOM ready
-document.addEventListener('DOMContentLoaded', highlightActivePreset);
+document.addEventListener('DOMContentLoaded', () => {
+    highlightActivePreset();
+    convertTimestampsToLocal();
+});

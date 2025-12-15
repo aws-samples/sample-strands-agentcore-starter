@@ -2,6 +2,7 @@
 # Deployment script for AgentCore Chat Application
 # This script orchestrates the complete deployment process:
 #   1. Set up Bedrock Guardrail
+#   1b. Set up Bedrock Knowledge Base (S3 Vectors)
 #   2. Deploy agent (creates runtime + memory with guardrail)
 #   2b. Set up observability (X-Ray, CloudWatch)
 #   3. Set up Cognito authentication
@@ -118,6 +119,34 @@ if [ -f "./setup-guardrail.sh" ]; then
     fi
 else
     echo -e "${YELLOW}Guardrail setup script not found, skipping${NC}"
+fi
+
+cd "$SCRIPT_DIR"
+
+# ============================================================================
+# STEP 1b: Set up Bedrock Knowledge Base
+# ============================================================================
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}Step 1b: Set up Bedrock Knowledge Base${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+cd "$CHATAPP_DIR/deploy"
+
+if [ -f "./setup-knowledgebase.sh" ]; then
+    ./setup-knowledgebase.sh --yes
+    
+    # Read KB_ID from temp file written by setup-knowledgebase.sh
+    TEMP_DIR="/tmp/kb-setup"
+    if [ -f "$TEMP_DIR/kb_id" ]; then
+        KB_ID=$(cat "$TEMP_DIR/kb_id")
+        echo -e "${GREEN}Knowledge Base ready: $KB_ID${NC}"
+        export KB_ID
+    else
+        echo -e "${YELLOW}Warning: KB_ID not found in temp files${NC}"
+    fi
+else
+    echo -e "${YELLOW}Knowledge Base setup script not found, skipping${NC}"
 fi
 
 cd "$SCRIPT_DIR"
@@ -375,6 +404,12 @@ if [ -n "$GUARDRAIL_ID" ] && [ "$GUARDRAIL_ID" != "None" ] && [ "$GUARDRAIL_ID" 
     echo -e "${GREEN}Guardrail config added to .env${NC}"
 fi
 
+# Add Knowledge Base config (set in Step 1b)
+if [ -n "$KB_ID" ] && [ "$KB_ID" != "None" ] && [ "$KB_ID" != "null" ]; then
+    update_env "KB_ID" "$KB_ID"
+    echo -e "${GREEN}Knowledge Base config added to .env${NC}"
+fi
+
 # Remove old COGNITO_DOMAIN if present
 sed -i.bak '/^COGNITO_DOMAIN=/d' "$ENV_FILE" 2>/dev/null || true
 rm -f "$ENV_FILE.bak"
@@ -412,6 +447,9 @@ echo ""
 echo -e "${BLUE}AgentCore Runtime:${NC} $AGENTCORE_RUNTIME_ARN"
 echo -e "${BLUE}AgentCore Memory:${NC} $MEMORY_ID"
 echo -e "${BLUE}Cognito User Pool:${NC} $COGNITO_USER_POOL_ID"
+if [ -n "$KB_ID" ] && [ "$KB_ID" != "None" ] && [ "$KB_ID" != "null" ]; then
+    echo -e "${BLUE}Knowledge Base:${NC} $KB_ID"
+fi
 
 if [ -n "$SERVICE_URL" ]; then
     echo ""

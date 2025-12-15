@@ -14,6 +14,7 @@ AgentCore Chat Application - A full-stack conversational AI starter kit with bui
 - Admin dashboard with usage analytics and cost tracking
 - User feedback capture (thumbs up/down with comments)
 - Guardrails analytics with violation tracking
+- Knowledge Base integration for semantic search over curated documents
 - Containerized deployment on AWS ECS Express Mode
 
 ## Architecture
@@ -29,6 +30,7 @@ AgentCore Chat Application - A full-stack conversational AI starter kit with bui
 ## Key Technologies
 
 - Amazon Bedrock AgentCore (agent runtime and memory)
+- Amazon Bedrock Knowledge Bases (semantic search with S3 Vectors)
 - Amazon Bedrock Guardrails (content filtering)
 - Amazon DynamoDB (usage analytics, feedback, guardrail storage)
 - FastAPI (Python web framework)

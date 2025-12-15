@@ -416,6 +416,87 @@ Update the model ID in `chatapp/app/static/js/chat.js` and add pricing to `chata
 ### Extending Analytics
 The `UsageRepository` class in `chatapp/app/admin/repository.py` provides query methods that can be extended for custom analytics.
 
+## Knowledge Base Integration
+
+The agent includes an optional Bedrock Knowledge Base for semantic search over curated documents. When configured, the agent prioritizes Knowledge Base results before falling back to web search.
+
+### Setup
+
+The Knowledge Base is automatically created during `setup.sh`. It creates:
+- S3 bucket for source documents
+- S3 Vectors bucket and index for embeddings
+- Bedrock Knowledge Base with Titan Embed Text v2
+- Data source connecting the KB to the S3 bucket
+
+### Adding Documents to the Knowledge Base
+
+1. **Upload documents to S3**:
+   ```bash
+   # Get the source bucket name (created during setup)
+   SOURCE_BUCKET="${APP_NAME:-htmx-chatapp}-kb-${AWS_ACCOUNT_ID}-${AWS_REGION}"
+   
+   # Upload documents to the documents/ prefix
+   aws s3 cp my-document.pdf s3://${SOURCE_BUCKET}/documents/
+   aws s3 cp my-folder/ s3://${SOURCE_BUCKET}/documents/ --recursive
+   ```
+
+2. **Sync/Ingest documents**:
+   ```bash
+   # Get the Knowledge Base ID and Data Source ID
+   KB_ID=$(aws bedrock-agent list-knowledge-bases --query "knowledgeBaseSummaries[?name=='${APP_NAME:-htmx-chatapp}-kb'].knowledgeBaseId" --output text)
+   DS_ID=$(aws bedrock-agent list-data-sources --knowledge-base-id $KB_ID --query "dataSourceSummaries[0].dataSourceId" --output text)
+   
+   # Start ingestion job
+   aws bedrock-agent start-ingestion-job \
+     --knowledge-base-id $KB_ID \
+     --data-source-id $DS_ID
+   
+   # Check ingestion status
+   aws bedrock-agent list-ingestion-jobs \
+     --knowledge-base-id $KB_ID \
+     --data-source-id $DS_ID
+   ```
+
+### Supported Document Formats
+
+The Knowledge Base supports:
+- PDF (.pdf)
+- Plain text (.txt)
+- Markdown (.md)
+- HTML (.html)
+- Microsoft Word (.doc, .docx)
+- CSV (.csv)
+
+### KB Search Tool Configuration
+
+The agent's Knowledge Base search tool can be configured via environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `KB_ID` | - | Knowledge Base ID (required to enable KB search) |
+| `KB_MAX_RESULTS` | 5 | Maximum number of results to return |
+| `KB_MIN_SCORE` | 0.5 | Minimum relevance score threshold (0.0-1.0) |
+
+### How the Agent Uses the Knowledge Base
+
+When the agent receives a query:
+1. The agent first searches the Knowledge Base for relevant context
+2. If relevant results are found (score >= min_score), the agent uses that context
+3. If no relevant results are found, the agent falls back to web search or URL fetcher
+
+This prioritization ensures domain-specific knowledge takes precedence over general web content.
+
+### Manual KB Setup (Optional)
+
+If you need to set up the Knowledge Base separately:
+
+```bash
+cd chatapp/deploy
+./setup-knowledgebase.sh
+```
+
+This exports `KB_ID` which should be added to your agent's environment configuration.
+
 ## Security
 
 See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.

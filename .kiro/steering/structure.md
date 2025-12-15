@@ -28,6 +28,8 @@ agent/
 ├── deploy/
 │   └── setup-observability.sh     # CloudWatch/X-Ray setup
 └── tools/
+    ├── __init__.py                # Tools module init
+    ├── knowledge_base.py          # Knowledge Base search tool
     ├── url_fetcher.py             # URL content fetching
     ├── weather.py                 # Weather lookup
     └── web_search.py              # Web search
@@ -95,6 +97,7 @@ chatapp/
 │   ├── setup-feedback-dynamodb.sh # Feedback table setup
 │   ├── setup-guardrail-dynamodb.sh # Guardrail table setup
 │   ├── setup-guardrail.sh       # Bedrock Guardrail setup
+│   ├── setup-knowledgebase.sh   # Bedrock Knowledge Base setup
 │   ├── create-secrets.sh        # Secrets Manager setup
 │   └── create-user.sh           # Test user creation
 ├── Dockerfile                    # Container build

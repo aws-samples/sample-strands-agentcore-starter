@@ -75,7 +75,8 @@ if aws secretsmanager describe-secret --secret-id "$SECRET_NAME" --region "$AWS_
             \"feedback_table_name\": \"$FEEDBACK_TABLE_NAME\",
             \"guardrail_table_name\": \"$GUARDRAIL_TABLE_NAME\",
             \"guardrail_id\": \"${GUARDRAIL_ID:-}\",
-            \"guardrail_version\": \"${GUARDRAIL_VERSION:-DRAFT}\"
+            \"guardrail_version\": \"${GUARDRAIL_VERSION:-DRAFT}\",
+            \"kb_id\": \"${KB_ID:-}\"
         }"
     
     echo -e "${GREEN}Secret updated successfully!${NC}"
@@ -98,7 +99,8 @@ else
             \"feedback_table_name\": \"$FEEDBACK_TABLE_NAME\",
             \"guardrail_table_name\": \"$GUARDRAIL_TABLE_NAME\",
             \"guardrail_id\": \"${GUARDRAIL_ID:-}\",
-            \"guardrail_version\": \"${GUARDRAIL_VERSION:-DRAFT}\"
+            \"guardrail_version\": \"${GUARDRAIL_VERSION:-DRAFT}\",
+            \"kb_id\": \"${KB_ID:-}\"
         }"
     
     echo -e "${GREEN}Secret created successfully!${NC}"

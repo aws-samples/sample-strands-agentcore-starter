@@ -75,6 +75,19 @@ if [ -z "$GUARDRAIL_ID" ] || [ -z "$GUARDRAIL_VERSION" ] || [ "$GUARDRAIL_VERSIO
     fi
 fi
 
+# Auto-detect KB_ID if not set
+if [ -z "$KB_ID" ]; then
+    # Try to load from chatapp/.env as fallback
+    if [ -f "../chatapp/.env" ]; then
+        KB_ID=$(grep "^KB_ID=" "../chatapp/.env" 2>/dev/null | cut -d'=' -f2 | tr -d '"' | tr -d "'")
+        if [ -n "$KB_ID" ] && [ "$KB_ID" != "None" ] && [ "$KB_ID" != "null" ]; then
+            echo -e "${BLUE}Loaded KB_ID from chatapp/.env: $KB_ID${NC}"
+        else
+            KB_ID=""
+        fi
+    fi
+fi
+
 # If still not set, try to auto-detect from AWS (look for app-specific guardrail)
 if [ -z "$GUARDRAIL_ID" ]; then
     echo -e "${YELLOW}Auto-detecting guardrail from AWS...${NC}"
@@ -181,6 +194,21 @@ if [ -n "$GUARDRAIL_ID" ]; then
     echo -e "${BLUE}Guardrail enabled: $GUARDRAIL_ID (version: $GUARDRAIL_VERSION)${NC}"
 else
     echo -e "${YELLOW}Note: GUARDRAIL_ID not set - guardrail evaluation will be skipped${NC}"
+fi
+
+# Add Knowledge Base config if KB_ID is set
+if [ -n "$KB_ID" ]; then
+    ENV_ARGS="$ENV_ARGS --env KB_ID=$KB_ID"
+    # Add optional KB config if set
+    if [ -n "$KB_MAX_RESULTS" ]; then
+        ENV_ARGS="$ENV_ARGS --env KB_MAX_RESULTS=$KB_MAX_RESULTS"
+    fi
+    if [ -n "$KB_MIN_SCORE" ]; then
+        ENV_ARGS="$ENV_ARGS --env KB_MIN_SCORE=$KB_MIN_SCORE"
+    fi
+    echo -e "${BLUE}Knowledge Base enabled: $KB_ID${NC}"
+else
+    echo -e "${YELLOW}Note: KB_ID not set - Knowledge Base tool will be disabled${NC}"
 fi
 
 # Use CodeBuild for container builds (ARM64 architecture)
