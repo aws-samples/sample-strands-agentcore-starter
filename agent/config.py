@@ -18,6 +18,9 @@ class AgentConfig:
         guardrail_id: Bedrock guardrail identifier (optional)
         guardrail_version: Bedrock guardrail version (optional)
         guardrail_enabled: Whether guardrail evaluation is enabled
+        kb_id: Bedrock Knowledge Base ID (optional)
+        kb_max_results: Maximum number of KB search results to return
+        kb_min_score: Minimum relevance score threshold for KB results
     """
     memory_id: str
     aws_region: str
@@ -28,6 +31,9 @@ class AgentConfig:
     guardrail_id: Optional[str] = None
     guardrail_version: str = "1"
     guardrail_enabled: bool = True
+    kb_id: Optional[str] = None
+    kb_max_results: int = 5
+    kb_min_score: float = 0.5
     
     @classmethod
     def from_env(cls) -> "AgentConfig":
@@ -66,6 +72,11 @@ class AgentConfig:
         guardrail_version = os.getenv("GUARDRAIL_VERSION", "DRAFT")
         guardrail_enabled = os.getenv("GUARDRAIL_ENABLED", "true").lower() in ("true", "1", "yes")
         
+        # Knowledge Base configuration
+        kb_id = os.getenv("KB_ID")
+        kb_max_results = int(os.getenv("KB_MAX_RESULTS", "5"))
+        kb_min_score = float(os.getenv("KB_MIN_SCORE", "0.5"))
+        
         return cls(
             memory_id=memory_id,
             aws_region=aws_region,
@@ -75,5 +86,8 @@ class AgentConfig:
             otel_console_export=otel_console_export,
             guardrail_id=guardrail_id,
             guardrail_version=guardrail_version,
-            guardrail_enabled=guardrail_enabled
+            guardrail_enabled=guardrail_enabled,
+            kb_id=kb_id,
+            kb_max_results=kb_max_results,
+            kb_min_score=kb_min_score
         )

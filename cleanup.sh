@@ -6,6 +6,7 @@
 #   3. Secrets Manager secret
 #   4. IAM roles and policies
 #   5. DynamoDB tables (usage, feedback, guardrails)
+#   5b. Bedrock Knowledge Base (KB, data sources, vector index/bucket, source bucket, IAM role)
 #   6. Bedrock Guardrail
 #   7. Cognito User Pool
 #   8. CloudWatch resources (log groups)
@@ -256,6 +257,158 @@ if [ "$SKIP_CHATAPP" != true ]; then
         echo -e "${GREEN}Guardrail deleted${NC}"
     else
         echo -e "${YELLOW}Guardrail not found${NC}"
+    fi
+fi
+
+# ============================================================================
+# STEP 5b: Delete Knowledge Base Resources
+# ============================================================================
+if [ "$SKIP_CHATAPP" != true ]; then
+    echo ""
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BLUE}Step 5b: Delete Knowledge Base Resources${NC}"
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+    # Knowledge Base resource names (must match setup-knowledgebase.sh)
+    KB_NAME="${APP_NAME}-kb"
+    KB_ROLE_NAME="BedrockKBRole-${APP_NAME}"
+    SOURCE_BUCKET_NAME="${APP_NAME}-kb-${AWS_ACCOUNT_ID}-${AWS_REGION}"
+    VECTOR_BUCKET_NAME="${APP_NAME}-vectors-${AWS_REGION}"
+    VECTOR_INDEX_NAME="${APP_NAME}-index-${AWS_REGION}"
+    DATA_SOURCE_NAME="${APP_NAME}-kb-datasource"
+
+    # Step 5b.1: Find and delete Knowledge Base (and its data sources)
+    KB_ID=$(aws bedrock-agent list-knowledge-bases \
+        --region "$AWS_REGION" \
+        --query "knowledgeBaseSummaries[?name=='$KB_NAME'].knowledgeBaseId" \
+        --output text 2>/dev/null || echo "")
+
+    if [ -n "$KB_ID" ] && [ "$KB_ID" != "None" ]; then
+        # Delete data sources first
+        echo -e "${YELLOW}Finding data sources for Knowledge Base: $KB_ID${NC}"
+        DATA_SOURCE_IDS=$(aws bedrock-agent list-data-sources \
+            --knowledge-base-id "$KB_ID" \
+            --region "$AWS_REGION" \
+            --query "dataSourceSummaries[*].dataSourceId" \
+            --output text 2>/dev/null || echo "")
+
+        for DS_ID in $DATA_SOURCE_IDS; do
+            if [ -n "$DS_ID" ] && [ "$DS_ID" != "None" ]; then
+                echo -e "${YELLOW}Deleting data source: $DS_ID${NC}"
+                run_cmd aws bedrock-agent delete-data-source \
+                    --knowledge-base-id "$KB_ID" \
+                    --data-source-id "$DS_ID" \
+                    --region "$AWS_REGION" 2>/dev/null || echo -e "${YELLOW}  Warning: Could not delete data source $DS_ID${NC}"
+            fi
+        done
+
+        # Delete Knowledge Base
+        echo -e "${YELLOW}Deleting Knowledge Base: $KB_ID${NC}"
+        run_cmd aws bedrock-agent delete-knowledge-base \
+            --knowledge-base-id "$KB_ID" \
+            --region "$AWS_REGION" 2>/dev/null || echo -e "${YELLOW}  Warning: Could not delete Knowledge Base${NC}"
+        echo -e "${GREEN}Knowledge Base deleted${NC}"
+    else
+        echo -e "${YELLOW}Knowledge Base not found${NC}"
+    fi
+
+    # Step 5b.2: Delete S3 vector index
+    echo -e "${YELLOW}Checking for vector index: $VECTOR_INDEX_NAME${NC}"
+    EXISTING_INDEX=$(aws s3vectors list-indexes \
+        --vector-bucket-name "$VECTOR_BUCKET_NAME" \
+        --region "$AWS_REGION" \
+        --query "indexes[?indexName=='$VECTOR_INDEX_NAME'].indexName" \
+        --output text 2>/dev/null || echo "")
+
+    if [ -n "$EXISTING_INDEX" ] && [ "$EXISTING_INDEX" != "None" ]; then
+        echo -e "${YELLOW}Deleting vector index: $VECTOR_INDEX_NAME${NC}"
+        run_cmd aws s3vectors delete-index \
+            --vector-bucket-name "$VECTOR_BUCKET_NAME" \
+            --index-name "$VECTOR_INDEX_NAME" \
+            --region "$AWS_REGION" 2>/dev/null || echo -e "${YELLOW}  Warning: Could not delete vector index${NC}"
+        echo -e "${GREEN}Vector index deleted${NC}"
+    else
+        echo -e "${YELLOW}Vector index not found${NC}"
+    fi
+
+    # Step 5b.3: Delete S3 vector bucket
+    echo -e "${YELLOW}Checking for vector bucket: $VECTOR_BUCKET_NAME${NC}"
+    EXISTING_VECTOR_BUCKET=$(aws s3vectors list-vector-buckets \
+        --region "$AWS_REGION" \
+        --query "vectorBuckets[?name=='$VECTOR_BUCKET_NAME'].name" \
+        --output text 2>/dev/null || echo "")
+
+    if [ -n "$EXISTING_VECTOR_BUCKET" ] && [ "$EXISTING_VECTOR_BUCKET" != "None" ]; then
+        echo -e "${YELLOW}Deleting vector bucket: $VECTOR_BUCKET_NAME${NC}"
+        run_cmd aws s3vectors delete-vector-bucket \
+            --vector-bucket-name "$VECTOR_BUCKET_NAME" \
+            --region "$AWS_REGION" 2>/dev/null || echo -e "${YELLOW}  Warning: Could not delete vector bucket${NC}"
+        echo -e "${GREEN}Vector bucket deleted${NC}"
+    else
+        echo -e "${YELLOW}Vector bucket not found${NC}"
+    fi
+
+    # Step 5b.4: Delete S3 source bucket (with force for non-empty)
+    echo -e "${YELLOW}Checking for source bucket: $SOURCE_BUCKET_NAME${NC}"
+    if aws s3api head-bucket --bucket "$SOURCE_BUCKET_NAME" 2>/dev/null; then
+        echo -e "${YELLOW}Deleting source bucket: $SOURCE_BUCKET_NAME${NC}"
+        # First empty the bucket
+        run_cmd aws s3 rm "s3://$SOURCE_BUCKET_NAME" --recursive 2>/dev/null || true
+        # Then delete the bucket
+        run_cmd aws s3api delete-bucket \
+            --bucket "$SOURCE_BUCKET_NAME" \
+            --region "$AWS_REGION" 2>/dev/null || echo -e "${YELLOW}  Warning: Could not delete source bucket${NC}"
+        echo -e "${GREEN}Source bucket deleted${NC}"
+    else
+        echo -e "${YELLOW}Source bucket not found${NC}"
+    fi
+
+    # Step 5b.5: Delete KB IAM role and policies
+    echo -e "${YELLOW}Checking for KB IAM role: $KB_ROLE_NAME${NC}"
+    if aws iam get-role --role-name "$KB_ROLE_NAME" > /dev/null 2>&1; then
+        echo -e "${YELLOW}Deleting KB IAM role: $KB_ROLE_NAME${NC}"
+        
+        # Delete inline policies
+        INLINE_POLICIES=$(aws iam list-role-policies \
+            --role-name "$KB_ROLE_NAME" \
+            --query 'PolicyNames' \
+            --output text 2>/dev/null || echo "")
+        
+        for POLICY_NAME in $INLINE_POLICIES; do
+            if [ -n "$POLICY_NAME" ]; then
+                run_cmd aws iam delete-role-policy \
+                    --role-name "$KB_ROLE_NAME" \
+                    --policy-name "$POLICY_NAME" 2>/dev/null || echo -e "${YELLOW}  Warning: Could not delete inline policy $POLICY_NAME${NC}"
+            fi
+        done
+        
+        # Detach managed policies
+        ATTACHED_POLICIES=$(aws iam list-attached-role-policies \
+            --role-name "$KB_ROLE_NAME" \
+            --query 'AttachedPolicies[*].PolicyArn' \
+            --output text 2>/dev/null || echo "")
+        
+        for POLICY_ARN in $ATTACHED_POLICIES; do
+            if [ -n "$POLICY_ARN" ]; then
+                run_cmd aws iam detach-role-policy \
+                    --role-name "$KB_ROLE_NAME" \
+                    --policy-arn "$POLICY_ARN" 2>/dev/null || echo -e "${YELLOW}  Warning: Could not detach policy $POLICY_ARN${NC}"
+            fi
+        done
+        
+        # Delete the role
+        run_cmd aws iam delete-role --role-name "$KB_ROLE_NAME" 2>/dev/null || echo -e "${YELLOW}  Warning: Could not delete KB IAM role${NC}"
+        echo -e "${GREEN}KB IAM role deleted${NC}"
+    else
+        echo -e "${YELLOW}KB IAM role not found${NC}"
+    fi
+
+    # Step 5b.6: Remove KB access policy from task role
+    if aws iam get-role --role-name "$TASK_ROLE_NAME" > /dev/null 2>&1; then
+        echo -e "${YELLOW}Removing KB access policy from task role...${NC}"
+        run_cmd aws iam delete-role-policy \
+            --role-name "$TASK_ROLE_NAME" \
+            --policy-name "BedrockKBAccess" 2>/dev/null || true
     fi
 fi
 
@@ -666,8 +819,9 @@ else
         echo "  - Secrets Manager secret"
         echo "  - DynamoDB tables (usage, feedback, guardrails)"
         echo "  - Bedrock Guardrail"
+        echo "  - Bedrock Knowledge Base (KB, data sources, vector index/bucket, source bucket)"
         echo "  - Cognito User Pool"
-        echo "  - IAM roles (execution, task)"
+        echo "  - IAM roles (execution, task, KB)"
     fi
     echo "  - CloudWatch log groups"
     if [ "$SKIP_AGENT" != true ]; then
