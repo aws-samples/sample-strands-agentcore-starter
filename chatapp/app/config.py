@@ -39,6 +39,7 @@ class AppConfig:
         guardrail_version: Guardrail version to use (optional)
         guardrail_enabled: Whether guardrail evaluation is enabled
         guardrail_table_name: DynamoDB table for guardrail violations
+        prompt_templates_table_name: DynamoDB table for prompt templates
     """
 
     cognito_user_pool_id: str
@@ -54,6 +55,7 @@ class AppConfig:
     guardrail_version: Optional[str] = None
     guardrail_enabled: bool = True
     guardrail_table_name: str = "agentcore-guardrail-violations"
+    prompt_templates_table_name: str = "agentcore-prompt-templates"
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -122,6 +124,11 @@ class AppConfig:
         
         values["guardrail_table_name"] = os.environ.get(
             "GUARDRAIL_TABLE_NAME", "agentcore-guardrail-violations"
+        ).strip()
+
+        # Prompt templates configuration
+        values["prompt_templates_table_name"] = os.environ.get(
+            "PROMPT_TEMPLATES_TABLE_NAME", "agentcore-prompt-templates"
         ).strip()
 
         return cls(**values)

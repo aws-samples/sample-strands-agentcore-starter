@@ -23,6 +23,7 @@ Building AI agents is exciting, but understanding their usage, results, and cost
 - 💰 **Cost projections** based on actual usage patterns
 - 👍 **User feedback** with sentiment ratings and comments
 - 🛡️ **Guardrails analytics** with violation tracking and content filtering
+- 📝 **Prompt templates** for quick access to pre-defined prompts
 - ☁️ Containerized deployment using **Amazon ECS Express Mode**
 - 🧠 AI Agents powered by **Amazon Bedrock AgentCore** using the **Strands Agents SDK**
 - 🔐 Secure authentication via **Amazon Cognito**
@@ -94,9 +95,22 @@ The built-in admin dashboard (`/admin`) provides comprehensive usage analytics:
 </td>
 </tr>
 <tr>
-<td colspan="2" valign="top">
+<td width="50%" valign="top">
 
-**🔧 Tool Analytics** `/admin/tools` — Call counts per tool, success/error rates, average execution times
+**🔧 Tool Analytics** `/admin/tools`
+- Call counts per tool
+- Success/error rates
+- Average execution times
+
+</td>
+<td width="50%" valign="top">
+
+**📝 Prompt Templates** `/admin/templates`
+- Create reusable prompt templates
+- Edit title, description, and prompt text
+- Templates appear in chat UI dropdown
+- Default "Capabilities" template included
+
 </td>
 </tr>
 </table>
@@ -348,6 +362,7 @@ Preview what will be deleted before running:
 | `GUARDRAIL_ID` | No | Bedrock Guardrail ID for content filtering |
 | `GUARDRAIL_VERSION` | No | Bedrock Guardrail version (default: DRAFT) |
 | `GUARDRAIL_ENABLED` | No | Enable/disable guardrail evaluation (default: true) |
+| `PROMPT_TEMPLATES_TABLE_NAME` | Yes | DynamoDB table for prompt templates |
 | `APP_URL` | No | Application URL for callbacks |
 | `AWS_REGION` | Yes | AWS region |
 

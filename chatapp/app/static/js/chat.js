@@ -246,6 +246,186 @@ function initializeModelSelection() {
     console.log('Model selection initialized:', getSelectedModel().name);
 }
 
+// ============================================================================
+// Prompt Templates
+// Requirements: 1.1, 1.2, 1.3, 1.4
+// ============================================================================
+
+/**
+ * Cached templates loaded from the API.
+ */
+let cachedTemplates = null;
+
+/**
+ * Fetch prompt templates from the API.
+ * Caches the result to avoid repeated API calls.
+ * 
+ * @returns {Promise<Array>} Array of template objects
+ * 
+ * Requirements: 1.2
+ */
+async function fetchTemplates() {
+    // Return cached templates if available
+    if (cachedTemplates !== null) {
+        return cachedTemplates;
+    }
+    
+    try {
+        const response = await fetch('/api/templates');
+        if (!response.ok) {
+            throw new Error(`Failed to fetch templates: ${response.status}`);
+        }
+        
+        cachedTemplates = await response.json();
+        console.debug('Templates loaded:', cachedTemplates.length);
+        return cachedTemplates;
+    } catch (error) {
+        console.error('Error fetching templates:', error);
+        return [];
+    }
+}
+
+/**
+ * Toggle the templates dropdown visibility.
+ * Loads templates from API when opening.
+ * 
+ * Requirements: 1.2
+ */
+async function toggleTemplatesDropdown() {
+    const dropdown = document.getElementById('templates-dropdown');
+    if (!dropdown) return;
+    
+    const isHidden = dropdown.classList.contains('hidden');
+    
+    if (isHidden) {
+        // Load and populate templates before showing
+        await populateTemplatesOptions();
+        dropdown.classList.remove('hidden');
+        
+        // Add click outside listener to close dropdown
+        setTimeout(() => {
+            document.addEventListener('click', closeTemplatesDropdownOnClickOutside);
+        }, 0);
+    } else {
+        dropdown.classList.add('hidden');
+        document.removeEventListener('click', closeTemplatesDropdownOnClickOutside);
+    }
+}
+
+/**
+ * Close the templates dropdown when clicking outside.
+ * 
+ * @param {Event} event - Click event
+ */
+function closeTemplatesDropdownOnClickOutside(event) {
+    const dropdown = document.getElementById('templates-dropdown');
+    const button = document.getElementById('templates-btn');
+    
+    if (!dropdown || !button) return;
+    
+    if (!dropdown.contains(event.target) && !button.contains(event.target)) {
+        dropdown.classList.add('hidden');
+        document.removeEventListener('click', closeTemplatesDropdownOnClickOutside);
+    }
+}
+
+/**
+ * Populate the templates dropdown with available options.
+ * Shows title prominently and description as secondary text.
+ * 
+ * Requirements: 1.2, 5.1
+ */
+async function populateTemplatesOptions() {
+    const optionsContainer = document.getElementById('templates-options');
+    if (!optionsContainer) return;
+    
+    // Show loading state
+    optionsContainer.innerHTML = '<div class="px-3 py-2 text-sm text-gray-500">Loading templates...</div>';
+    
+    // Fetch templates
+    const templates = await fetchTemplates();
+    
+    // Clear loading state
+    optionsContainer.innerHTML = '';
+    
+    if (templates.length === 0) {
+        optionsContainer.innerHTML = '<div class="px-3 py-2 text-sm text-gray-500">No templates available</div>';
+        return;
+    }
+    
+    // Add each template as an option (Requirements 1.2, 5.1)
+    templates.forEach(template => {
+        const option = document.createElement('button');
+        option.type = 'button';
+        option.className = 'w-full px-3 py-2 text-left hover:bg-gray-50 transition-colors flex flex-col gap-0.5';
+        option.onclick = () => selectTemplate(template.prompt_detail);
+        
+        // Title - shown prominently (Requirement 5.1)
+        const title = document.createElement('div');
+        title.className = 'text-sm font-medium text-gray-900';
+        title.textContent = template.title;
+        
+        // Description - secondary text (Requirement 5.1)
+        const description = document.createElement('div');
+        description.className = 'text-xs text-gray-500 truncate';
+        description.textContent = template.description;
+        
+        option.appendChild(title);
+        option.appendChild(description);
+        optionsContainer.appendChild(option);
+    });
+}
+
+/**
+ * Select a template and insert its prompt_detail into the chat input.
+ * Closes the dropdown after selection.
+ * 
+ * @param {string} promptDetail - The prompt text to insert
+ * 
+ * Requirements: 1.3, 1.4
+ */
+function selectTemplate(promptDetail) {
+    // Insert prompt_detail into chat input (Requirement 1.3)
+    const input = document.getElementById('message-input');
+    if (input) {
+        input.value = promptDetail;
+        input.focus();
+        // Trigger auto-resize for textarea
+        autoResizeTextarea(input);
+    }
+    
+    // Close dropdown (Requirement 1.4)
+    const dropdown = document.getElementById('templates-dropdown');
+    if (dropdown) {
+        dropdown.classList.add('hidden');
+        document.removeEventListener('click', closeTemplatesDropdownOnClickOutside);
+    }
+}
+
+/**
+ * Clear the cached templates.
+ * Call this when templates are updated via admin.
+ */
+function clearTemplatesCache() {
+    cachedTemplates = null;
+}
+
+/**
+ * Prefetch templates in the background on page load.
+ * This ensures templates are ready when the user clicks the templates button.
+ * Returns a promise that resolves when templates are loaded.
+ * 
+ * Requirements: 1.2
+ */
+function prefetchTemplates() {
+    return fetchTemplates().then(() => {
+        console.debug('Templates prefetched');
+    }).catch(err => {
+        console.warn('Failed to prefetch templates:', err);
+        // Don't rethrow - allow memory to load even if templates fail
+    });
+}
+
 /**
  * Configuration for tool display.
  */
@@ -2162,8 +2342,10 @@ function toggleMemorySidebar() {
 /**
  * Expand the memory sidebar.
  * Shows the sidebar and hides the collapsed toggle.
+ * 
+ * @param {boolean} skipRefresh - If true, skip the memory refresh (used during initialization)
  */
-function expandMemorySidebar() {
+function expandMemorySidebar(skipRefresh = false) {
     const sidebar = document.getElementById('memory-sidebar');
     const collapsed = document.getElementById('memory-toggle-collapsed');
     
@@ -2175,8 +2357,10 @@ function expandMemorySidebar() {
         collapsed.classList.add('hidden');
     }
     
-    // Refresh memory when expanding
-    refreshMemory();
+    // Refresh memory when expanding (unless skipped during init)
+    if (!skipRefresh) {
+        refreshMemory();
+    }
 }
 
 /**
@@ -2293,8 +2477,11 @@ function initializeChat() {
     // Initialize textarea keyboard handling and auto-resize
     initializeTextarea();
     
-    // Load initial memory (Requirements 4.2, 4.3)
-    refreshMemory();
+    // Prefetch prompt templates first, then load memory (Requirement 1.2)
+    prefetchTemplates().then(() => {
+        // Load initial memory after templates are ready (Requirements 4.2, 4.3)
+        refreshMemory();
+    });
     
     console.log('Chat initialized with session:', getSessionId());
 }
@@ -2367,7 +2554,8 @@ function initializeMemorySidebar() {
     if (shouldCollapse) {
         collapseMemorySidebar();
     } else {
-        expandMemorySidebar();
+        // Skip refresh during init - it will be called after templates load
+        expandMemorySidebar(true);
     }
 }
 

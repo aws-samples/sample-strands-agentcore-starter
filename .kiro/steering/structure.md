@@ -57,16 +57,19 @@ chatapp/
 │   ├── storage/                  # Data storage services
 │   │   ├── usage.py             # Usage record storage
 │   │   ├── feedback.py          # Feedback storage
-│   │   └── guardrail.py         # Guardrail violation storage
+│   │   ├── guardrail.py         # Guardrail violation storage
+│   │   └── prompt_template.py   # Prompt template storage
 │   ├── routes/
 │   │   ├── auth.py              # Auth routes (/auth/login, /auth/logout)
 │   │   ├── chat.py              # Chat API routes (/api/chat)
 │   │   ├── memory.py            # Memory API routes (/api/memory/*)
 │   │   ├── admin.py             # Admin dashboard routes (/admin/*)
-│   │   └── feedback.py          # Feedback API routes
+│   │   ├── feedback.py          # Feedback API routes
+│   │   └── prompt_templates.py  # Prompt templates routes (/api/templates, /admin/templates)
 │   ├── models/
 │   │   ├── feedback.py          # Feedback data models
-│   │   └── guardrail.py         # Guardrail data models
+│   │   ├── guardrail.py         # Guardrail data models
+│   │   └── prompt_template.py   # Prompt template data model
 │   ├── session/
 │   │   └── manager.py           # Session management
 │   ├── static/
@@ -89,13 +92,15 @@ chatapp/
 │           ├── session_detail.html # Session detail view
 │           ├── tools.html       # Tool analytics
 │           ├── feedback.html    # Feedback analytics
-│           └── guardrails.html  # Guardrail violations
+│           ├── guardrails.html  # Guardrail violations
+│           └── templates.html   # Prompt templates management
 ├── deploy/
 │   ├── setup-cognito.sh         # Cognito user pool setup
 │   ├── setup-iam.sh             # IAM roles setup
 │   ├── setup-dynamodb.sh        # Usage table setup
 │   ├── setup-feedback-dynamodb.sh # Feedback table setup
 │   ├── setup-guardrail-dynamodb.sh # Guardrail table setup
+│   ├── setup-prompt-templates-dynamodb.sh # Prompt templates table setup
 │   ├── setup-guardrail.sh       # Bedrock Guardrail setup
 │   ├── setup-knowledgebase.sh   # Bedrock Knowledge Base setup
 │   ├── create-secrets.sh        # Secrets Manager setup

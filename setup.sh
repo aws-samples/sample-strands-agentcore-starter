@@ -347,6 +347,9 @@ echo -e "${YELLOW}Creating feedback table...${NC}"
 echo -e "${YELLOW}Creating guardrail violations table...${NC}"
 ./setup-guardrail-dynamodb.sh --yes
 
+echo -e "${YELLOW}Creating prompt templates table...${NC}"
+./setup-prompt-templates-dynamodb.sh --yes
+
 # ============================================================================
 # STEP 5: Set up IAM Roles
 # ============================================================================
@@ -396,6 +399,7 @@ update_env "AWS_REGION" "$AWS_REGION"
 update_env "USAGE_TABLE_NAME" "agentcore-usage-records"
 update_env "FEEDBACK_TABLE_NAME" "agentcore-feedback"
 update_env "GUARDRAIL_TABLE_NAME" "agentcore-guardrail-violations"
+update_env "PROMPT_TEMPLATES_TABLE_NAME" "agentcore-prompt-templates"
 
 # Add Guardrail config (set in Step 1)
 if [ -n "$GUARDRAIL_ID" ] && [ "$GUARDRAIL_ID" != "None" ] && [ "$GUARDRAIL_ID" != "null" ]; then
