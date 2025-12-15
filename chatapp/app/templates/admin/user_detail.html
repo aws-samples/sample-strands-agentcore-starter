@@ -125,11 +125,11 @@
                         <tr class="hover:bg-gray-50">
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <a href="/admin/sessions/{{ session.session_id }}" class="block hover:bg-gray-100 -m-2 p-2 rounded">
-                                    <div class="text-sm font-medium text-primary-600 hover:text-primary-800">
+                                    <div class="text-sm font-medium text-primary-600 hover:text-primary-800" data-utc-timestamp="{{ session.first_timestamp }}">
                                         {{ session.first_timestamp[:10] }} {{ session.first_timestamp[11:16] }}
                                     </div>
                                     <div class="text-xs text-gray-500">
-                                        to {{ session.last_timestamp[:10] }} {{ session.last_timestamp[11:16] }}
+                                        to <span data-utc-timestamp="{{ session.last_timestamp }}">{{ session.last_timestamp[:10] }} {{ session.last_timestamp[11:16] }}</span>
                                     </div>
                                 </a>
                             </td>

@@ -195,7 +195,7 @@
                     <tbody class="divide-y divide-gray-200">
                         {% for record in records %}
                         <tr class="hover:bg-gray-50">
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" data-utc-timestamp="{{ record.timestamp }}" data-include-seconds="true">
                                 {{ record.timestamp[:19].replace('T', ' ') }}
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
@@ -245,7 +245,7 @@
 
         <!-- Session Time Range -->
         <div class="mt-6 text-center text-sm text-gray-500">
-            Session active from {{ session_stats.first_timestamp[:19].replace('T', ' ') }} to {{ session_stats.last_timestamp[:19].replace('T', ' ') }}
+            Session active from <span data-utc-timestamp="{{ session_stats.first_timestamp }}" data-include-seconds="true">{{ session_stats.first_timestamp[:19].replace('T', ' ') }}</span> to <span data-utc-timestamp="{{ session_stats.last_timestamp }}" data-include-seconds="true">{{ session_stats.last_timestamp[:19].replace('T', ' ') }}</span>
         </div>
         {% else %}
         <!-- Session Not Found -->
@@ -264,4 +264,8 @@
         {% endif %}
     </main>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/admin-utils.js') }}"></script>
 {% endblock %}
