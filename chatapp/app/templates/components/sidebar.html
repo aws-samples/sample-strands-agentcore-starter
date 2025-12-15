@@ -150,6 +150,7 @@ Supports light/dark theme toggle with localStorage persistence.
     /**
      * Toggle between light and dark sidebar themes.
      * Persists preference to localStorage.
+     * CSS variables update automatically - no need to refresh memory.
      */
     function toggleSidebarTheme() {
         const sidebar = document.getElementById('memory-sidebar');
@@ -196,11 +197,6 @@ Supports light/dark theme toggle with localStorage persistence.
         // Re-apply tab styling for current tab
         if (currentMemoryTab) {
             updateTabStyling(currentMemoryTab);
-        }
-        
-        // Refresh memory to re-render cards with new theme
-        if (typeof refreshMemory === 'function') {
-            refreshMemory();
         }
     }
     

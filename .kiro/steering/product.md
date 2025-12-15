@@ -14,6 +14,7 @@ AgentCore Chat Application - A full-stack conversational AI starter kit with bui
 - Admin dashboard with usage analytics and cost tracking
 - User feedback capture (thumbs up/down with comments)
 - Guardrails analytics with violation tracking
+- Prompt templates for quick access to pre-defined prompts (admin-managed, stored in DynamoDB)
 - Knowledge Base integration for semantic search over curated documents
 - Containerized deployment on AWS ECS Express Mode
 
@@ -24,7 +25,7 @@ AgentCore Chat Application - A full-stack conversational AI starter kit with bui
 **Agent Backend**: Python agent using Strands framework deployed to AgentCore Runtime
 **Integration**: FastAPI routes invoke AgentCore Runtime (preserves streaming)
 **Memory**: AgentCore Memory provides event and semantic memory for conversation persistence
-**Storage**: DynamoDB for usage records, feedback, and guardrail violations
+**Storage**: DynamoDB for usage records, feedback, guardrail violations, and prompt templates
 **Streaming**: Server-Sent Events (SSE) for real-time token-by-token response display
 
 ## Key Technologies
