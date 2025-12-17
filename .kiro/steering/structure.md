@@ -5,9 +5,9 @@
 ```
 ├── agent/              # Python backend agent (Strands + AgentCore)
 ├── chatapp/            # Python/FastAPI frontend (HTMX + vanilla JS)
-├── assets/             # Documentation assets (images, threat model)
-├── README.md           # Main documentation
-└── setup.sh            # Master deployment script
+├── cdk/                # CDK infrastructure (deployment)
+├── assets/             # Documentation assets (images)
+└── README.md           # Main documentation
 ```
 
 ## Agent Directory (`agent/`)
@@ -20,13 +20,9 @@ agent/
 ├── guardrails.py                  # Guardrail evaluation logic
 ├── telemetry.py                   # OpenTelemetry instrumentation
 ├── requirements.txt               # Python dependencies
-├── deploy.sh                      # Deployment script
-├── .bedrock_agentcore.yaml        # AgentCore deployment config (gitignored)
+├── Dockerfile                     # Container build for AgentCore
 ├── .env                           # Environment variables (gitignored)
 ├── .venv/                         # Python virtual environment (gitignored)
-├── .bedrock_agentcore/            # Build artifacts (gitignored)
-├── deploy/
-│   └── setup-observability.sh     # CloudWatch/X-Ray setup
 └── tools/
     ├── __init__.py                # Tools module init
     ├── knowledge_base.py          # Knowledge Base search tool
@@ -95,19 +91,9 @@ chatapp/
 │           ├── guardrails.html  # Guardrail violations
 │           └── templates.html   # Prompt templates management
 ├── deploy/
-│   ├── setup-cognito.sh         # Cognito user pool setup
-│   ├── setup-iam.sh             # IAM roles setup
-│   ├── setup-dynamodb.sh        # Usage table setup
-│   ├── setup-feedback-dynamodb.sh # Feedback table setup
-│   ├── setup-guardrail-dynamodb.sh # Guardrail table setup
-│   ├── setup-prompt-templates-dynamodb.sh # Prompt templates table setup
-│   ├── setup-guardrail.sh       # Bedrock Guardrail setup
-│   ├── setup-knowledgebase.sh   # Bedrock Knowledge Base setup
-│   ├── create-secrets.sh        # Secrets Manager setup
 │   └── create-user.sh           # Test user creation
 ├── Dockerfile                    # Container build
 ├── docker-compose.yml            # Local development
-├── deploy.sh                     # ECS Express Mode deployment
 ├── requirements.txt              # Python dependencies
 ├── pyproject.toml               # Python project config
 └── README.md                    # ChatApp documentation
@@ -128,9 +114,38 @@ chatapp/
 - `agent/.bedrock_agentcore.yaml` - AgentCore deployment config
 - `chatapp/.env` - Environment variables
 
+## CDK Directory (`cdk/`)
+
+```
+cdk/
+├── bin/
+│   └── app.ts                     # CDK app entry point
+├── lib/
+│   ├── config.ts                  # Shared configuration and export names
+│   ├── foundation-stack.ts        # Cognito, DynamoDB, IAM roles, Secrets
+│   ├── bedrock-stack.ts           # Guardrail, Knowledge Base, Memory
+│   ├── agent-stack.ts             # ECR, CodeBuild, AgentCore Runtime
+│   └── chatapp-stack.ts           # ECS Express Mode service
+├── test/
+│   └── config.test.ts             # Configuration tests
+├── deploy-all.sh                  # Full deployment script
+├── destroy-all.sh                 # Full cleanup script
+├── cdk.json                       # CDK configuration
+├── package.json                   # Node.js dependencies
+└── tsconfig.json                  # TypeScript configuration
+```
+
+**Key Files**:
+- `lib/config.ts`: Centralized naming and export configuration
+- `lib/foundation-stack.ts`: Auth, storage, IAM, and secrets (no dependencies)
+- `lib/bedrock-stack.ts`: AI/ML resources (depends on Foundation for secret updates)
+- `lib/agent-stack.ts`: Agent infrastructure (depends on Bedrock)
+- `lib/chatapp-stack.ts`: ECS application (depends on Foundation, Agent)
+
 ## Naming Conventions
 
 - **Python**: snake_case for files, functions, variables; PascalCase for classes
 - **JavaScript**: camelCase for functions/variables, PascalCase for classes
+- **TypeScript (CDK)**: camelCase for variables, PascalCase for classes and constructs
 - **Templates**: lowercase with hyphens for partials
 - **CSS**: Tailwind utility classes, CSS variables for theming

@@ -56,4 +56,5 @@ agent/dependencies.hash
 .cdk.staging
 cdk.out
 cdk.context.json
+cdk/cdk-outputs.json
 packaging/
