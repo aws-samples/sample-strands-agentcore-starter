@@ -144,13 +144,14 @@ The built-in admin dashboard (`/admin`) provides comprehensive usage analytics:
 |------|----------------|---------|
 | **Node.js** | 18.x+ | CDK runtime |
 | **AWS CDK CLI** | 2.x | Infrastructure deployment |
-| **Docker** | 20.x | Container builds |
 | **AWS CLI** | 2.x | AWS resource management |
 
 Install CDK CLI globally:
 ```bash
 npm install -g aws-cdk
 ```
+
+Note: Docker is not required locally - all container builds are handled by AWS CodeBuild.
 
 ### AWS Requirements
 
@@ -201,7 +202,6 @@ The deployment creates:
 Options:
   --region <region>    AWS region (default: us-east-1)
   --profile <profile>  AWS CLI profile to use
-  --skip-build         Skip Docker image builds
   --dry-run            Show what would be deployed without deploying
 ```
 

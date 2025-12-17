@@ -167,25 +167,7 @@ echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━�
 echo -e "${BLUE}Step 2: Clean up remaining resources${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
-# Clean up ECR repository (created by deploy-all.sh, not CDK)
-echo -e "${YELLOW}Cleaning up ECR repository...${NC}"
-if [ "$DRY_RUN" = true ]; then
-    echo -e "${CYAN}[DRY RUN] Would delete ECR repository: $APP_NAME${NC}"
-else
-    # Delete all images first, then delete the repository
-    if aws ecr describe-repositories --repository-names "$APP_NAME" --region "$AWS_REGION" > /dev/null 2>&1; then
-        # Delete all images in the repository
-        IMAGES=$(aws ecr list-images --repository-name "$APP_NAME" --region "$AWS_REGION" --query 'imageIds[*]' --output json 2>/dev/null)
-        if [ "$IMAGES" != "[]" ] && [ -n "$IMAGES" ]; then
-            aws ecr batch-delete-image --repository-name "$APP_NAME" --region "$AWS_REGION" --image-ids "$IMAGES" > /dev/null 2>&1 || true
-        fi
-        # Delete the repository
-        aws ecr delete-repository --repository-name "$APP_NAME" --region "$AWS_REGION" --force > /dev/null 2>&1 || true
-        echo -e "${GREEN}Deleted ECR repository: $APP_NAME${NC}"
-    else
-        echo -e "${YELLOW}ECR repository $APP_NAME not found (may already be deleted)${NC}"
-    fi
-fi
+# Note: ECR repositories are now managed by CDK and deleted automatically
 
 # Clean up CloudWatch log groups that may have been created outside CDK
 echo -e "${YELLOW}Cleaning up CloudWatch log groups...${NC}"
@@ -231,10 +213,10 @@ if [ "$DRY_RUN" = true ]; then
     echo -e "${CYAN}Run without --dry-run to perform actual cleanup.${NC}"
 else
     echo -e "${CYAN}Summary of destroyed resources:${NC}"
-    echo "  - ChatApp ECS Express Mode service and ECR repository"
-    echo "  - Agent infrastructure (ECR, CodeBuild, CfnRuntime, Observability)"
-    echo "  - Bedrock resources (Guardrail, Knowledge Base, Memory)"
-    echo "  - Foundation resources (Cognito, DynamoDB, IAM roles, Secrets)"
+    echo "  - ChatApp (ECS Express Mode, ECR, CodeBuild, S3 source bucket)"
+    echo "  - Agent (ECR, CodeBuild, CfnRuntime, Observability)"
+    echo "  - Bedrock (Guardrail, Knowledge Base, Memory)"
+    echo "  - Foundation (Cognito, DynamoDB, IAM roles, Secrets)"
     echo "  - CloudWatch log groups"
     echo ""
     echo -e "${YELLOW}Note: Some resources may take a few minutes to fully delete.${NC}"
