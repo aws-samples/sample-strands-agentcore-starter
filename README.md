@@ -301,9 +301,114 @@ cd chatapp
 ./deploy.sh --delete  # Removes ECS Express Mode service
 ```
 
-## Cleanup
+## CDK Deployment (Infrastructure as Code)
 
-To remove all AWS resources created by this starter, use the cleanup script:
+For production deployments or when you need repeatable, version-controlled infrastructure, use the CDK deployment option.
+
+### CDK Prerequisites
+
+| Tool | Minimum Version | Purpose |
+|------|----------------|---------|
+| **Node.js** | 18.x+ | CDK runtime |
+| **AWS CDK CLI** | 2.x | Infrastructure deployment |
+| **Docker** | 20.x | Container builds |
+
+Install CDK CLI globally:
+```bash
+npm install -g aws-cdk
+```
+
+### CDK Quick Start
+
+1. **Navigate to CDK directory and install dependencies**:
+   ```bash
+   cd cdk
+   npm install
+   ```
+
+2. **Deploy all stacks**:
+   ```bash
+   ./deploy-all.sh --region <aws-region-id>
+   ```
+
+3. **Create a test user**:
+   ```bash
+   cd ../chatapp/deploy
+   ./create-user.sh your-email@example.com YourPassword123@ --admin
+   ```
+
+### CDK Deployment Options
+
+```bash
+./deploy-all.sh [options]
+
+Options:
+  --region <region>    AWS region (default: us-east-1)
+  --profile <profile>  AWS CLI profile to use
+  --skip-build         Skip Docker image builds
+  --dry-run            Show what would be deployed without deploying
+```
+
+### CDK Stack Architecture
+
+The CDK deployment creates 9 independent CloudFormation stacks:
+
+| Stack | Description | Dependencies |
+|-------|-------------|--------------|
+| **Auth** | Cognito User Pool | None |
+| **Storage** | DynamoDB tables | None |
+| **Guardrail** | Bedrock Guardrail | None |
+| **KnowledgeBase** | S3 Vectors + Bedrock KB | None |
+| **IAM** | ECS task roles | Storage |
+| **AgentInfra** | ECR, CodeBuild, Agent IAM | None |
+| **AgentRuntime** | AgentCore CfnRuntime | AgentInfra, Guardrail, KB |
+| **Secrets** | Secrets Manager | Auth, Storage, AgentRuntime |
+| **ChatApp** | ECS Express Mode | IAM, Secrets |
+
+Stack isolation ensures that failures in application stacks (ChatApp, AgentRuntime) don't cascade to foundational resources.
+
+### CDK Useful Commands
+
+```bash
+# List all stacks
+npx cdk list
+
+# Deploy a specific stack
+npx cdk deploy htmx-chatapp-auth
+
+# View stack differences before deploying
+npx cdk diff
+
+# Synthesize CloudFormation templates
+npx cdk synth
+
+# View stack outputs
+cat cdk-outputs.json
+```
+
+### CDK Cleanup
+
+To destroy all CDK-managed resources:
+
+```bash
+cd cdk
+./destroy-all.sh --region <aws-region-id>
+```
+
+Options:
+```bash
+./destroy-all.sh [options]
+
+Options:
+  --region <region>    AWS region (default: us-east-1)
+  --profile <profile>  AWS CLI profile to use
+  --yes                Auto-confirm all prompts (DANGEROUS)
+  --dry-run            Show what would be destroyed without destroying
+```
+
+## Cleanup (Shell Scripts)
+
+To remove all AWS resources created by the shell script deployment, use the cleanup script:
 
 ```bash
 ./cleanup.sh --region <aws-region-id>
