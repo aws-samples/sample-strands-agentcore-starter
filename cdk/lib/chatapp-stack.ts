@@ -2,6 +2,9 @@
  * ChatApp Stack - ECS Express Mode service for the chat application.
  * 
  * This stack creates:
+ * - ECR repository for container images
+ * - S3 bucket for CodeBuild source
+ * - CodeBuild project for building Docker images
  * - CloudWatch log group for container logs
  * - ECS Express Gateway Service with auto-scaling
  * - Custom resource to update deployment configuration
@@ -10,9 +13,6 @@
  * - Foundation Stack: IAM roles (execution, task, infrastructure), Secrets Manager secret
  * - Bedrock Stack: (values accessed via Secrets Manager)
  * - Agent Stack: (values accessed via Secrets Manager)
- * 
- * Note: ECR repository is created by deploy-all.sh before this stack runs
- * to ensure the image exists before the ECS service is created.
  * 
  * Exports:
  * - ServiceUrl
@@ -23,15 +23,26 @@
 import * as cdk from 'aws-cdk-lib';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
+import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
+import * as codebuild from 'aws-cdk-lib/aws-codebuild';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as cr from 'aws-cdk-lib/custom-resources';
 import { Construct } from 'constructs';
 import { config, exportNames } from './config';
+import * as path from 'path';
 
 export class ChatAppStack extends cdk.Stack {
-  /** ECR repository for chat application container images (imported) */
-  public readonly chatappRepository: ecr.IRepository;
+  /** ECR repository for chat application container images */
+  public readonly chatappRepository: ecr.Repository;
+  
+  /** S3 bucket for CodeBuild source files */
+  public readonly sourceBucket: s3.Bucket;
+  
+  /** CodeBuild project for building ChatApp Docker images */
+  public readonly buildProject: codebuild.Project;
   
   /** CloudWatch log group for container logs */
   public readonly logGroup: logs.LogGroup;
@@ -43,17 +54,284 @@ export class ChatAppStack extends cdk.Stack {
     super(scope, id, props);
 
     // ========================================================================
-    // Task 13.1: Import ECR repository for chat application container images
-    // Requirements: 8.1
-    // Note: Repository is created by deploy-all.sh before CDK deployment
+    // ECR Repository for ChatApp container images
     // ========================================================================
     
-    // Import existing ECR repository (created by deploy-all.sh)
-    this.chatappRepository = ecr.Repository.fromRepositoryName(
-      this,
-      'ChatAppRepository',
-      config.chatappRepoName
+    this.chatappRepository = new ecr.Repository(this, 'ChatAppRepository', {
+      repositoryName: config.chatappRepoName,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      emptyOnDelete: true,
+      imageScanOnPush: true,
+      lifecycleRules: [
+        {
+          description: 'Keep only 5 most recent images',
+          maxImageCount: 5,
+          rulePriority: 1,
+          tagStatus: ecr.TagStatus.ANY,
+        },
+      ],
+    });
+
+    // ========================================================================
+    // S3 Bucket for CodeBuild source
+    // ========================================================================
+    
+    this.sourceBucket = new s3.Bucket(this, 'ChatAppSourceBucket', {
+      bucketName: `${config.appName}-chatapp-source-${this.account}-${this.region}`,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      lifecycleRules: [
+        {
+          id: 'ExpireOldObjects',
+          enabled: true,
+          expiration: cdk.Duration.days(7),
+        },
+      ],
+    });
+
+    // ========================================================================
+    // CodeBuild Role and Project
+    // ========================================================================
+    
+    const codeBuildRole = new iam.Role(this, 'ChatAppCodeBuildRole', {
+      roleName: `${config.appName}-chatapp-codebuild-role-${this.region}`,
+      assumedBy: new iam.ServicePrincipal('codebuild.amazonaws.com'),
+      description: 'CodeBuild role for building ChatApp Docker images',
+    });
+
+    this.chatappRepository.grantPullPush(codeBuildRole);
+    this.sourceBucket.grantRead(codeBuildRole);
+
+    codeBuildRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'CloudWatchLogsAccess',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'logs:CreateLogGroup',
+          'logs:CreateLogStream',
+          'logs:PutLogEvents',
+        ],
+        resources: [
+          `arn:aws:logs:${this.region}:${this.account}:log-group:/aws/codebuild/${config.appName}-chatapp-build*`,
+        ],
+      })
     );
+
+    // CodeBuild Project - uses AMD64 for ECS Express Mode compatibility
+    this.buildProject = new codebuild.Project(this, 'ChatAppBuildProject', {
+      projectName: `${config.appName}-chatapp-build`,
+      description: 'Build AMD64 Docker images for ChatApp',
+      role: codeBuildRole,
+      source: codebuild.Source.s3({
+        bucket: this.sourceBucket,
+        path: 'chatapp-source/',
+      }),
+      environment: {
+        buildImage: codebuild.LinuxBuildImage.AMAZON_LINUX_2_5,
+        computeType: codebuild.ComputeType.SMALL,
+        privileged: true,
+        environmentVariables: {
+          AWS_ACCOUNT_ID: {
+            type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
+            value: this.account,
+          },
+          AWS_REGION: {
+            type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
+            value: this.region,
+          },
+          ECR_REPO_URI: {
+            type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
+            value: this.chatappRepository.repositoryUri,
+          },
+        },
+      },
+      buildSpec: codebuild.BuildSpec.fromObject({
+        version: '0.2',
+        phases: {
+          pre_build: {
+            commands: [
+              'echo Logging in to Amazon ECR...',
+              'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com',
+            ],
+          },
+          build: {
+            commands: [
+              'echo Build started on `date`',
+              'echo Building the Docker image...',
+              'docker build --platform linux/amd64 -t $ECR_REPO_URI:latest .',
+              'docker tag $ECR_REPO_URI:latest $ECR_REPO_URI:$CODEBUILD_BUILD_NUMBER',
+            ],
+          },
+          post_build: {
+            commands: [
+              'echo Build completed on `date`',
+              'echo Pushing the Docker image...',
+              'docker push $ECR_REPO_URI:latest',
+              'docker push $ECR_REPO_URI:$CODEBUILD_BUILD_NUMBER',
+              'echo Image pushed successfully',
+            ],
+          },
+        },
+      }),
+      timeout: cdk.Duration.minutes(30),
+    });
+
+    // ========================================================================
+    // Deploy ChatApp source files to S3
+    // ========================================================================
+    
+    const chatappSourceDeployment = new s3deploy.BucketDeployment(this, 'ChatAppSourceDeployment', {
+      sources: [
+        s3deploy.Source.asset(path.join(__dirname, '../../chatapp'), {
+          exclude: [
+            '.venv/**',
+            'venv/**',
+            '__pycache__/**',
+            '*.pyc',
+            '.git/**',
+            'node_modules/**',
+            '.env',
+            '*.egg-info/**',
+            '.pytest_cache/**',
+            '.mypy_cache/**',
+            '.ruff_cache/**',
+            'deploy/**',
+            '*.log',
+            '.DS_Store',
+            'tests/**',
+          ],
+        }),
+      ],
+      destinationBucket: this.sourceBucket,
+      destinationKeyPrefix: 'chatapp-source',
+      prune: true,
+      retainOnDelete: false,
+      memoryLimit: 512,
+    });
+
+    // ========================================================================
+    // Trigger CodeBuild
+    // ========================================================================
+    
+    const triggerBuild = new cr.AwsCustomResource(this, 'TriggerChatAppBuild', {
+      onCreate: {
+        service: 'CodeBuild',
+        action: 'startBuild',
+        parameters: {
+          projectName: this.buildProject.projectName,
+          sourceTypeOverride: 'S3',
+          sourceLocationOverride: `${this.sourceBucket.bucketName}/chatapp-source/`,
+        },
+        physicalResourceId: cr.PhysicalResourceId.fromResponse('build.id'),
+      },
+      onUpdate: {
+        service: 'CodeBuild',
+        action: 'startBuild',
+        parameters: {
+          projectName: this.buildProject.projectName,
+          sourceTypeOverride: 'S3',
+          sourceLocationOverride: `${this.sourceBucket.bucketName}/chatapp-source/`,
+        },
+        physicalResourceId: cr.PhysicalResourceId.fromResponse('build.id'),
+      },
+      policy: cr.AwsCustomResourcePolicy.fromStatements([
+        new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: ['codebuild:StartBuild'],
+          resources: [this.buildProject.projectArn],
+        }),
+      ]),
+    });
+
+    triggerBuild.node.addDependency(chatappSourceDeployment);
+
+    // ========================================================================
+    // Build Waiter - wait for CodeBuild to complete
+    // ========================================================================
+    
+    const buildWaiterFunction = new lambda.Function(this, 'ChatAppBuildWaiterFunction', {
+      functionName: `${config.appName}-chatapp-build-waiter`,
+      runtime: lambda.Runtime.PYTHON_3_11,
+      handler: 'index.handler',
+      timeout: cdk.Duration.minutes(14),
+      memorySize: 128,
+      code: lambda.Code.fromInline(`
+import boto3
+import time
+import json
+import cfnresponse
+
+def handler(event, context):
+    print(f"Event: {json.dumps(event)}")
+    
+    if event['RequestType'] == 'Delete':
+        cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+        return
+    
+    try:
+        build_id = event['ResourceProperties']['BuildId']
+        codebuild = boto3.client('codebuild')
+        
+        max_attempts = 28
+        for attempt in range(max_attempts):
+            response = codebuild.batch_get_builds(ids=[build_id])
+            
+            if not response['builds']:
+                raise Exception(f"Build {build_id} not found")
+            
+            build = response['builds'][0]
+            status = build['buildStatus']
+            
+            print(f"Attempt {attempt + 1}: Build status = {status}")
+            
+            if status == 'SUCCEEDED':
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, {
+                    'BuildId': build_id,
+                    'Status': status
+                })
+                return
+            elif status in ['FAILED', 'FAULT', 'STOPPED', 'TIMED_OUT']:
+                error_msg = f"Build {build_id} failed with status: {status}"
+                print(error_msg)
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason=error_msg)
+                return
+            
+            time.sleep(30)
+        
+        error_msg = f"Build {build_id} timed out after 14 minutes"
+        print(error_msg)
+        cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason=error_msg)
+        
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason=str(e))
+`),
+    });
+
+    buildWaiterFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['codebuild:BatchGetBuilds'],
+        resources: [this.buildProject.projectArn],
+      })
+    );
+
+    const buildWaiterProvider = new cr.Provider(this, 'ChatAppBuildWaiterProvider', {
+      onEventHandler: buildWaiterFunction,
+      logRetention: logs.RetentionDays.ONE_DAY,
+    });
+
+    const buildWaiter = new cdk.CustomResource(this, 'ChatAppBuildWaiter', {
+      serviceToken: buildWaiterProvider.serviceToken,
+      properties: {
+        BuildId: triggerBuild.getResponseField('build.id'),
+        Timestamp: Date.now().toString(),
+      },
+    });
+
+    buildWaiter.node.addDependency(triggerBuild);
 
 
     // ========================================================================
@@ -186,8 +464,9 @@ export class ChatAppStack extends cdk.Stack {
       },
     });
 
-    // Ensure the service depends on the log group
+    // Ensure the service depends on the log group and build completion
     this.expressGatewayService.node.addDependency(this.logGroup);
+    this.expressGatewayService.node.addDependency(buildWaiter);
 
 
     // ========================================================================

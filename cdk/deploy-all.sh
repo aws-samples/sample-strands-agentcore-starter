@@ -1,11 +1,11 @@
 #!/bin/bash
 # CDK Deployment Script for AgentCore Chat Application
 # This script deploys all CDK stacks in the correct dependency order.
+# All Docker builds are handled by AWS CodeBuild - no local Docker required.
 #
 # Usage: ./deploy-all.sh [options]
 #   --region <region>    AWS region (default: us-east-1)
 #   --profile <profile>  AWS CLI profile to use
-#   --skip-build         Skip Docker image builds (use existing images)
 #   --dry-run            Show what would be deployed without deploying
 #   -h, --help           Show this help message
 
@@ -24,13 +24,10 @@ NC='\033[0m' # No Color
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-CHATAPP_DIR="$PROJECT_ROOT/chatapp"
 
 # Default configuration
 AWS_REGION="${AWS_REGION:-us-east-1}"
 AWS_PROFILE=""
-SKIP_BUILD=false
 DRY_RUN=false
 
 # Parse arguments
@@ -44,10 +41,6 @@ while [[ $# -gt 0 ]]; do
             AWS_PROFILE="$2"
             shift 2
             ;;
-        --skip-build)
-            SKIP_BUILD=true
-            shift
-            ;;
         --dry-run)
             DRY_RUN=true
             shift
@@ -58,7 +51,6 @@ while [[ $# -gt 0 ]]; do
             echo "Options:"
             echo "  --region <region>    AWS region (default: us-east-1)"
             echo "  --profile <profile>  AWS CLI profile to use"
-            echo "  --skip-build         Skip Docker image builds"
             echo "  --dry-run            Show what would be deployed without deploying"
             echo "  -h, --help           Show this help message"
             exit 0
@@ -96,7 +88,6 @@ export CDK_DEFAULT_ACCOUNT="$AWS_ACCOUNT_ID"
 echo -e "${YELLOW}Configuration:${NC}"
 echo "  AWS Account: $AWS_ACCOUNT_ID"
 echo "  AWS Region: $AWS_REGION"
-echo "  Skip Build: $SKIP_BUILD"
 echo "  Dry Run: $DRY_RUN"
 echo ""
 
@@ -196,9 +187,8 @@ echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━�
 # Consolidated stack deployment order:
 # Phase 1: Foundation (no dependencies)
 # Phase 2: Bedrock (depends on Foundation for secret updates)
-# Phase 3: Agent (depends on Bedrock, Foundation)
-# Phase 4: Build and push Docker images
-# Phase 5: ChatApp (depends on Foundation, Agent)
+# Phase 3: Agent (depends on Bedrock, Foundation) - includes CodeBuild for agent image
+# Phase 4: ChatApp (depends on Foundation, Agent) - includes CodeBuild for chatapp image
 
 if [ "$DRY_RUN" = true ]; then
     echo -e "${CYAN}[DRY RUN] Would deploy Foundation stack${NC}"
@@ -259,40 +249,8 @@ else
 fi
 
 # ============================================================================
-# STEP 6: Build and push ChatApp Docker image
-# ============================================================================
-if [ "$SKIP_BUILD" != true ] && [ "$DRY_RUN" != true ]; then
-    echo ""
-    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BLUE}Step 6: Build and push ChatApp Docker image${NC}"
-    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-
-    ECR_REPO="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${APP_NAME}"
-    IMAGE_TAG=$(date +%Y%m%d-%H%M%S)
-    FULL_IMAGE_URI="${ECR_REPO}:${IMAGE_TAG}"
-
-    # Create ECR repository if it doesn't exist
-    echo -e "${YELLOW}Ensuring ECR repository exists...${NC}"
-    aws ecr describe-repositories --repository-names "$APP_NAME" --region "$AWS_REGION" > /dev/null 2>&1 || \
-        aws ecr create-repository --repository-name "$APP_NAME" --region "$AWS_REGION" > /dev/null
-
-    echo -e "${YELLOW}Building Docker image...${NC}"
-    cd "$CHATAPP_DIR"
-    docker build --platform linux/amd64 -t "$APP_NAME:$IMAGE_TAG" -t "$APP_NAME:latest" .
-
-    echo -e "${YELLOW}Pushing image to ECR...${NC}"
-    aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
-    docker tag "$APP_NAME:$IMAGE_TAG" "$FULL_IMAGE_URI"
-    docker tag "$APP_NAME:latest" "${ECR_REPO}:latest"
-    docker push "$FULL_IMAGE_URI"
-    docker push "${ECR_REPO}:latest"
-
-    echo -e "${GREEN}Docker image pushed: $FULL_IMAGE_URI${NC}"
-    cd "$SCRIPT_DIR"
-fi
-
-# ============================================================================
-# STEP 7: Deploy ChatApp stack (depends on Foundation, Agent)
+# STEP 6: Deploy ChatApp stack (depends on Foundation, Agent)
+# Note: ChatApp stack includes CodeBuild for building the Docker image
 # ============================================================================
 echo ""
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -300,7 +258,7 @@ echo -e "${BLUE}Step 7: Deploy ChatApp stack${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
 if [ "$DRY_RUN" != true ]; then
-    echo -e "${YELLOW}Deploying ChatApp stack...${NC}"
+    echo -e "${YELLOW}Deploying ChatApp stack (includes CodeBuild for Docker image)...${NC}"
     echo ""
     
     npx cdk deploy \
@@ -313,38 +271,7 @@ else
 fi
 
 # ============================================================================
-# STEP 8: Update ECS deployment configuration for faster deployments
-# ============================================================================
-if [ "$DRY_RUN" != true ]; then
-    echo ""
-    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BLUE}Step 8: Update ECS deployment configuration${NC}"
-    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-
-    ECS_SERVICE_NAME="htmx-chatapp-express"
-    
-    echo -e "${YELLOW}Updating deployment configuration for faster deployments...${NC}"
-    
-    # Update ECS service deployment configuration
-    # This sets bakeTimeInMinutes=0 and canaryPercent=100 for faster deployments
-    aws ecs update-service \
-        --cluster default \
-        --service "$ECS_SERVICE_NAME" \
-        --deployment-configuration '{
-            "bakeTimeInMinutes": 0,
-            "canaryConfiguration": {
-                "canaryPercent": 100.0,
-                "canaryBakeTimeInMinutes": 0
-            }
-        }' \
-        --region "$AWS_REGION" \
-        --output text > /dev/null 2>&1 || echo -e "${YELLOW}Note: Could not update deployment config (service may still be initializing)${NC}"
-    
-    echo -e "${GREEN}Deployment configuration updated${NC}"
-fi
-
-# ============================================================================
-# STEP 9: Display outputs and next steps
+# STEP 7: Display outputs and next steps
 # ============================================================================
 echo ""
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
