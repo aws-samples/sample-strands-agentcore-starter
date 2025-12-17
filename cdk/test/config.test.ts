@@ -1,5 +1,8 @@
 /**
  * Tests for the centralized configuration module.
+ * 
+ * With the consolidated 4-stack architecture, exportNames only includes
+ * cross-stack exports needed between Foundation, Bedrock, Agent, and ChatApp stacks.
  */
 
 import { config, validateConfig, exportNames } from '../lib/config';
@@ -28,55 +31,38 @@ describe('Config Module', () => {
   });
 
   describe('exportNames', () => {
-    test('has auth stack exports', () => {
-      expect(exportNames.userPoolId).toContain(config.appName);
-      expect(exportNames.userPoolArn).toContain(config.appName);
-      expect(exportNames.userPoolClientId).toContain(config.appName);
-    });
-
-    test('has storage stack exports', () => {
-      expect(exportNames.usageTableName).toContain(config.appName);
-      expect(exportNames.feedbackTableName).toContain(config.appName);
-      expect(exportNames.guardrailTableName).toContain(config.appName);
-      expect(exportNames.promptTemplatesTableName).toContain(config.appName);
-    });
-
-    test('has guardrail stack exports', () => {
-      expect(exportNames.guardrailId).toContain(config.appName);
-      expect(exportNames.guardrailVersion).toContain(config.appName);
-      expect(exportNames.guardrailArn).toContain(config.appName);
-    });
-
-    test('has knowledge base stack exports', () => {
-      expect(exportNames.knowledgeBaseId).toContain(config.appName);
-      expect(exportNames.knowledgeBaseArn).toContain(config.appName);
-      expect(exportNames.kbSourceBucketName).toContain(config.appName);
-    });
-
-    test('has IAM stack exports', () => {
+    test('has Foundation stack exports (used by ChatApp)', () => {
       expect(exportNames.executionRoleArn).toContain(config.appName);
       expect(exportNames.taskRoleArn).toContain(config.appName);
       expect(exportNames.infrastructureRoleArn).toContain(config.appName);
-    });
-
-    test('has agent infrastructure stack exports', () => {
-      expect(exportNames.agentRepositoryUri).toContain(config.appName);
-      expect(exportNames.agentRuntimeRoleArn).toContain(config.appName);
-      expect(exportNames.buildSourceBucketName).toContain(config.appName);
-      expect(exportNames.buildProjectName).toContain(config.appName);
-    });
-
-    test('has agent runtime stack exports', () => {
-      expect(exportNames.agentRuntimeArn).toContain(config.appName);
-    });
-
-    test('has secrets stack exports', () => {
       expect(exportNames.secretArn).toContain(config.appName);
     });
 
-    test('has chatapp stack exports', () => {
+    test('has Bedrock stack exports (used by Agent)', () => {
+      expect(exportNames.guardrailId).toContain(config.appName);
+      expect(exportNames.guardrailVersion).toContain(config.appName);
+      expect(exportNames.knowledgeBaseId).toContain(config.appName);
+      expect(exportNames.memoryId).toContain(config.appName);
+      expect(exportNames.memoryArn).toContain(config.appName);
+    });
+
+    test('has Agent stack exports (used by deploy scripts)', () => {
+      expect(exportNames.agentRuntimeArn).toContain(config.appName);
+    });
+
+    test('has ChatApp stack exports (terminal outputs)', () => {
       expect(exportNames.serviceUrl).toContain(config.appName);
       expect(exportNames.serviceArn).toContain(config.appName);
+      expect(exportNames.chatappRepositoryUri).toContain(config.appName);
+    });
+  });
+
+  describe('validateConfig', () => {
+    test('throws error when account is missing', () => {
+      const originalAccount = config.account;
+      (config as any).account = '';
+      expect(() => validateConfig()).toThrow('AWS account ID is required');
+      (config as any).account = originalAccount;
     });
   });
 });

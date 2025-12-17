@@ -108,6 +108,8 @@ fi
 # Change to CDK directory
 cd "$SCRIPT_DIR"
 
+APP_NAME="htmx-chatapp"
+
 # ============================================================================
 # STEP 1: Install dependencies and build
 # ============================================================================
@@ -152,6 +154,25 @@ else
 fi
 
 # ============================================================================
+# STEP 2b: Ensure ECS service-linked role exists
+# ============================================================================
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}Step 2b: Ensure ECS service-linked role exists${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+# Create ECS service-linked role if it doesn't exist (required for new AWS accounts)
+if [ "$DRY_RUN" != true ]; then
+    if aws iam create-service-linked-role --aws-service-name ecs.amazonaws.com 2>/dev/null; then
+        echo -e "${GREEN}ECS service-linked role created${NC}"
+    else
+        echo -e "${GREEN}ECS service-linked role already exists${NC}"
+    fi
+else
+    echo -e "${CYAN}[DRY RUN] Would ensure ECS service-linked role exists${NC}"
+fi
+
+# ============================================================================
 # STEP 3: Synthesize CloudFormation templates
 # ============================================================================
 echo ""
@@ -165,49 +186,85 @@ npx cdk synth --quiet
 echo -e "${GREEN}Synthesis complete${NC}"
 
 # ============================================================================
-# STEP 4: Deploy foundational stacks (before building images)
+# STEP 4: Deploy Foundation stack (no dependencies)
 # ============================================================================
 echo ""
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BLUE}Step 4: Deploy foundational stacks${NC}"
+echo -e "${BLUE}Step 4: Deploy Foundation stack${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
-# Stack deployment order:
-# Phase 1: Foundational stacks (creates ECR repos needed for image push)
-# Phase 2: Build and push Docker images
-# Phase 3: Application stacks (need images to exist)
-
-APP_NAME="htmx-chatapp"
+# Consolidated stack deployment order:
+# Phase 1: Foundation (no dependencies)
+# Phase 2: Bedrock (depends on Foundation for secret updates)
+# Phase 3: Agent (depends on Bedrock, Foundation)
+# Phase 4: Build and push Docker images
+# Phase 5: ChatApp (depends on Foundation, Agent)
 
 if [ "$DRY_RUN" = true ]; then
-    echo -e "${CYAN}[DRY RUN] Would deploy foundational stacks${NC}"
+    echo -e "${CYAN}[DRY RUN] Would deploy Foundation stack${NC}"
     echo ""
     echo -e "${YELLOW}Stacks that would be deployed:${NC}"
     npx cdk list
 else
-    echo -e "${YELLOW}Deploying foundational stacks (Auth, Storage, Guardrail, KnowledgeBase, IAM, AgentInfra)...${NC}"
+    echo -e "${YELLOW}Deploying Foundation stack...${NC}"
     echo ""
     
-    # Deploy foundational stacks first (creates ECR repos)
     npx cdk deploy \
-        "${APP_NAME}-Auth" \
-        "${APP_NAME}-Storage" \
-        "${APP_NAME}-Guardrail" \
-        "${APP_NAME}-KnowledgeBase" \
-        "${APP_NAME}-IAM" \
-        "${APP_NAME}-AgentInfra" \
+        "${APP_NAME}-Foundation" \
         --require-approval never
     
-    echo -e "${GREEN}Foundational stacks deployed${NC}"
+    echo -e "${GREEN}Foundation stack deployed${NC}"
 fi
 
 # ============================================================================
-# STEP 5: Build and push ChatApp Docker image
+# STEP 4b: Deploy Bedrock stack (depends on Foundation)
+# ============================================================================
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}Step 4b: Deploy Bedrock stack${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+if [ "$DRY_RUN" != true ]; then
+    echo -e "${YELLOW}Deploying Bedrock stack...${NC}"
+    echo ""
+    
+    npx cdk deploy \
+        "${APP_NAME}-Bedrock" \
+        --require-approval never
+    
+    echo -e "${GREEN}Bedrock stack deployed${NC}"
+else
+    echo -e "${CYAN}[DRY RUN] Would deploy Bedrock stack${NC}"
+fi
+
+# ============================================================================
+# STEP 5: Deploy Agent stack (depends on Bedrock)
+# ============================================================================
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}Step 5: Deploy Agent stack${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+if [ "$DRY_RUN" != true ]; then
+    echo -e "${YELLOW}Deploying Agent stack...${NC}"
+    echo ""
+    
+    npx cdk deploy \
+        "${APP_NAME}-Agent" \
+        --require-approval never
+    
+    echo -e "${GREEN}Agent stack deployed${NC}"
+else
+    echo -e "${CYAN}[DRY RUN] Would deploy Agent stack${NC}"
+fi
+
+# ============================================================================
+# STEP 6: Build and push ChatApp Docker image
 # ============================================================================
 if [ "$SKIP_BUILD" != true ] && [ "$DRY_RUN" != true ]; then
     echo ""
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BLUE}Step 5: Build and push ChatApp Docker image${NC}"
+    echo -e "${BLUE}Step 6: Build and push ChatApp Docker image${NC}"
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
     ECR_REPO="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${APP_NAME}"
@@ -235,37 +292,33 @@ if [ "$SKIP_BUILD" != true ] && [ "$DRY_RUN" != true ]; then
 fi
 
 # ============================================================================
-# STEP 6: Deploy remaining stacks (Memory, AgentRuntime, Observability, Secrets, ChatApp)
+# STEP 7: Deploy ChatApp stack (depends on Foundation, Agent)
 # ============================================================================
 echo ""
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BLUE}Step 6: Deploy remaining stacks${NC}"
+echo -e "${BLUE}Step 7: Deploy ChatApp stack${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
 if [ "$DRY_RUN" != true ]; then
-    echo -e "${YELLOW}Deploying Memory, AgentRuntime, Observability, Secrets, and ChatApp stacks...${NC}"
+    echo -e "${YELLOW}Deploying ChatApp stack...${NC}"
     echo ""
     
-    # Deploy all remaining stacks - CDK handles dependency order
-    # Observability stack configures CloudWatch Logs and X-Ray delivery via CDK constructs
     npx cdk deploy \
-        "${APP_NAME}-Memory" \
-        "${APP_NAME}-AgentRuntime" \
-        "${APP_NAME}-Observability" \
-        "${APP_NAME}-Secrets" \
         "${APP_NAME}-ChatApp" \
         --require-approval never --outputs-file cdk-outputs.json
     
-    echo -e "${GREEN}All stacks deployed successfully${NC}"
+    echo -e "${GREEN}ChatApp stack deployed${NC}"
+else
+    echo -e "${CYAN}[DRY RUN] Would deploy ChatApp stack${NC}"
 fi
 
 # ============================================================================
-# STEP 7: Update ECS deployment configuration for faster deployments
+# STEP 8: Update ECS deployment configuration for faster deployments
 # ============================================================================
 if [ "$DRY_RUN" != true ]; then
     echo ""
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BLUE}Step 7: Update ECS deployment configuration${NC}"
+    echo -e "${BLUE}Step 8: Update ECS deployment configuration${NC}"
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
     ECS_SERVICE_NAME="htmx-chatapp-express"
@@ -291,7 +344,7 @@ if [ "$DRY_RUN" != true ]; then
 fi
 
 # ============================================================================
-# STEP 8: Display outputs and next steps
+# STEP 9: Display outputs and next steps
 # ============================================================================
 echo ""
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -302,11 +355,18 @@ if [ "$DRY_RUN" != true ]; then
     echo ""
     echo -e "${BLUE}AWS Account:${NC} $AWS_ACCOUNT_ID"
     echo -e "${BLUE}Region:${NC} $AWS_REGION"
+    echo ""
+    echo -e "${BLUE}Deployed Stacks:${NC}"
+    echo "  1. ${APP_NAME}-Foundation (Cognito, DynamoDB, IAM, Secrets)"
+    echo "  2. ${APP_NAME}-Bedrock (Guardrail, Knowledge Base, Memory)"
+    echo "  3. ${APP_NAME}-Agent (ECR, CodeBuild, Runtime, Observability)"
+    echo "  4. ${APP_NAME}-ChatApp (ECS Express Mode)"
     
     # Get the real service URL from ECS Express Mode API
     ECS_SERVICE_NAME="htmx-chatapp-express"
     SERVICE_URL=""
     
+    echo ""
     echo -e "${YELLOW}Fetching service URL from ECS Express Mode...${NC}"
     
     # Get the service ARN first

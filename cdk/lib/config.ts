@@ -152,59 +152,61 @@ export const config: AppConfig = {
 /**
  * Stack export name prefixes for cross-stack references.
  * These are used with Fn.importValue for stack isolation.
+ * 
+ * With the consolidated 4-stack architecture:
+ * - Foundation Stack: Auth, Storage, IAM, Secrets
+ * - Bedrock Stack: Guardrail, Knowledge Base, Memory
+ * - Agent Stack: Agent Infrastructure, Runtime, Observability
+ * - ChatApp Stack: ECS Express Mode service
+ * 
+ * Only exports needed for cross-stack references are defined here.
+ * Internal resources within a stack use direct references.
  */
 export const exportNames = {
-  // Auth stack exports
-  userPoolId: `${config.appName}-UserPoolId`,
-  userPoolArn: `${config.appName}-UserPoolArn`,
-  userPoolClientId: `${config.appName}-UserPoolClientId`,
-
-  // Storage stack exports
-  usageTableName: `${config.appName}-UsageTableName`,
-  usageTableArn: `${config.appName}-UsageTableArn`,
-  feedbackTableName: `${config.appName}-FeedbackTableName`,
-  feedbackTableArn: `${config.appName}-FeedbackTableArn`,
-  guardrailTableName: `${config.appName}-GuardrailTableName`,
-  guardrailTableArn: `${config.appName}-GuardrailTableArn`,
-  promptTemplatesTableName: `${config.appName}-PromptTemplatesTableName`,
-  promptTemplatesTableArn: `${config.appName}-PromptTemplatesTableArn`,
-
-  // Guardrail stack exports
-  guardrailId: `${config.appName}-GuardrailId`,
-  guardrailVersion: `${config.appName}-GuardrailVersion`,
-  guardrailArn: `${config.appName}-GuardrailArn`,
-
-  // Knowledge Base stack exports
-  knowledgeBaseId: `${config.appName}-KnowledgeBaseId`,
-  knowledgeBaseArn: `${config.appName}-KnowledgeBaseArn`,
-  kbSourceBucketName: `${config.appName}-KBSourceBucketName`,
-
-  // IAM stack exports
+  // ========================================================================
+  // Foundation Stack exports (used by ChatApp Stack)
+  // ========================================================================
+  
+  /** ECS task execution role ARN - used by ChatApp for container execution */
   executionRoleArn: `${config.appName}-ExecutionRoleArn`,
+  /** ECS task role ARN - used by ChatApp for runtime permissions */
   taskRoleArn: `${config.appName}-TaskRoleArn`,
+  /** ECS infrastructure role ARN - used by ChatApp for Express Mode */
   infrastructureRoleArn: `${config.appName}-InfrastructureRoleArn`,
-
-  // Agent Infrastructure stack exports
-  agentRepositoryUri: `${config.appName}-AgentRepositoryUri`,
-  agentRuntimeRoleArn: `${config.appName}-AgentRuntimeRoleArn`,
-  buildSourceBucketName: `${config.appName}-BuildSourceBucketName`,
-  buildProjectName: `${config.appName}-BuildProjectName`,
-  buildProjectArn: `${config.appName}-BuildProjectArn`,
-
-  // Memory stack exports
-  memoryId: `${config.appName}-MemoryId`,
-  memoryArn: `${config.appName}-MemoryArn`,
-
-  // Agent Runtime stack exports
-  agentRuntimeArn: `${config.appName}-AgentRuntimeArn`,
-  agentRuntimeEndpoint: `${config.appName}-AgentRuntimeEndpoint`,
-
-  // Secrets stack exports
+  /** Secrets Manager secret ARN - used by ChatApp to inject configuration */
   secretArn: `${config.appName}-SecretArn`,
 
-  // ChatApp stack exports
+  // ========================================================================
+  // Bedrock Stack exports (used by Agent Stack)
+  // ========================================================================
+  
+  /** Bedrock Guardrail ID - used by Agent Runtime for content filtering */
+  guardrailId: `${config.appName}-GuardrailId`,
+  /** Bedrock Guardrail Version - used by Agent Runtime */
+  guardrailVersion: `${config.appName}-GuardrailVersion`,
+  /** Bedrock Knowledge Base ID - used by Agent Runtime for semantic search */
+  knowledgeBaseId: `${config.appName}-KnowledgeBaseId`,
+  /** AgentCore Memory ID - used by Agent Runtime for conversation persistence */
+  memoryId: `${config.appName}-MemoryId`,
+  /** AgentCore Memory ARN - used by Agent Stack for observability setup */
+  memoryArn: `${config.appName}-MemoryArn`,
+
+  // ========================================================================
+  // Agent Stack exports (used by deploy scripts for secrets update)
+  // ========================================================================
+  
+  /** AgentCore Runtime ARN - stored in secrets for ChatApp access */
+  agentRuntimeArn: `${config.appName}-AgentRuntimeArn`,
+
+  // ========================================================================
+  // ChatApp Stack exports (terminal outputs, not used by other stacks)
+  // ========================================================================
+  
+  /** ECS service URL placeholder - actual URL fetched by deploy script */
   serviceUrl: `${config.appName}-ServiceUrl`,
+  /** ECS Express Gateway Service ARN */
   serviceArn: `${config.appName}-ServiceArn`,
+  /** ECR repository URI for chat application images */
   chatappRepositoryUri: `${config.appName}-ChatAppRepositoryUri`,
 };
 

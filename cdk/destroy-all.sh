@@ -122,6 +122,8 @@ fi
 # Change to CDK directory
 cd "$SCRIPT_DIR"
 
+APP_NAME="htmx-chatapp"
+
 # ============================================================================
 # STEP 1: Destroy all CDK stacks
 # ============================================================================
@@ -131,12 +133,9 @@ echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━�
 
 # CDK will handle the reverse dependency order automatically
 # Stacks are destroyed in reverse order:
-# 1. ChatApp (depends on IAM, Secrets)
-# 2. Secrets (depends on Auth, Storage, AgentRuntime)
-# 3. AgentRuntime (depends on AgentInfra, Guardrail, KnowledgeBase)
-# 4. IAM (depends on Storage)
-# 5. AgentInfra (no dependencies)
-# 6. Auth, Storage, Guardrail, KnowledgeBase (foundational, no dependencies)
+# 1. ChatApp (depends on Foundation, Agent)
+# 2. Agent (depends on Bedrock)
+# 3. Foundation, Bedrock (no dependencies)
 
 if [ "$DRY_RUN" = true ]; then
     echo -e "${CYAN}[DRY RUN] Would destroy all stacks with: cdk destroy --all --force${NC}"
@@ -145,6 +144,12 @@ if [ "$DRY_RUN" = true ]; then
     npx cdk list 2>/dev/null || echo "  (Unable to list stacks)"
 else
     echo -e "${YELLOW}Destroying all stacks (this may take 10-15 minutes)...${NC}"
+    echo ""
+    echo -e "${YELLOW}Stack destruction order:${NC}"
+    echo "  1. ${APP_NAME}-ChatApp (ECS Express Mode)"
+    echo "  2. ${APP_NAME}-Agent (ECR, CodeBuild, Runtime, Observability)"
+    echo "  3. ${APP_NAME}-Bedrock (Guardrail, Knowledge Base, Memory)"
+    echo "  4. ${APP_NAME}-Foundation (Cognito, DynamoDB, IAM, Secrets)"
     echo ""
     
     # Destroy all stacks with force flag (no confirmation prompts)
@@ -161,8 +166,6 @@ echo ""
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${BLUE}Step 2: Clean up remaining resources${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-
-APP_NAME="htmx-chatapp"
 
 # Clean up ECR repository (created by deploy-all.sh, not CDK)
 echo -e "${YELLOW}Cleaning up ECR repository...${NC}"
@@ -229,16 +232,9 @@ if [ "$DRY_RUN" = true ]; then
 else
     echo -e "${CYAN}Summary of destroyed resources:${NC}"
     echo "  - ChatApp ECS Express Mode service and ECR repository"
-    echo "  - Secrets Manager secret"
-    echo "  - Observability (log deliveries, X-Ray tracing, resource policies)"
-    echo "  - AgentRuntime (CfnRuntime)"
-    echo "  - AgentCore Memory"
-    echo "  - Agent Infrastructure (ECR, CodeBuild, IAM)"
-    echo "  - IAM roles (execution, task, infrastructure)"
-    echo "  - Knowledge Base (S3 Vectors, Bedrock KB)"
-    echo "  - Bedrock Guardrail"
-    echo "  - DynamoDB tables (usage, feedback, guardrails, templates)"
-    echo "  - Cognito User Pool"
+    echo "  - Agent infrastructure (ECR, CodeBuild, CfnRuntime, Observability)"
+    echo "  - Bedrock resources (Guardrail, Knowledge Base, Memory)"
+    echo "  - Foundation resources (Cognito, DynamoDB, IAM roles, Secrets)"
     echo "  - CloudWatch log groups"
     echo ""
     echo -e "${YELLOW}Note: Some resources may take a few minutes to fully delete.${NC}"

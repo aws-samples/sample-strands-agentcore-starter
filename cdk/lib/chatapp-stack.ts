@@ -6,6 +6,11 @@
  * - ECS Express Gateway Service with auto-scaling
  * - Custom resource to update deployment configuration
  * 
+ * Dependencies (consolidated stacks):
+ * - Foundation Stack: IAM roles (execution, task, infrastructure), Secrets Manager secret
+ * - Bedrock Stack: (values accessed via Secrets Manager)
+ * - Agent Stack: (values accessed via Secrets Manager)
+ * 
  * Note: ECR repository is created by deploy-all.sh before this stack runs
  * to ensure the image exists before the ECS service is created.
  * 
@@ -67,12 +72,13 @@ export class ChatAppStack extends cdk.Stack {
     // Requirements: 8.2, 8.3, 8.4, 8.5
     // ========================================================================
     
-    // Import IAM roles from IAM stack
+    // Import IAM roles from Foundation stack
     const executionRoleArn = cdk.Fn.importValue(exportNames.executionRoleArn);
     const taskRoleArn = cdk.Fn.importValue(exportNames.taskRoleArn);
     const infrastructureRoleArn = cdk.Fn.importValue(exportNames.infrastructureRoleArn);
     
-    // Import secret ARN from Secrets stack
+    // Import secret ARN from Foundation stack
+    // Note: The secret contains values from Foundation, Bedrock, and Agent stacks
     const secretArn = cdk.Fn.importValue(exportNames.secretArn);
 
     // Create ECS Express Gateway Service

@@ -142,9 +142,15 @@ The built-in admin dashboard (`/admin`) provides comprehensive usage analytics:
 
 | Tool | Minimum Version | Purpose |
 |------|----------------|---------|
-| **Python** | 3.11+ | Backend development |
-| **AWS CLI** | 2.x | AWS resource management |
+| **Node.js** | 18.x+ | CDK runtime |
+| **AWS CDK CLI** | 2.x | Infrastructure deployment |
 | **Docker** | 20.x | Container builds |
+| **AWS CLI** | 2.x | AWS resource management |
+
+Install CDK CLI globally:
+```bash
+npm install -g aws-cdk
+```
 
 ### AWS Requirements
 
@@ -153,191 +159,41 @@ The built-in admin dashboard (`/admin`) provides comprehensive usage analytics:
 
 ## Quick Start
 
-1) Clone the repository
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/aws-samples/sample-strands-agentcore-starter
+   cd sample-strands-agentcore-starter
+   ```
 
-```bash
-git clone https://github.com/aws-samples/sample-strands-agentcore-starter
-cd sample-strands-agentcore-starter
-```
-2) Install agent dependencies
-
-```bash
-cd agent
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cd ..
-```
-
-3) Run the setup.sh to deploy agent and chat app resources. Answer the following when prompted:
-
-    - _Path or Press Enter to use detected dependency file: requirements.txt_ 
-      - **Press Enter**
-    - _Execution role ARN/name (or press Enter to auto-create):_
-      - **Press Enter**
-    - _Configure OAuth authorizer instead? (yes/no) [no]:_
-      - **Press Enter**
-    - _Configure request header allowlist? (yes/no) [no]:_
-      - **Press Enter**
-    - _MemoryManager initialization_
-      - **Your choice:** Enter the number for the **chat_app_mem** resource. This should be **1** unless you already had memory resources.
-
-```bash
-./setup.sh --region <aws-region-id>
-```
-```bash
-./setup.sh [options]
-
-Options:
-  --region <region>         AWS region (default: us-east-1)
-  --skip-agent              Skip agent deployment (use existing)
-  --skip-chatapp            Skip chatapp deployment
-```
-
-4) Create a test user _(add --admin for admin access)_
-
-```bash
-cd chatapp/deploy
-./create-user.sh your-email@example.com YourPassword123@ --admin
-```
-
-The setup script will:
-- Deploy the agent to AgentCore Runtime (creates memory with LTM strategies)
-- Create Cognito User Pool and app client
-- Set up IAM roles for ECS
-- Store secrets in AWS Secrets Manager
-- Deploy the ChatApp to ECS Express Mode
-
-
-5) Wait for ECS Service Deployment to complete. Monitor the deployment process on the [AWS Console](https://console.aws.amazon.com/ecs/v2/clusters/default).
-
-    > ⚠️ This will take 4-6 minutes.
-
-## Step-by-Step Setup
-
-If you prefer to deploy components individually:
-
-### 1. Deploy the Agent
-
-```bash
-cd agent
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# Deploy agent with Short-term and Long-term Memory
-./deploy.sh
-```
-
-This creates:
-- AgentCore Memory with semantic, summary, and user preference strategies
-- AgentCore Runtime with the deployed agent
-- Configuration saved to `.bedrock_agentcore.yaml`
-
-### 2. Deploy the ChatApp
-
-```bash
-cd chatapp
-
-# Set up Cognito (creates user pool and client)
-cd deploy
-./setup-cognito.sh
-
-# Create a test user (add --admin for admin access)
-./create-user.sh your-email@example.com YourPassword123@ --admin
-
-# Set up IAM roles
-./setup-iam.sh
-
-# Create secrets in AWS Secrets Manager
-./create-secrets.sh
-cd ..
-
-# Deploy to ECS Express Mode
-./deploy.sh
-```
-
-### 3. Local Development
-
-For local development without deploying to ECS:
-
-```bash
-cd chatapp
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# Copy example env and fill in values from agent deployment
-cp .env.example .env
-# Edit .env with values from agent/.bedrock_agentcore.yaml
-
-# Run locally
-uvicorn app.main:app --reload --port 8080
-```
-
-- Chat: http://localhost:8080
-- Admin: http://localhost:8080/admin
-
-## Updating Deployments
-
-### Update Agent
-
-```bash
-cd agent
-./deploy.sh  # Redeploys with latest code
-```
-
-### Update ChatApp
-
-```bash
-cd chatapp
-./deploy.sh --update  # Updates existing ECS service
-```
-
-### Delete ChatApp Deployment
-
-```bash
-cd chatapp
-./deploy.sh --delete  # Removes ECS Express Mode service
-```
-
-## CDK Deployment (Infrastructure as Code)
-
-For production deployments or when you need repeatable, version-controlled infrastructure, use the CDK deployment option.
-
-### CDK Prerequisites
-
-| Tool | Minimum Version | Purpose |
-|------|----------------|---------|
-| **Node.js** | 18.x+ | CDK runtime |
-| **AWS CDK CLI** | 2.x | Infrastructure deployment |
-| **Docker** | 20.x | Container builds |
-
-Install CDK CLI globally:
-```bash
-npm install -g aws-cdk
-```
-
-### CDK Quick Start
-
-1. **Navigate to CDK directory and install dependencies**:
+2. **Install CDK dependencies**:
    ```bash
    cd cdk
    npm install
    ```
 
-2. **Deploy all stacks**:
+3. **Deploy all stacks**:
    ```bash
    ./deploy-all.sh --region <aws-region-id>
    ```
 
-3. **Create a test user**:
+4. **Create a test user** (add `--admin` for admin access):
    ```bash
    cd ../chatapp/deploy
    ./create-user.sh your-email@example.com YourPassword123@ --admin
    ```
 
-### CDK Deployment Options
+5. **Wait for ECS deployment** (4-6 minutes), then access the URL shown in the deployment output.
+
+The deployment creates:
+- Cognito User Pool for authentication
+- DynamoDB tables for usage analytics, feedback, and guardrails
+- Bedrock Guardrail for content filtering
+- Bedrock Knowledge Base with S3 Vectors
+- AgentCore Memory with LTM strategies
+- AgentCore Runtime with the deployed agent
+- ECS Express Mode service for the ChatApp
+
+### Deployment Options
 
 ```bash
 ./deploy-all.sh [options]
@@ -349,32 +205,39 @@ Options:
   --dry-run            Show what would be deployed without deploying
 ```
 
-### CDK Stack Architecture
+### Stack Architecture
 
-The CDK deployment creates 9 independent CloudFormation stacks:
+The CDK deployment creates 4 consolidated CloudFormation stacks:
 
-| Stack | Description | Dependencies |
-|-------|-------------|--------------|
-| **Auth** | Cognito User Pool | None |
-| **Storage** | DynamoDB tables | None |
-| **Guardrail** | Bedrock Guardrail | None |
-| **KnowledgeBase** | S3 Vectors + Bedrock KB | None |
-| **IAM** | ECS task roles | Storage |
-| **AgentInfra** | ECR, CodeBuild, Agent IAM | None |
-| **AgentRuntime** | AgentCore CfnRuntime | AgentInfra, Guardrail, KB |
-| **Secrets** | Secrets Manager | Auth, Storage, AgentRuntime |
-| **ChatApp** | ECS Express Mode | IAM, Secrets |
+| Stack | Description | Key Resources |
+|-------|-------------|---------------|
+| **Foundation** | Auth, Storage, IAM, Secrets | Cognito, DynamoDB tables, ECS roles, Secrets Manager |
+| **Bedrock** | AI/ML Resources | Guardrail, Knowledge Base (S3 Vectors), AgentCore Memory |
+| **Agent** | Agent Infrastructure | ECR, CodeBuild, AgentCore Runtime, Observability |
+| **ChatApp** | Application | ECS Express Mode service |
 
-Stack isolation ensures that failures in application stacks (ChatApp, AgentRuntime) don't cascade to foundational resources.
+Deployment order: Foundation → Bedrock → Agent → ChatApp
 
-### CDK Useful Commands
+### Multi-Region Deployment
+
+The CDK stacks support deploying to multiple regions in the same AWS account. IAM roles are automatically suffixed with the region name to avoid conflicts.
+
+```bash
+# Deploy to us-east-1
+./deploy-all.sh --region us-east-1
+
+# Deploy to eu-west-1 (same account)
+./deploy-all.sh --region eu-west-1
+```
+
+### Useful Commands
 
 ```bash
 # List all stacks
 npx cdk list
 
 # Deploy a specific stack
-npx cdk deploy htmx-chatapp-auth
+npx cdk deploy htmx-chatapp-Foundation
 
 # View stack differences before deploying
 npx cdk diff
@@ -386,7 +249,44 @@ npx cdk synth
 cat cdk-outputs.json
 ```
 
-### CDK Cleanup
+### Updating Deployments
+
+To update the application after code changes:
+
+```bash
+cd cdk
+./deploy-all.sh --region <aws-region-id>
+```
+
+To update only the ChatApp (faster for UI changes):
+
+```bash
+cd cdk
+npx cdk deploy htmx-chatapp-ChatApp --require-approval never
+```
+
+### Local Development
+
+For local development without deploying to ECS:
+
+```bash
+cd chatapp
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# Copy example env and fill in values from CDK outputs
+cp .env.example .env
+# Edit .env with values from cdk/cdk-outputs.json
+
+# Run locally
+uvicorn app.main:app --reload --port 8080
+```
+
+- Chat: http://localhost:8080
+- Admin: http://localhost:8080/admin
+
+### Cleanup
 
 To destroy all CDK-managed resources:
 
@@ -406,43 +306,35 @@ Options:
   --dry-run            Show what would be destroyed without destroying
 ```
 
-## Cleanup (Shell Scripts)
+1. **Navigate to CDK directory and install dependencies**:
+   ```bash
+   cd cdk
+   npm install
+   ```
 
-To remove all AWS resources created by the shell script deployment, use the cleanup script:
+2. **Deploy all stacks**:
+   ```bash
+   ./deploy-all.sh --region <aws-region-id>
+   ```
+
+3. **Create a test user**:
+   ```bash
+   cd ../chatapp/deploy
+   ./create-user.sh your-email@example.com YourPassword123@ --admin
+   ```
+
+4. **Wait for ECS deployment** (4-6 minutes), then access the URL shown in the deployment output.
+
+### CDK Deployment Options
 
 ```bash
-./cleanup.sh --region <aws-region-id>
-```
-
-This deletes:
-- ECS Express Mode service and ECR repository
-- Secrets Manager secret
-- IAM roles (execution, task, infrastructure)
-- DynamoDB tables (usage, feedback, guardrails)
-- Bedrock Guardrail
-- Cognito User Pool
-- CloudWatch log groups and alarms
-- AgentCore agent runtime and memory
-- Local config files (optional)
-
-### Cleanup Options
-
-```bash
-./cleanup.sh [options]
+./deploy-all.sh [options]
 
 Options:
-  --region <region>  AWS region (default: us-east-1)
-  --skip-agent       Skip agent/memory deletion
-  --skip-chatapp     Skip chatapp resources deletion
-  --dry-run          Show what would be deleted without deleting
-```
-
-### Dry Run
-
-Preview what will be deleted before running:
-
-```bash
-./cleanup.sh --region us-east-1 --dry-run
+  --region <region>    AWS region (default: us-east-1)
+  --profile <profile>  AWS CLI profile to use
+  --skip-build         Skip Docker image builds
+  --dry-run            Show what would be deployed without deploying
 ```
 
 ## Environment Variables
@@ -478,7 +370,6 @@ sample-strands-agentcore-starter/
 ├── agent/                        # AgentCore agent
 │   ├── my_agent.py               # Agent definition
 │   ├── tools/                    # Agent tools
-│   ├── deploy.sh                 # Deployment script
 │   └── requirements.txt
 │
 ├── chatapp/                      # Chat and Admin UI
@@ -491,9 +382,18 @@ sample-strands-agentcore-starter/
 │   │   ├── routes/               # Chat and Admin API routes
 │   │   ├── models/               # Data models
 │   │   └── templates/            # UI templates
-│   ├── deploy/                   # Deployment resources
-│   ├── deploy.sh                 # Deployment script
+│   ├── deploy/
+│   │   └── create-user.sh        # User creation script
 │   └── requirements.txt
+│
+├── cdk/                          # CDK Infrastructure
+│   ├── lib/
+│   │   ├── foundation-stack.ts   # Auth, Storage, IAM, Secrets
+│   │   ├── bedrock-stack.ts      # Guardrail, KB, Memory
+│   │   ├── agent-stack.ts        # ECR, CodeBuild, Runtime
+│   │   └── chatapp-stack.ts      # ECS Express Mode
+│   ├── deploy-all.sh             # Full deployment script
+│   └── destroy-all.sh            # Full cleanup script
 │
 └── README.md
 ```
@@ -538,11 +438,11 @@ The `UsageRepository` class in `chatapp/app/admin/repository.py` provides query 
 
 ## Knowledge Base Integration
 
-The agent includes an optional Bedrock Knowledge Base for semantic search over curated documents. When configured, the agent prioritizes Knowledge Base results before falling back to web search.
+The agent includes a Bedrock Knowledge Base for semantic search over curated documents. When configured, the agent prioritizes Knowledge Base results before falling back to web search.
 
 ### Setup
 
-The Knowledge Base is automatically created during `setup.sh`. It creates:
+The Knowledge Base is automatically created during CDK deployment. It creates:
 - S3 bucket for source documents
 - S3 Vectors bucket and index for embeddings
 - Bedrock Knowledge Base with Titan Embed Text v2
@@ -552,8 +452,8 @@ The Knowledge Base is automatically created during `setup.sh`. It creates:
 
 1. **Upload documents to S3**:
    ```bash
-   # Get the source bucket name (created during setup)
-   SOURCE_BUCKET="${APP_NAME:-htmx-chatapp}-kb-${AWS_ACCOUNT_ID}-${AWS_REGION}"
+   # Get the source bucket name from CDK outputs
+   SOURCE_BUCKET=$(cat cdk/cdk-outputs.json | jq -r '."htmx-chatapp-Bedrock".SourceBucketName')
    
    # Upload documents to the documents/ prefix
    aws s3 cp my-document.pdf s3://${SOURCE_BUCKET}/documents/
@@ -562,8 +462,8 @@ The Knowledge Base is automatically created during `setup.sh`. It creates:
 
 2. **Sync/Ingest documents**:
    ```bash
-   # Get the Knowledge Base ID and Data Source ID
-   KB_ID=$(aws bedrock-agent list-knowledge-bases --query "knowledgeBaseSummaries[?name=='${APP_NAME:-htmx-chatapp}-kb'].knowledgeBaseId" --output text)
+   # Get the Knowledge Base ID and Data Source ID from CDK outputs
+   KB_ID=$(cat cdk/cdk-outputs.json | jq -r '."htmx-chatapp-Bedrock".KnowledgeBaseId')
    DS_ID=$(aws bedrock-agent list-data-sources --knowledge-base-id $KB_ID --query "dataSourceSummaries[0].dataSourceId" --output text)
    
    # Start ingestion job
@@ -587,16 +487,6 @@ The Knowledge Base supports:
 - Microsoft Word (.doc, .docx)
 - CSV (.csv)
 
-### KB Search Tool Configuration
-
-The agent's Knowledge Base search tool can be configured via environment variables:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `KB_ID` | - | Knowledge Base ID (required to enable KB search) |
-| `KB_MAX_RESULTS` | 5 | Maximum number of results to return |
-| `KB_MIN_SCORE` | 0.5 | Minimum relevance score threshold (0.0-1.0) |
-
 ### How the Agent Uses the Knowledge Base
 
 When the agent receives a query:
@@ -605,17 +495,6 @@ When the agent receives a query:
 3. If no relevant results are found, the agent falls back to web search or URL fetcher
 
 This prioritization ensures domain-specific knowledge takes precedence over general web content.
-
-### Manual KB Setup (Optional)
-
-If you need to set up the Knowledge Base separately:
-
-```bash
-cd chatapp/deploy
-./setup-knowledgebase.sh
-```
-
-This exports `KB_ID` which should be added to your agent's environment configuration.
 
 ## Security
 

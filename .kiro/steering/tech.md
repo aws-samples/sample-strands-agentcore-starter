@@ -9,13 +9,12 @@
 
 ### Configuration
 - Environment variables via `.env` file (gitignored)
-- Deployment config in `.bedrock_agentcore.yaml` (gitignored)
 - Configuration management through `config.py` dataclass
 - Structured logging via `logger.py`
 
 ### Common Commands
 ```bash
-# Setup
+# Setup for local development
 cd agent
 python3 -m venv .venv
 source .venv/bin/activate
@@ -23,10 +22,6 @@ pip install -r requirements.txt
 
 # Local development
 agentcore run --agent my_agent
-
-# Deploy to AWS
-agentcore deploy
-./deploy.sh
 ```
 
 ## ChatApp (Python/FastAPI)
@@ -47,24 +42,18 @@ agentcore deploy
 
 ### Common Commands
 ```bash
-# Setup
+# Setup for local development
 cd chatapp
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Local development
+# Local development (requires .env with CDK output values)
 uvicorn app.main:app --reload --port 8000
-
-# Dev mode with hot reload
-DEV_RELOAD=true uvicorn app.main:app --reload
 
 # Docker build and run
 docker build -t chatapp .
 docker run -p 8000:8000 --env-file .env chatapp
-
-# Deploy to ECS
-./deploy.sh
 ```
 
 ### Architecture Notes
@@ -81,7 +70,33 @@ docker run -p 8000:8000 --env-file .env chatapp
 **Memory**: AgentCore Memory (event + semantic strategies)
 **Storage**: DynamoDB (usage analytics, feedback, guardrail violations)
 **Guardrails**: Amazon Bedrock Guardrails (content filtering)
+**Knowledge Base**: Amazon Bedrock Knowledge Bases (S3 Vectors)
 **Streaming**: Server-Sent Events (SSE)
+**IaC**: AWS CDK (TypeScript)
+
+### CDK Deployment (Recommended)
+```bash
+# Setup
+cd cdk
+npm install
+
+# Deploy all stacks
+./deploy-all.sh --region us-east-1
+
+# Deploy with options
+./deploy-all.sh --region us-east-1 --profile my-profile --skip-build
+
+# Destroy all stacks
+./destroy-all.sh --region us-east-1
+```
+
+### CDK Stack Architecture
+- **Foundation**: Cognito, DynamoDB, IAM roles, Secrets Manager
+- **Bedrock**: Guardrail, Knowledge Base, AgentCore Memory
+- **Agent**: ECR, CodeBuild, AgentCore Runtime, Observability
+- **ChatApp**: ECS Express Mode service
+
+Supports multi-region deployment in the same AWS account.
 
 ## Code Style
 
