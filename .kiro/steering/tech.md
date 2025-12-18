@@ -48,12 +48,14 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Local development (requires .env with CDK output values)
-uvicorn app.main:app --reload --port 8000
+# Sync .env from AWS Secrets Manager (after CDK deployment)
+./sync-env.sh --region us-east-1
 
-# Docker build and run
-docker build -t chatapp .
-docker run -p 8000:8000 --env-file .env chatapp
+# Or with DEV_MODE (bypasses Cognito auth)
+./sync-env.sh --region us-east-1 --dev-mode
+
+# Local development
+uvicorn app.main:app --reload --port 8080
 ```
 
 ### Architecture Notes
@@ -84,7 +86,7 @@ npm install
 ./deploy-all.sh --region us-east-1
 
 # Deploy with options
-./deploy-all.sh --region us-east-1 --profile my-profile --skip-build
+./deploy-all.sh --region us-east-1 --profile my-profile
 
 # Destroy all stacks
 ./destroy-all.sh --region us-east-1

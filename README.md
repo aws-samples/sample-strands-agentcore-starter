@@ -214,7 +214,7 @@ The CDK deployment creates 4 consolidated CloudFormation stacks:
 | **Foundation** | Auth, Storage, IAM, Secrets | Cognito, DynamoDB tables, ECS roles, Secrets Manager |
 | **Bedrock** | AI/ML Resources | Guardrail, Knowledge Base (S3 Vectors), AgentCore Memory |
 | **Agent** | Agent Infrastructure | ECR, CodeBuild, AgentCore Runtime, Observability |
-| **ChatApp** | Application | ECS Express Mode service |
+| **ChatApp** | Application | ECR, CodeBuild, S3 source, ECS Express Mode service |
 
 Deployment order: Foundation → Bedrock → Agent → ChatApp
 
@@ -267,7 +267,9 @@ npx cdk deploy htmx-chatapp-ChatApp --require-approval never
 
 ### Local Development
 
-For local development without deploying to ECS:
+For local development, you need to sync environment variables from your deployed CDK stacks.
+
+**Prerequisites**: CDK stacks must be deployed first (`./deploy-all.sh`).
 
 ```bash
 cd chatapp
@@ -275,9 +277,11 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Copy example env and fill in values from CDK outputs
-cp .env.example .env
-# Edit .env with values from cdk/cdk-outputs.json
+# Sync .env from AWS Secrets Manager (auto-populates all values)
+./sync-env.sh --region <aws-region-id>
+
+# Or with DEV_MODE (bypasses Cognito authentication)
+./sync-env.sh --region <aws-region-id> --dev-mode
 
 # Run locally
 uvicorn app.main:app --reload --port 8080
@@ -285,6 +289,10 @@ uvicorn app.main:app --reload --port 8080
 
 - Chat: http://localhost:8080
 - Admin: http://localhost:8080/admin
+
+**DEV_MODE**: When enabled, Cognito authentication is bypassed and requests use a default `dev-user-001` user ID. This is useful for rapid iteration without needing to log in. Set `DEV_USER_ID` in `.env` to customize the user ID.
+
+**Manual .env setup**: If you prefer manual configuration, copy `.env.example` to `.env` and fill in values. The secret `htmx-chatapp/config` in AWS Secrets Manager contains all required values.
 
 ### Cleanup
 
@@ -306,36 +314,7 @@ Options:
   --dry-run            Show what would be destroyed without destroying
 ```
 
-1. **Navigate to CDK directory and install dependencies**:
-   ```bash
-   cd cdk
-   npm install
-   ```
 
-2. **Deploy all stacks**:
-   ```bash
-   ./deploy-all.sh --region <aws-region-id>
-   ```
-
-3. **Create a test user**:
-   ```bash
-   cd ../chatapp/deploy
-   ./create-user.sh your-email@example.com YourPassword123@ --admin
-   ```
-
-4. **Wait for ECS deployment** (4-6 minutes), then access the URL shown in the deployment output.
-
-### CDK Deployment Options
-
-```bash
-./deploy-all.sh [options]
-
-Options:
-  --region <region>    AWS region (default: us-east-1)
-  --profile <profile>  AWS CLI profile to use
-  --skip-build         Skip Docker image builds
-  --dry-run            Show what would be deployed without deploying
-```
 
 ## Environment Variables
 

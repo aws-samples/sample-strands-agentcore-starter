@@ -339,17 +339,12 @@ if [ "$DRY_RUN" != true ]; then
     echo -e "${CYAN}║           CDK Deployment Complete!                         ║${NC}"
     echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${YELLOW}⚠️  Note: ECS deployments take 4-6 minutes to become fully available.${NC}"
-    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
     echo -e "${YELLOW}Next Steps:${NC}"
     echo "  1. Create a user: cd ../chatapp/deploy && ./create-user.sh <email> <password> --admin"
-    echo "  2. Wait for ECS service to be healthy (check AWS Console)"
     if [ -n "$SERVICE_URL" ]; then
-        echo "  3. Access the application URL: https://$SERVICE_URL"
+        echo "  2. Access the application URL: https://$SERVICE_URL"
     else
-        echo "  3. Get the URL once available using the command above"
+        echo "  2. Get the URL once available using the command above"
     fi
     echo ""
     echo -e "${YELLOW}Useful Commands:${NC}"

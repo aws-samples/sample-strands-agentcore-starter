@@ -92,6 +92,7 @@ chatapp/
 │           └── templates.html   # Prompt templates management
 ├── deploy/
 │   └── create-user.sh           # Test user creation
+├── sync-env.sh                   # Sync .env from AWS Secrets Manager
 ├── Dockerfile                    # Container build
 ├── docker-compose.yml            # Local development
 ├── requirements.txt              # Python dependencies
