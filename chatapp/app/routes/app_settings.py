@@ -1,11 +1,12 @@
 """App settings routes for managing application configuration.
 
 This module provides admin routes for managing app-wide settings like
-title, subtitle, and logo image.
+title, subtitle, logo image, and theme colors.
 """
 
 import logging
 import base64
+import re
 from typing import Optional
 
 from fastapi import APIRouter, Request, Form, File, UploadFile, HTTPException
@@ -15,6 +16,7 @@ from pathlib import Path
 
 from app.storage.app_settings import AppSettingsStorageService
 from app.templates_config import templates, init_template_globals
+from app.helpers.settings import COLOR_PRESETS
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +32,23 @@ DEFAULT_APP_TITLE = "Chat Agent"
 DEFAULT_APP_SUBTITLE = "Bedrock AgentCore + Strands Agents SDK"
 DEFAULT_LOGO_URL = "/static/favicon.svg"
 DEFAULT_CHAT_LOGO_URL = "/static/chat-placeholder.svg"
+DEFAULT_PRIMARY_COLOR = "#7c3aed"
+DEFAULT_SECONDARY_COLOR = "#6b21a8"
+
+
+def is_valid_hex_color(color: str) -> bool:
+    """Validate hex color format.
+    
+    Args:
+        color: Color string to validate
+        
+    Returns:
+        True if valid hex color, False otherwise
+    """
+    if not color:
+        return False
+    pattern = r'^#[0-9A-Fa-f]{6}$'
+    return bool(re.match(pattern, color))
 
 
 @admin_router.get("/settings", response_class=HTMLResponse)
@@ -69,6 +88,9 @@ async def update_settings(
     chat_logo_file: Optional[UploadFile] = File(None),
     reset_header_logo: str = Form("false"),
     reset_chat_logo: str = Form("false"),
+    primary_color: str = Form(DEFAULT_PRIMARY_COLOR),
+    secondary_color: str = Form(DEFAULT_SECONDARY_COLOR),
+    reset_colors: str = Form("false"),
 ) -> RedirectResponse:
     """Update app settings.
     
@@ -77,6 +99,12 @@ async def update_settings(
         app_title: New app title
         app_subtitle: New app subtitle
         logo_file: Optional logo image file
+        chat_logo_file: Optional chat placeholder logo file
+        reset_header_logo: Whether to reset header logo to default
+        reset_chat_logo: Whether to reset chat logo to default
+        primary_color: Primary theme color (hex)
+        secondary_color: Secondary theme color (hex)
+        reset_colors: Whether to reset colors to default
         
     Returns:
         Redirect to admin settings page
@@ -104,6 +132,44 @@ async def update_settings(
             description="Application subtitle displayed in header",
         )
         logger.info("Updated app subtitle", extra={"value": app_subtitle})
+    
+    # Handle color reset
+    if reset_colors == "true":
+        await storage.update_setting(
+            setting_key="primary_color",
+            setting_value=DEFAULT_PRIMARY_COLOR,
+            setting_type="color",
+            description="Primary theme color",
+        )
+        await storage.update_setting(
+            setting_key="secondary_color",
+            setting_value=DEFAULT_SECONDARY_COLOR,
+            setting_type="color",
+            description="Secondary theme color",
+        )
+        logger.info("Reset theme colors to default")
+    else:
+        # Update primary color
+        primary_color = primary_color.strip()
+        if primary_color and is_valid_hex_color(primary_color):
+            await storage.update_setting(
+                setting_key="primary_color",
+                setting_value=primary_color,
+                setting_type="color",
+                description="Primary theme color",
+            )
+            logger.info("Updated primary color", extra={"value": primary_color})
+        
+        # Update secondary color
+        secondary_color = secondary_color.strip()
+        if secondary_color and is_valid_hex_color(secondary_color):
+            await storage.update_setting(
+                setting_key="secondary_color",
+                setting_value=secondary_color,
+                setting_type="color",
+                description="Secondary theme color",
+            )
+            logger.info("Updated secondary color", extra={"value": secondary_color})
     
     # Handle header logo reset
     if reset_header_logo == "true":

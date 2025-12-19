@@ -17,16 +17,16 @@
                 extend: {
                     colors: {
                         primary: {
-                            50: '#f5f3ff',
-                            100: '#ede9fe',
-                            200: '#ddd6fe',
-                            300: '#c4b5fd',
-                            400: '#a78bfa',
-                            500: '#8b5cf6',
-                            600: '#7c3aed',
-                            700: '#6d28d9',
-                            800: '#5b21b6',
-                            900: '#4c1d95',
+                            50: '{{ primary_palette["50"] if primary_palette else "#f5f3ff" }}',
+                            100: '{{ primary_palette["100"] if primary_palette else "#ede9fe" }}',
+                            200: '{{ primary_palette["200"] if primary_palette else "#ddd6fe" }}',
+                            300: '{{ primary_palette["300"] if primary_palette else "#c4b5fd" }}',
+                            400: '{{ primary_palette["400"] if primary_palette else "#a78bfa" }}',
+                            500: '{{ primary_palette["500"] if primary_palette else "#8b5cf6" }}',
+                            600: '{{ primary_palette["600"] if primary_palette else "#7c3aed" }}',
+                            700: '{{ primary_palette["700"] if primary_palette else "#6d28d9" }}',
+                            800: '{{ primary_palette["800"] if primary_palette else "#5b21b6" }}',
+                            900: '{{ primary_palette["900"] if primary_palette else "#4c1d95" }}',
                         }
                     }
                 }
@@ -50,8 +50,12 @@
         :root {
             --background: #f9fafb;
             --foreground: #171717;
-            --primary: #7c3aed;
-            --primary-light: rgba(124, 58, 237, 0.1);
+            /* Primary color from settings */
+            --primary: {{ primary_color if primary_color else '#7c3aed' }};
+            --primary-rgb: {{ primary_rgb if primary_rgb else '124, 58, 237' }};
+            --secondary: {{ secondary_color if secondary_color else '#6b21a8' }};
+            --secondary-rgb: {{ secondary_rgb if secondary_rgb else '107, 33, 168' }};
+            --primary-light: rgba(var(--primary-rgb), 0.1);
             
             /* Memory sidebar light theme (default) */
             --sidebar-bg: #ffffff;
@@ -60,13 +64,13 @@
             --sidebar-text: #111827;
             --sidebar-text-muted: #6b7280;
             --sidebar-tab-bg: #f3f4f6;
-            --sidebar-tab-active-bg: #ede9fe;
-            --sidebar-tab-active-text: #7c3aed;
+            --sidebar-tab-active-bg: {{ primary_palette["100"] if primary_palette else "#ede9fe" }};
+            --sidebar-tab-active-text: var(--primary);
             --sidebar-card-bg: #ffffff;
             --sidebar-card-border: #f3f4f6;
             --sidebar-card-hover-shadow: rgba(0, 0, 0, 0.08);
-            --sidebar-badge-bg: #ede9fe;
-            --sidebar-badge-text: #7c3aed;
+            --sidebar-badge-bg: {{ primary_palette["100"] if primary_palette else "#ede9fe" }};
+            --sidebar-badge-text: var(--primary);
             --sidebar-empty-icon: #d1d5db;
         }
         
@@ -81,13 +85,13 @@
             --sidebar-text: #f1f5f9;
             --sidebar-text-muted: #94a3b8;
             --sidebar-tab-bg: #334155;
-            --sidebar-tab-active-bg: #4c1d95;
-            --sidebar-tab-active-text: #e9d5ff;
+            --sidebar-tab-active-bg: {{ primary_palette["900"] if primary_palette else "#4c1d95" }};
+            --sidebar-tab-active-text: {{ primary_palette["200"] if primary_palette else "#e9d5ff" }};
             --sidebar-card-bg: #334155;
             --sidebar-card-border: #475569;
             --sidebar-card-hover-shadow: rgba(0, 0, 0, 0.3);
-            --sidebar-badge-bg: #4c1d95;
-            --sidebar-badge-text: #e9d5ff;
+            --sidebar-badge-bg: {{ primary_palette["900"] if primary_palette else "#4c1d95" }};
+            --sidebar-badge-text: {{ primary_palette["200"] if primary_palette else "#e9d5ff" }};
             --sidebar-empty-icon: #475569;
         }
         
@@ -108,12 +112,12 @@
         }
         
         ::-webkit-scrollbar-thumb {
-            background: rgba(124, 58, 237, 0.3);
+            background: rgba(var(--primary-rgb), 0.3);
             border-radius: 4px;
         }
         
         ::-webkit-scrollbar-thumb:hover {
-            background: rgba(124, 58, 237, 0.5);
+            background: rgba(var(--primary-rgb), 0.5);
         }
         
         /* Message animations */
@@ -151,10 +155,10 @@
         /* Streaming pulse effect */
         @keyframes streamPulse {
             0%, 100% {
-                box-shadow: 0 2px 8px rgba(124, 58, 237, 0.2);
+                box-shadow: 0 2px 8px rgba(var(--primary-rgb), 0.2);
             }
             50% {
-                box-shadow: 0 2px 12px rgba(124, 58, 237, 0.4);
+                box-shadow: 0 2px 12px rgba(var(--primary-rgb), 0.4);
             }
         }
         
@@ -215,7 +219,7 @@
             left: -100%;
             width: 100%;
             height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(124, 58, 237, 0.08), transparent);
+            background: linear-gradient(90deg, transparent, rgba(var(--primary-rgb), 0.08), transparent);
             animation: shimmer 2s infinite;
         }
         
@@ -232,9 +236,9 @@
         
         /* User message bubble */
         .message-user {
-            background: linear-gradient(135deg, #7c3aed 0%, #6b21a8 100%);
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
             color: white;
-            box-shadow: 0 4px 12px rgba(124, 58, 237, 0.25);
+            box-shadow: 0 4px 12px rgba(var(--primary-rgb), 0.25);
             border-bottom-right-radius: 4px;
         }
         
@@ -242,7 +246,7 @@
         .message-assistant {
             background: rgba(255, 255, 255, 0.98);
             color: #1f2937;
-            border: 1px solid rgba(124, 58, 237, 0.15);
+            border: 1px solid rgba(var(--primary-rgb), 0.15);
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
             border-bottom-left-radius: 4px;
             position: relative;
@@ -288,7 +292,7 @@
         }
         
         .markdown-content code {
-            background: rgba(124, 58, 237, 0.1);
+            background: rgba(var(--primary-rgb), 0.1);
             padding: 0.125em 0.375em;
             border-radius: 4px;
             font-family: 'Monaco', 'Courier New', monospace;
@@ -311,12 +315,12 @@
         }
         
         .markdown-content a {
-            color: #7c3aed;
+            color: var(--primary);
             text-decoration: underline;
         }
         
         .markdown-content blockquote {
-            border-left: 4px solid #7c3aed;
+            border-left: 4px solid var(--primary);
             padding-left: 1em;
             margin-left: 0;
             color: #6b7280;
@@ -357,16 +361,16 @@
         
         /* Dark mode styles for memory sidebar markdown */
         [data-sidebar-theme="dark"] .memory-markdown code {
-            background: rgba(139, 92, 246, 0.2);
-            color: #e9d5ff;
+            background: rgba(var(--primary-rgb), 0.2);
+            color: {{ primary_palette["200"] if primary_palette else "#e9d5ff" }};
         }
         
         [data-sidebar-theme="dark"] .memory-markdown a {
-            color: #c4b5fd;
+            color: {{ primary_palette["300"] if primary_palette else "#c4b5fd" }};
         }
         
         [data-sidebar-theme="dark"] .memory-markdown blockquote {
-            border-left-color: #8b5cf6;
+            border-left-color: {{ primary_palette["500"] if primary_palette else "#8b5cf6" }};
             color: #94a3b8;
         }
         
@@ -385,8 +389,8 @@
         
         /* Tool use indicator (legacy) */
         .tool-indicator {
-            background: rgba(124, 58, 237, 0.08);
-            border: 1px solid rgba(124, 58, 237, 0.2);
+            background: rgba(var(--primary-rgb), 0.08);
+            border: 1px solid rgba(var(--primary-rgb), 0.2);
             border-radius: 8px;
         }
         
@@ -507,7 +511,7 @@
         
         /* Hide scrollbar during streaming for cleaner look */
         .streaming-active #message-list::-webkit-scrollbar-thumb {
-            background: rgba(124, 58, 237, 0.5);
+            background: rgba(var(--primary-rgb), 0.5);
         }
     </style>
     
