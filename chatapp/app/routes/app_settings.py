@@ -1,0 +1,235 @@
+"""App settings routes for managing application configuration.
+
+This module provides admin routes for managing app-wide settings like
+title, subtitle, and logo image.
+"""
+
+import logging
+import base64
+from typing import Optional
+
+from fastapi import APIRouter, Request, Form, File, UploadFile, HTTPException
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.templating import Jinja2Templates
+from pathlib import Path
+
+from app.storage.app_settings import AppSettingsStorageService
+from app.templates_config import templates, init_template_globals
+
+logger = logging.getLogger(__name__)
+
+# Admin router for settings management
+admin_router = APIRouter(prefix="/admin", tags=["admin-settings"])
+
+# API router for fetching settings
+api_router = APIRouter(prefix="/api", tags=["settings"])
+
+
+# Default values
+DEFAULT_APP_TITLE = "Chat Agent"
+DEFAULT_APP_SUBTITLE = "Bedrock AgentCore + Strands Agents SDK"
+DEFAULT_LOGO_URL = "/static/favicon.svg"
+DEFAULT_CHAT_LOGO_URL = "/static/chat-placeholder.svg"
+
+
+@admin_router.get("/settings", response_class=HTMLResponse)
+async def admin_settings_page(request: Request):
+    """Admin page for managing app settings.
+    
+    Displays:
+    - App title and subtitle configuration
+    - Logo image upload
+    - Other extensible settings
+    """
+    from app.helpers import get_app_settings
+    app_settings = await get_app_settings()
+    
+    return templates.TemplateResponse(
+        "admin/settings.html",
+        {
+            "request": request,
+            **app_settings,
+            # Header component context
+            "breadcrumbs": [
+                {"label": "Admin", "url": "/admin"},
+                {"label": "Settings", "url": None},
+            ],
+            "primary_action": {"type": "back_to_chat"},
+            "show_admin_btn": False,
+        },
+    )
+
+
+@admin_router.post("/settings/update")
+async def update_settings(
+    request: Request,
+    app_title: str = Form(...),
+    app_subtitle: str = Form(...),
+    logo_file: Optional[UploadFile] = File(None),
+    chat_logo_file: Optional[UploadFile] = File(None),
+    reset_header_logo: str = Form("false"),
+    reset_chat_logo: str = Form("false"),
+) -> RedirectResponse:
+    """Update app settings.
+    
+    Args:
+        request: Incoming request
+        app_title: New app title
+        app_subtitle: New app subtitle
+        logo_file: Optional logo image file
+        
+    Returns:
+        Redirect to admin settings page
+    """
+    storage = AppSettingsStorageService()
+    
+    # Update title
+    app_title = app_title.strip()
+    if app_title:
+        await storage.update_setting(
+            setting_key="app_title",
+            setting_value=app_title,
+            setting_type="text",
+            description="Application title displayed in header",
+        )
+        logger.info("Updated app title", extra={"value": app_title})
+    
+    # Update subtitle
+    app_subtitle = app_subtitle.strip()
+    if app_subtitle:
+        await storage.update_setting(
+            setting_key="app_subtitle",
+            setting_value=app_subtitle,
+            setting_type="text",
+            description="Application subtitle displayed in header",
+        )
+        logger.info("Updated app subtitle", extra={"value": app_subtitle})
+    
+    # Handle header logo reset
+    if reset_header_logo == "true":
+        await storage.update_setting(
+            setting_key="logo_url",
+            setting_value=DEFAULT_LOGO_URL,
+            setting_type="image",
+            description="Application logo displayed in header",
+        )
+        logger.info("Reset header logo to default")
+    
+    # Handle header logo upload
+    if logo_file and logo_file.filename:
+        try:
+            # Validate file type
+            allowed_types = ["image/png", "image/jpeg", "image/svg+xml", "image/webp"]
+            if logo_file.content_type not in allowed_types:
+                logger.warning(
+                    "Invalid logo file type",
+                    extra={"content_type": logo_file.content_type, "filename": logo_file.filename},
+                )
+                return RedirectResponse(url="/admin/settings?error=invalid_type", status_code=303)
+            
+            # Read file content
+            content = await logo_file.read()
+            
+            # Check file size (max 5MB)
+            if len(content) > 5 * 1024 * 1024:
+                logger.warning(
+                    "Logo file too large",
+                    extra={"filename": logo_file.filename, "size": len(content)},
+                )
+                return RedirectResponse(url="/admin/settings?error=file_too_large", status_code=303)
+            
+            # Encode as base64 data URL
+            base64_content = base64.b64encode(content).decode("utf-8")
+            data_url = f"data:{logo_file.content_type};base64,{base64_content}"
+            
+            await storage.update_setting(
+                setting_key="logo_url",
+                setting_value=data_url,
+                setting_type="image",
+                description="Application logo displayed in header",
+            )
+            logger.info(
+                "Updated header logo image",
+                extra={"filename": logo_file.filename, "size": len(content)},
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to update header logo",
+                extra={"filename": logo_file.filename, "error": str(e)},
+                exc_info=True,
+            )
+            return RedirectResponse(url="/admin/settings?error=upload_failed", status_code=303)
+    
+    # Handle chat placeholder logo upload
+    if chat_logo_file and chat_logo_file.filename:
+        try:
+            # Validate file type
+            allowed_types = ["image/png", "image/jpeg", "image/svg+xml", "image/webp"]
+            if chat_logo_file.content_type not in allowed_types:
+                logger.warning(
+                    "Invalid chat logo file type",
+                    extra={"content_type": chat_logo_file.content_type, "filename": chat_logo_file.filename},
+                )
+                return RedirectResponse(url="/admin/settings?error=invalid_type", status_code=303)
+            
+            # Read file content
+            content = await chat_logo_file.read()
+            
+            # Check file size (max 5MB)
+            if len(content) > 5 * 1024 * 1024:
+                logger.warning(
+                    "Chat logo file too large",
+                    extra={"filename": chat_logo_file.filename, "size": len(content)},
+                )
+                return RedirectResponse(url="/admin/settings?error=file_too_large", status_code=303)
+            
+            # Encode as base64 data URL
+            base64_content = base64.b64encode(content).decode("utf-8")
+            data_url = f"data:{chat_logo_file.content_type};base64,{base64_content}"
+            
+            await storage.update_setting(
+                setting_key="chat_logo_url",
+                setting_value=data_url,
+                setting_type="image",
+                description="Chat placeholder logo displayed in empty chat screen",
+            )
+            logger.info(
+                "Updated chat placeholder logo image",
+                extra={"filename": chat_logo_file.filename, "size": len(content)},
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to update chat logo",
+                extra={"filename": chat_logo_file.filename, "error": str(e)},
+                exc_info=True,
+            )
+            return RedirectResponse(url="/admin/settings?error=upload_failed", status_code=303)
+    
+    # Handle chat logo reset
+    if reset_chat_logo == "true":
+        await storage.update_setting(
+            setting_key="chat_logo_url",
+            setting_value=DEFAULT_CHAT_LOGO_URL,
+            setting_type="image",
+            description="Chat placeholder logo displayed in empty chat screen",
+        )
+        logger.info("Reset chat logo to default")
+    
+    # Refresh template globals with updated settings
+    await init_template_globals()
+    logger.info("Refreshed template globals after settings update")
+    
+    return RedirectResponse(url="/admin/settings", status_code=303)
+
+
+@api_router.get("/settings")
+async def get_settings() -> JSONResponse:
+    """Get all app settings as JSON.
+    
+    Returns:
+        JSON object with all settings
+    """
+    from app.helpers import get_app_settings
+    app_settings = await get_app_settings()
+    
+    return JSONResponse(content=app_settings)

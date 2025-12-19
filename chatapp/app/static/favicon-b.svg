@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="orangeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f97316;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#ea580c;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="200" height="200" fill="url(#orangeGrad)"/>
+  
+  <!-- White border -->
+  <rect width="200" height="200" fill="none" stroke="white" stroke-width="8"/>
+  
+  <!-- Bold "B" for Bedrock -->
+  <g>
+    <!-- Vertical stroke -->
+    <line x1="60" y1="40" x2="60" y2="160" stroke="white" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+    
+    <!-- Top curve -->
+    <path d="M 60 40 L 120 40 Q 145 40 145 65 Q 145 90 120 90 L 60 90" 
+          fill="none" stroke="white" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+    
+    <!-- Bottom curve -->
+    <path d="M 60 90 L 125 90 Q 155 90 155 125 Q 155 160 125 160 L 60 160" 
+          fill="none" stroke="white" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

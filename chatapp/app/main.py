@@ -21,10 +21,10 @@ from app.routes.memory import router as memory_router
 from app.routes.admin import router as admin_router
 from app.routes.feedback import router as feedback_router, admin_router as feedback_admin_router
 from app.routes.prompt_templates import router as templates_router, admin_router as templates_admin_router
+from app.routes.app_settings import api_router as settings_api_router, admin_router as settings_admin_router
 
 # Set up paths
 BASE_DIR = Path(__file__).resolve().parent
-TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
 
 # Check if we're in development mode (reload enabled)
@@ -35,6 +35,7 @@ hot_reload = None
 if DEV_MODE:
     try:
         import arel
+        TEMPLATES_DIR = BASE_DIR / "templates"
         hot_reload = arel.HotReload(paths=[
             arel.Path(str(TEMPLATES_DIR)),
             arel.Path(str(STATIC_DIR)),
@@ -58,6 +59,10 @@ async def lifespan(app: FastAPI):
         print(f"Configuration error: {e}")
         raise
     
+    # Initialize template globals with app settings
+    from app.templates_config import init_template_globals
+    await init_template_globals()
+    
     # Start hot reload if enabled
     if hot_reload:
         await hot_reload.startup()
@@ -77,8 +82,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Initialize templates
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+# Import shared templates instance
+from app.templates_config import templates
 
 # Inject hot reload script into templates if enabled
 if hot_reload:
@@ -99,6 +104,8 @@ app.include_router(feedback_router)
 app.include_router(feedback_admin_router)
 app.include_router(templates_router)
 app.include_router(templates_admin_router)
+app.include_router(settings_api_router)
+app.include_router(settings_admin_router)
 
 # Add hot reload route if enabled
 if hot_reload:
@@ -132,7 +139,16 @@ async def chat_page(request: Request):
     user_email = user.email if user else None
     is_admin = getattr(request.state, "is_admin", False)
     
+    # Load app settings for server-side rendering
+    from app.helpers import get_app_settings
+    app_settings = await get_app_settings()
+    
     return templates.TemplateResponse(
         "chat.html",
-        {"request": request, "user_email": user_email, "is_admin": is_admin}
+        {
+            "request": request,
+            "user_email": user_email,
+            "is_admin": is_admin,
+            **app_settings,
+        }
     )

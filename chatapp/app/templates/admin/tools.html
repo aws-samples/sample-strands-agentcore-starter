@@ -2,13 +2,19 @@
 
 {% block title %}Tool Analytics - Admin Dashboard{% endblock %}
 
+{% block favicon %}
+<link rel="icon" type="image/svg+xml" href="{{ logo_url if logo_url is defined else '/static/favicon.svg' }}">
+{% endblock %}
+
 {% block body %}
 <div class="min-h-screen bg-gray-50">
+    {% set show_admin_btn = false %}
+    {% set primary_action = {'type': 'back_to_chat'} %}
     {% set breadcrumbs = [
         {'label': 'Admin', 'url': '/admin'},
-        {'label': 'Tools'}
+        {'label': 'Tool Usage'}
     ] %}
-    {% include "components/admin_header.html" %}
+    {% include "components/header.html" %}
 
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <!-- Time Range Selector -->

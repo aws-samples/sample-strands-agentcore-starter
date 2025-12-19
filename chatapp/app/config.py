@@ -56,6 +56,7 @@ class AppConfig:
     guardrail_enabled: bool = True
     guardrail_table_name: str = "agentcore-guardrail-violations"
     prompt_templates_table_name: str = "agentcore-prompt-templates"
+    app_settings_table_name: str = "agentcore-app-settings"
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -129,6 +130,11 @@ class AppConfig:
         # Prompt templates configuration
         values["prompt_templates_table_name"] = os.environ.get(
             "PROMPT_TEMPLATES_TABLE_NAME", "agentcore-prompt-templates"
+        ).strip()
+
+        # App settings configuration
+        values["app_settings_table_name"] = os.environ.get(
+            "APP_SETTINGS_TABLE_NAME", "agentcore-app-settings"
         ).strip()
 
         return cls(**values)

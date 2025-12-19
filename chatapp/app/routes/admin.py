@@ -18,13 +18,9 @@ from app.admin.cost_calculator import CostCalculator
 from app.admin.guardrail_repository import GuardrailRepository, GuardrailAggregateStats
 from app.admin.feedback_repository import FeedbackRepository
 from app.auth.cognito import get_user_emails_by_ids
+from app.templates_config import templates
 
 logger = logging.getLogger(__name__)
-
-# Set up templates
-BASE_DIR = Path(__file__).resolve().parent.parent
-TEMPLATES_DIR = BASE_DIR / "templates"
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 

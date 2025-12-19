@@ -58,6 +58,9 @@ export class FoundationStack extends cdk.Stack {
   
   /** Prompt templates table */
   public readonly promptTemplatesTable: dynamodb.Table;
+  
+  /** App settings table */
+  public readonly appSettingsTable: dynamodb.Table;
 
   // ========================================================================
   // IAM Resources
@@ -286,6 +289,84 @@ export class FoundationStack extends cdk.Stack {
     });
     seedDefaultTemplate.node.addDependency(this.promptTemplatesTable);
 
+    // App settings table
+    this.appSettingsTable = new dynamodb.Table(this, 'AppSettingsTable', {
+      tableName: config.appSettingsTableName,
+      partitionKey: {
+        name: 'setting_key',
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    // Seed default app settings
+    const seedDefaultSettings = new cr.AwsCustomResource(this, 'SeedDefaultSettings', {
+      onCreate: {
+        service: 'DynamoDB',
+        action: 'batchWriteItem',
+        parameters: {
+          RequestItems: {
+            [this.appSettingsTable.tableName]: [
+              {
+                PutRequest: {
+                  Item: {
+                    setting_key: { S: 'app_title' },
+                    setting_value: { S: 'Chat Agent' },
+                    setting_type: { S: 'text' },
+                    description: { S: 'Application title displayed in header' },
+                    updated_at: { S: new Date().toISOString() },
+                  },
+                },
+              },
+              {
+                PutRequest: {
+                  Item: {
+                    setting_key: { S: 'app_subtitle' },
+                    setting_value: { S: 'Bedrock AgentCore + Strands Agents SDK' },
+                    setting_type: { S: 'text' },
+                    description: { S: 'Application subtitle displayed in header' },
+                    updated_at: { S: new Date().toISOString() },
+                  },
+                },
+              },
+              {
+                PutRequest: {
+                  Item: {
+                    setting_key: { S: 'logo_url' },
+                    setting_value: { S: '/static/favicon.svg' },
+                    setting_type: { S: 'image' },
+                    description: { S: 'Application logo displayed in header' },
+                    updated_at: { S: new Date().toISOString() },
+                  },
+                },
+              },
+              {
+                PutRequest: {
+                  Item: {
+                    setting_key: { S: 'chat_logo_url' },
+                    setting_value: { S: '/static/chat-placeholder.svg' },
+                    setting_type: { S: 'image' },
+                    description: { S: 'Chat placeholder logo displayed in empty chat screen' },
+                    updated_at: { S: new Date().toISOString() },
+                  },
+                },
+              },
+            ],
+          },
+        },
+        physicalResourceId: cr.PhysicalResourceId.of('default-app-settings'),
+      },
+      policy: cr.AwsCustomResourcePolicy.fromStatements([
+        new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: ['dynamodb:BatchWriteItem'],
+          resources: [this.appSettingsTable.tableArn],
+        }),
+      ]),
+    });
+    seedDefaultSettings.node.addDependency(this.appSettingsTable);
+
     // ========================================================================
     // SECTION 3: IAM ROLES
     // Requirements: 1.2, 2.1
@@ -401,6 +482,8 @@ export class FoundationStack extends cdk.Stack {
           `${this.guardrailTable.tableArn}/index/*`,
           this.promptTemplatesTable.tableArn,
           `${this.promptTemplatesTable.tableArn}/index/*`,
+          this.appSettingsTable.tableArn,
+          `${this.appSettingsTable.tableArn}/index/*`,
         ],
       })
     );
@@ -505,6 +588,7 @@ export class FoundationStack extends cdk.Stack {
         feedback_table_name: cdk.SecretValue.unsafePlainText(this.feedbackTable.tableName),
         guardrail_table_name: cdk.SecretValue.unsafePlainText(this.guardrailTable.tableName),
         prompt_templates_table_name: cdk.SecretValue.unsafePlainText(this.promptTemplatesTable.tableName),
+        app_settings_table_name: cdk.SecretValue.unsafePlainText(this.appSettingsTable.tableName),
         
         // Placeholders for values from other stacks (will be updated)
         agentcore_runtime_arn: cdk.SecretValue.unsafePlainText(''),
@@ -598,6 +682,11 @@ export class FoundationStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'PromptTemplatesTableName', {
       value: this.promptTemplatesTable.tableName,
       description: 'Prompt templates DynamoDB table name',
+    });
+
+    new cdk.CfnOutput(this, 'AppSettingsTableName', {
+      value: this.appSettingsTable.tableName,
+      description: 'App settings DynamoDB table name',
     });
 
     new cdk.CfnOutput(this, 'SecretName', {

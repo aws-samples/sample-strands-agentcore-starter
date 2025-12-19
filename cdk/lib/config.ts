@@ -33,6 +33,8 @@ export interface AppConfig {
   guardrailTableName: string;
   /** Prompt templates table name */
   promptTemplatesTableName: string;
+  /** App settings table name */
+  appSettingsTableName: string;
 
   // Bedrock configuration
   /** Bedrock Guardrail name */
@@ -120,6 +122,7 @@ export const config: AppConfig = {
   feedbackTableName: getEnvOrDefault('FEEDBACK_TABLE_NAME', 'agentcore-feedback'),
   guardrailTableName: getEnvOrDefault('GUARDRAIL_TABLE_NAME', 'agentcore-guardrail-violations'),
   promptTemplatesTableName: getEnvOrDefault('PROMPT_TEMPLATES_TABLE_NAME', 'agentcore-prompt-templates'),
+  appSettingsTableName: getEnvOrDefault('APP_SETTINGS_TABLE_NAME', 'agentcore-app-settings'),
 
   // Bedrock configuration
   guardrailName: getEnvOrDefault('GUARDRAIL_NAME', 'agentcore-chatapp-guardrail'),
