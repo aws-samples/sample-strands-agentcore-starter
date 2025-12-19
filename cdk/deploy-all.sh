@@ -340,7 +340,7 @@ if [ "$DRY_RUN" != true ]; then
     echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "${YELLOW}Next Steps:${NC}"
-    echo "  1. Create a user: cd ../chatapp/deploy && ./create-user.sh <email> <password> --admin"
+    echo "  1. Create a user: cd ../chatapp/scripts && ./create-user.sh <email> <password> --admin"
     if [ -n "$SERVICE_URL" ]; then
         echo "  2. Access the application URL: https://$SERVICE_URL"
     else

@@ -179,7 +179,7 @@ Note: Docker is not required locally - all container builds are handled by AWS C
 
 4. **Create a test user** (add `--admin` for admin access):
    ```bash
-   cd ../chatapp/deploy
+   cd ../chatapp/scripts
    ./create-user.sh your-email@example.com YourPassword123@ --admin
    ```
 
@@ -361,7 +361,7 @@ sample-strands-agentcore-starter/
 │   │   ├── routes/               # Chat and Admin API routes
 │   │   ├── models/               # Data models
 │   │   └── templates/            # UI templates
-│   ├── deploy/
+│   ├── scripts/
 │   │   └── create-user.sh        # User creation script
 │   └── requirements.txt
 │

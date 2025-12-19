@@ -90,8 +90,9 @@ chatapp/
 │           ├── feedback.html    # Feedback analytics
 │           ├── guardrails.html  # Guardrail violations
 │           └── templates.html   # Prompt templates management
-├── deploy/
-│   └── create-user.sh           # Test user creation
+├── scripts/
+│   ├── create-user.sh           # Test user creation
+│   └── generate_test_data.py    # Generate test data for admin dashboard
 ├── sync-env.sh                   # Sync .env from AWS Secrets Manager
 ├── Dockerfile                    # Container build
 ├── docker-compose.yml            # Local development
