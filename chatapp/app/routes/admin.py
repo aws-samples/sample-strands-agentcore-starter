@@ -102,33 +102,30 @@ async def dashboard(
     guardrail_repo = GuardrailRepository()
     feedback_repo = FeedbackRepository()
     
-    # Fetch aggregate stats
-    aggregate_stats = await repository.get_aggregate_stats(start_dt, end_dt)
+    # OPTIMIZATION: Fetch usage records once and reuse for all computations
+    records = await repository.get_all_records(start_dt, end_dt)
     
-    # Fetch top users (limit to 5)
-    user_stats = await repository.get_stats_by_user(start_dt, end_dt)
+    # Compute all stats from the same record set (no additional DB queries)
+    aggregate_stats = repository.compute_aggregate_stats(records, start_dt, end_dt)
+    user_stats = repository.compute_stats_by_user(records)
+    tool_stats = repository.compute_tool_analytics(records)
+    model_stats = repository.compute_stats_by_model(records)
+    
+    # Get top 5 for each category
     top_users = user_stats[:5]
+    top_tools = tool_stats[:5]
+    sorted_models = sorted(
+        model_stats.values(),
+        key=lambda m: m.cost,
+        reverse=True,
+    )[:5]
     
     # Fetch user emails for top users
     user_ids = [user.user_id for user in top_users]
     user_emails = await get_user_emails_by_ids(user_ids)
     
-    # Fetch tool analytics (limit to 5)
-    tool_stats = await repository.get_tool_analytics(start_dt, end_dt)
-    top_tools = tool_stats[:5]
-    
-    # Fetch model breakdown
-    model_stats = await repository.get_stats_by_model(start_dt, end_dt)
-    sorted_models = sorted(
-        model_stats.values(),
-        key=lambda m: m.cost,
-        reverse=True,
-    )[:5]  # Top 5 models
-    
-    # Fetch guardrails stats
+    # Fetch guardrails and feedback stats (separate tables)
     guardrail_stats = await guardrail_repo.get_aggregate_stats(start_dt, end_dt)
-    
-    # Fetch feedback stats
     feedback_stats = await feedback_repo.get_feedback_stats(start_dt, end_dt)
     
     # Get current user ID from request state (set by auth middleware)
@@ -176,11 +173,10 @@ async def tokens_analytics(
     # Initialize repository
     repository = UsageRepository()
     
-    # Fetch aggregate stats
-    aggregate_stats = await repository.get_aggregate_stats(start_dt, end_dt)
-    
-    # Fetch model breakdown
-    model_stats = await repository.get_stats_by_model(start_dt, end_dt)
+    # OPTIMIZATION: Fetch records once and compute both stats
+    records = await repository.get_all_records(start_dt, end_dt)
+    aggregate_stats = repository.compute_aggregate_stats(records, start_dt, end_dt)
+    model_stats = repository.compute_stats_by_model(records)
     
     # Sort models by cost descending
     sorted_models = sorted(

@@ -135,22 +135,22 @@ class UsageRepository:
         
         return items
 
-    async def get_aggregate_stats(
+    def compute_aggregate_stats(
         self,
+        records: List[UsageRecord],
         start_time: datetime,
         end_time: datetime,
     ) -> AggregateStats:
-        """Get aggregate statistics for a time period.
+        """Compute aggregate statistics from pre-fetched records.
         
         Args:
-            start_time: Start of the time range
-            end_time: End of the time range
+            records: List of usage records to aggregate
+            start_time: Start of the time range (for projection calculation)
+            end_time: End of the time range (for projection calculation)
             
         Returns:
             AggregateStats with totals and projections
         """
-        records = await self.get_all_records(start_time, end_time)
-        
         if not records:
             return AggregateStats()
         
@@ -188,23 +188,36 @@ class UsageRepository:
             projected_monthly_cost=projected_monthly,
         )
 
-
-    async def get_stats_by_model(
+    async def get_aggregate_stats(
         self,
         start_time: datetime,
         end_time: datetime,
-    ) -> Dict[str, ModelStats]:
-        """Get usage breakdown by model.
+    ) -> AggregateStats:
+        """Get aggregate statistics for a time period.
         
         Args:
             start_time: Start of the time range
             end_time: End of the time range
             
         Returns:
-            Dictionary mapping model_id to ModelStats
+            AggregateStats with totals and projections
         """
         records = await self.get_all_records(start_time, end_time)
+        return self.compute_aggregate_stats(records, start_time, end_time)
+
+
+    def compute_stats_by_model(
+        self,
+        records: List[UsageRecord],
+    ) -> Dict[str, ModelStats]:
+        """Compute usage breakdown by model from pre-fetched records.
         
+        Args:
+            records: List of usage records to aggregate
+            
+        Returns:
+            Dictionary mapping model_id to ModelStats
+        """
         model_data: Dict[str, Dict] = defaultdict(lambda: {
             "input_tokens": 0,
             "output_tokens": 0,
@@ -236,22 +249,35 @@ class UsageRepository:
         
         return result
 
-    async def get_stats_by_user(
+    async def get_stats_by_model(
         self,
         start_time: datetime,
         end_time: datetime,
-    ) -> List[UserStats]:
-        """Get per-user usage stats, sorted by total tokens descending.
+    ) -> Dict[str, ModelStats]:
+        """Get usage breakdown by model.
         
         Args:
             start_time: Start of the time range
             end_time: End of the time range
             
         Returns:
-            List of UserStats sorted by total_tokens descending
+            Dictionary mapping model_id to ModelStats
         """
         records = await self.get_all_records(start_time, end_time)
+        return self.compute_stats_by_model(records)
+
+    def compute_stats_by_user(
+        self,
+        records: List[UsageRecord],
+    ) -> List[UserStats]:
+        """Compute per-user usage stats from pre-fetched records.
         
+        Args:
+            records: List of usage records to aggregate
+            
+        Returns:
+            List of UserStats sorted by total_tokens descending
+        """
         user_data: Dict[str, Dict] = defaultdict(lambda: {
             "input_tokens": 0,
             "output_tokens": 0,
@@ -290,23 +316,36 @@ class UsageRepository:
         
         return result
 
-
-    async def get_tool_analytics(
+    async def get_stats_by_user(
         self,
         start_time: datetime,
         end_time: datetime,
-    ) -> List[ToolAnalytics]:
-        """Get aggregated tool usage statistics.
+    ) -> List[UserStats]:
+        """Get per-user usage stats, sorted by total tokens descending.
         
         Args:
             start_time: Start of the time range
             end_time: End of the time range
             
         Returns:
-            List of ToolAnalytics for all tools used in the period
+            List of UserStats sorted by total_tokens descending
         """
         records = await self.get_all_records(start_time, end_time)
+        return self.compute_stats_by_user(records)
+
+
+    def compute_tool_analytics(
+        self,
+        records: List[UsageRecord],
+    ) -> List[ToolAnalytics]:
+        """Compute tool usage statistics from pre-fetched records.
         
+        Args:
+            records: List of usage records to aggregate
+            
+        Returns:
+            List of ToolAnalytics for all tools used in the period
+        """
         tool_data: Dict[str, Dict] = defaultdict(lambda: {
             "call_count": 0,
             "success_count": 0,
@@ -342,6 +381,23 @@ class UsageRepository:
         result.sort(key=lambda x: x.call_count, reverse=True)
         
         return result
+
+    async def get_tool_analytics(
+        self,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> List[ToolAnalytics]:
+        """Get aggregated tool usage statistics.
+        
+        Args:
+            start_time: Start of the time range
+            end_time: End of the time range
+            
+        Returns:
+            List of ToolAnalytics for all tools used in the period
+        """
+        records = await self.get_all_records(start_time, end_time)
+        return self.compute_tool_analytics(records)
 
     async def search_users(
         self,
