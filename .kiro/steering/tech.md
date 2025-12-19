@@ -70,7 +70,7 @@ uvicorn app.main:app --reload --port 8080
 **Container**: Docker with uvicorn
 **Agent Backend**: AgentCore Runtime
 **Memory**: AgentCore Memory (event + semantic strategies)
-**Storage**: DynamoDB (usage analytics, feedback, guardrail violations)
+**Storage**: DynamoDB (usage analytics, feedback, guardrail violations, app settings)
 **Guardrails**: Amazon Bedrock Guardrails (content filtering)
 **Knowledge Base**: Amazon Bedrock Knowledge Bases (S3 Vectors)
 **Streaming**: Server-Sent Events (SSE)

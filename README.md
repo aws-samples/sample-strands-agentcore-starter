@@ -23,7 +23,9 @@ Building AI agents is exciting, but understanding their usage, results, and cost
 - 💰 **Cost projections** based on actual usage patterns
 - 👍 **User feedback** with sentiment ratings and comments
 - 🛡️ **Guardrails analytics** with violation tracking and content filtering
+- 🔧 **Tool usage details** with per-tool invocation analytics
 - 📝 **Prompt templates** for quick access to pre-defined prompts
+- 🎨 **Application settings** for branding customization (title, logos, theme colors)
 - ☁️ Containerized deployment using **Amazon ECS Express Mode**
 - 🧠 AI Agents powered by **Amazon Bedrock AgentCore** using the **Strands Agents SDK**
 - 🔐 Secure authentication via **Amazon Cognito**
@@ -101,8 +103,16 @@ The built-in admin dashboard (`/admin`) provides comprehensive usage analytics:
 - Call counts per tool
 - Success/error rates
 - Average execution times
+- Drill-down to tool detail view
 
 </td>
+<td width="50%" valign="top">
+
+
+
+</td>
+</tr>
+<tr>
 <td width="50%" valign="top">
 
 **📝 Prompt Templates** `/admin/templates`
@@ -110,6 +120,15 @@ The built-in admin dashboard (`/admin`) provides comprehensive usage analytics:
 - Edit title, description, and prompt text
 - Templates appear in chat UI dropdown
 - Default "Capabilities" template included
+
+</td>
+<td width="50%" valign="top">
+
+**🎨 Application Settings** `/admin/settings`
+- Customize app title and subtitle
+- Upload custom header and chat logos
+- Theme color customization with presets
+- Live preview of color changes
 
 </td>
 </tr>
@@ -339,6 +358,7 @@ Options:
 | `GUARDRAIL_VERSION` | No | Bedrock Guardrail version (default: DRAFT) |
 | `GUARDRAIL_ENABLED` | No | Enable/disable guardrail evaluation (default: true) |
 | `PROMPT_TEMPLATES_TABLE_NAME` | Yes | DynamoDB table for prompt templates |
+| `APP_SETTINGS_TABLE_NAME` | Yes | DynamoDB table for application settings |
 | `APP_URL` | No | Application URL for callbacks |
 | `AWS_REGION` | Yes | AWS region |
 
@@ -357,12 +377,14 @@ sample-strands-agentcore-starter/
 │   │   ├── admin/                # Usage analytics module
 │   │   ├── auth/                 # Cognito authentication
 │   │   ├── agentcore/            # AgentCore client
+│   │   ├── helpers/              # Shared utilities (settings)
 │   │   ├── storage/              # Data storage services
 │   │   ├── routes/               # Chat and Admin API routes
 │   │   ├── models/               # Data models
 │   │   └── templates/            # UI templates
 │   ├── scripts/
-│   │   └── create-user.sh        # User creation script
+│   │   ├── create-user.sh        # User creation script
+│   │   └── generate_test_data.py # Test data generator for admin dashboard
 │   └── requirements.txt
 │
 ├── cdk/                          # CDK Infrastructure
