@@ -428,6 +428,84 @@ async def tool_analytics(
     )
 
 
+@router.get("/tools/{tool_name}", response_class=HTMLResponse)
+async def tool_detail(
+    request: Request,
+    tool_name: str,
+    start_time: Optional[str] = Query(None, description="Start time (ISO format)"),
+    end_time: Optional[str] = Query(None, description="End time (ISO format)"),
+):
+    """Detailed invocation records for a specific tool.
+    
+    Displays:
+    - All invocations of the tool in the time period
+    - Success/error status for each invocation
+    - Session and user information
+    - Timestamp and latency
+    
+    Requirements: 5.1, 5.2, 5.3
+    """
+    # Parse time range
+    start_dt, end_dt = _parse_time_range(start_time, end_time)
+    days_in_period = max(1, (end_dt - start_dt).days)
+    
+    # Initialize repository
+    repository = UsageRepository()
+    
+    # Fetch all records in time range
+    all_records = await repository.get_all_records(start_dt, end_dt)
+    
+    # Filter records that used this tool
+    tool_records = []
+    for record in all_records:
+        if tool_name in record.tool_usage:
+            tool_usage = record.tool_usage[tool_name]
+            # Create a record entry for each tool invocation
+            tool_records.append({
+                "timestamp": record.timestamp,
+                "user_id": record.user_id,
+                "session_id": record.session_id,
+                "model_id": record.model_id,
+                "call_count": tool_usage.call_count,
+                "success_count": tool_usage.success_count,
+                "error_count": tool_usage.error_count,
+                "latency_ms": record.latency_ms,
+                "total_tokens": record.total_tokens,
+            })
+    
+    # Sort by timestamp descending (most recent first)
+    tool_records.sort(key=lambda x: x["timestamp"], reverse=True)
+    
+    # Get user emails for display
+    user_ids = list(set(r["user_id"] for r in tool_records))
+    user_emails = await get_user_emails_by_ids(user_ids) if user_ids else {}
+    
+    # Calculate stats for this tool
+    total_calls = sum(r["call_count"] for r in tool_records)
+    total_success = sum(r["success_count"] for r in tool_records)
+    total_errors = sum(r["error_count"] for r in tool_records)
+    success_rate = total_success / total_calls if total_calls > 0 else 0.0
+    error_rate = total_errors / total_calls if total_calls > 0 else 0.0
+    
+    return templates.TemplateResponse(
+        "admin/tool_detail.html",
+        {
+            "request": request,
+            "tool_name": tool_name,
+            "records": tool_records,
+            "user_emails": user_emails,
+            "total_calls": total_calls,
+            "total_success": total_success,
+            "total_errors": total_errors,
+            "success_rate": success_rate,
+            "error_rate": error_rate,
+            "start_time": start_dt.isoformat(),
+            "end_time": end_dt.isoformat(),
+            "days_in_period": days_in_period,
+        },
+    )
+
+
 @router.get("/users/{user_id}", response_class=HTMLResponse)
 async def user_detail(
     request: Request,

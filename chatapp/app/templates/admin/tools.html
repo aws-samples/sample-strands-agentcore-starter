@@ -115,11 +115,11 @@
                     </thead>
                     <tbody class="divide-y divide-gray-200">
                         {% for tool in tools %}
-                        <tr class="hover:bg-gray-50">
+                        <tr class="hover:bg-gray-50 cursor-pointer" onclick="window.location.href='/admin/tools/{{ tool.tool_name }}?start_time={{ start_time }}&end_time={{ end_time }}'">
                             <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="inline-flex items-center px-3 py-1 rounded-md text-sm font-medium bg-purple-100 text-purple-800">
+                                <a href="/admin/tools/{{ tool.tool_name }}?start_time={{ start_time }}&end_time={{ end_time }}" class="inline-flex items-center px-3 py-1 rounded-md text-sm font-medium bg-purple-100 text-purple-800 hover:bg-purple-200 transition-colors" onclick="event.stopPropagation()">
                                     {{ tool.tool_name }}
-                                </span>
+                                </a>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
                                 {{ "{:,}".format(tool.call_count) }}
