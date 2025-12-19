@@ -76,10 +76,11 @@
 
         <!-- Settings Form -->
         <form action="/admin/settings/update" method="POST" enctype="multipart/form-data">
-            <!-- Hidden fields for reset actions -->
+            <!-- Hidden fields for reset actions and tab tracking -->
             <input type="hidden" id="reset_header_logo" name="reset_header_logo" value="false">
             <input type="hidden" id="reset_chat_logo" name="reset_chat_logo" value="false">
             <input type="hidden" id="reset_colors" name="reset_colors" value="false">
+            <input type="hidden" id="active_tab" name="active_tab" value="branding">
             
             <!-- Tab Content Container -->
             <div class="bg-white shadow-sm rounded-b-lg border border-gray-200 border-t-0">
@@ -138,7 +139,7 @@
                         </label>
                         
                         <div class="mb-4 flex items-center gap-4">
-                            <div class="w-16 h-16 border-2 border-gray-200 rounded-lg flex items-center justify-center bg-white">
+                            <div class="w-16 h-16 border-gray-200 rounded-lg flex items-center justify-center bg-white">
                                 <img id="logo-preview" src="{{ logo_url }}" alt="Current header logo" class="max-w-full max-h-full object-contain" />
                             </div>
                             <div class="flex-1 text-sm text-gray-600">
@@ -164,7 +165,7 @@
                         </label>
                         
                         <div class="mb-4 flex items-center gap-4">
-                            <div class="w-24 h-24 border-2 border-gray-200 rounded-lg flex items-center justify-center bg-gray-50">
+                            <div class="w-24 h-24 border-gray-200 rounded-lg flex items-center justify-center bg-gray-50">
                                 <img id="chat-logo-preview" src="{{ chat_logo_url }}" alt="Current chat placeholder logo" class="max-w-full max-h-full object-contain" />
                             </div>
                             <div class="flex-1 text-sm text-gray-600">
@@ -271,7 +272,7 @@
 
             <!-- Save Button (outside tabs, always visible) -->
             <div class="flex justify-end gap-3 mt-6">
-                <a href="/admin" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Cancel</a>
+                <button type="button" onclick="cancelChanges()" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
                 <button type="submit" id="save-btn" class="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors">Save Changes</button>
             </div>
         </form>
@@ -308,9 +309,27 @@ let currentTab = 'branding';
 let hasUnsavedChanges = false;
 let isSubmitting = false;
 
+// Store original values for cancel/reset
+const originalValues = {
+    app_title: '{{ app_title }}',
+    app_subtitle: '{{ app_subtitle }}',
+    logo_url: '{{ logo_url }}',
+    chat_logo_url: '{{ chat_logo_url }}',
+    primary_color: '{{ primary_color }}',
+    secondary_color: '{{ secondary_color }}'
+};
+
 // Tab switching
 function switchSettingsTab(tab) {
     currentTab = tab;
+    
+    // Update hidden field for form submission
+    document.getElementById('active_tab').value = tab;
+    
+    // Update URL without reload
+    const url = new URL(window.location);
+    url.searchParams.set('tab', tab);
+    window.history.replaceState({}, '', url);
     
     // Update tab buttons
     document.querySelectorAll('.settings-tab').forEach(btn => {
@@ -335,6 +354,40 @@ function switchSettingsTab(tab) {
     if (activeContent) {
         activeContent.classList.remove('hidden');
     }
+}
+
+// Cancel changes - reset to original values and stay on current tab
+function cancelChanges() {
+    if (!hasUnsavedChanges) {
+        return; // Nothing to cancel
+    }
+    
+    if (!confirm('Discard unsaved changes?')) {
+        return;
+    }
+    
+    // Reset branding fields
+    document.getElementById('app_title').value = originalValues.app_title;
+    document.getElementById('app_subtitle').value = originalValues.app_subtitle;
+    document.getElementById('logo-preview').src = originalValues.logo_url;
+    document.getElementById('chat-logo-preview').src = originalValues.chat_logo_url;
+    document.getElementById('logo_file').value = '';
+    document.getElementById('chat_logo_file').value = '';
+    document.getElementById('reset_header_logo').value = 'false';
+    document.getElementById('reset_chat_logo').value = 'false';
+    
+    // Reset color fields
+    document.getElementById('primary_color').value = originalValues.primary_color;
+    document.getElementById('primary_color_text').value = originalValues.primary_color;
+    document.getElementById('secondary_color').value = originalValues.secondary_color;
+    document.getElementById('secondary_color_text').value = originalValues.secondary_color;
+    document.getElementById('reset_colors').value = 'false';
+    
+    // Update color preview
+    updateColorPreview();
+    
+    // Hide unsaved indicator
+    hideUnsavedIndicator();
 }
 
 function validateFileSize(file, errorElementId) {
@@ -453,8 +506,11 @@ function hideUnsavedIndicator() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize first tab as active
-    switchSettingsTab('branding');
+    // Check URL for tab parameter and initialize correct tab
+    const urlParams = new URLSearchParams(window.location.search);
+    const tabParam = urlParams.get('tab');
+    const initialTab = (tabParam === 'colors' || tabParam === 'branding') ? tabParam : 'branding';
+    switchSettingsTab(initialTab);
     
     // Initialize color input sync
     syncColorInputs();

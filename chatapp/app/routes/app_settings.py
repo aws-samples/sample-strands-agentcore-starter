@@ -91,6 +91,7 @@ async def update_settings(
     primary_color: str = Form(DEFAULT_PRIMARY_COLOR),
     secondary_color: str = Form(DEFAULT_SECONDARY_COLOR),
     reset_colors: str = Form("false"),
+    active_tab: str = Form("branding"),
 ) -> RedirectResponse:
     """Update app settings.
     
@@ -105,9 +106,10 @@ async def update_settings(
         primary_color: Primary theme color (hex)
         secondary_color: Secondary theme color (hex)
         reset_colors: Whether to reset colors to default
+        active_tab: Current active tab to return to after save
         
     Returns:
-        Redirect to admin settings page
+        Redirect to admin settings page with active tab preserved
     """
     storage = AppSettingsStorageService()
     
@@ -285,7 +287,9 @@ async def update_settings(
     await init_template_globals()
     logger.info("Refreshed template globals after settings update")
     
-    return RedirectResponse(url="/admin/settings", status_code=303)
+    # Preserve active tab in redirect
+    redirect_url = f"/admin/settings?tab={active_tab}"
+    return RedirectResponse(url=redirect_url, status_code=303)
 
 
 @api_router.get("/settings")
