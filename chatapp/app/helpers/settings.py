@@ -20,7 +20,7 @@ DEFAULT_SECONDARY_COLOR = "#6b21a8"  # Purple 800
 
 # Preset color themes
 COLOR_PRESETS = {
-    # Monochromatic themes
+    # Monochromatic themes (bold, saturated)
     "purple": {"primary": "#7c3aed", "secondary": "#6b21a8", "name": "Purple (Default)"},
     "blue": {"primary": "#2563eb", "secondary": "#1e40af", "name": "Blue"},
     "green": {"primary": "#16a34a", "secondary": "#166534", "name": "Green"},
@@ -29,19 +29,32 @@ COLOR_PRESETS = {
     "teal": {"primary": "#0d9488", "secondary": "#0f766e", "name": "Teal"},
     "pink": {"primary": "#db2777", "secondary": "#be185d", "name": "Pink"},
     "indigo": {"primary": "#4f46e5", "secondary": "#3730a3", "name": "Indigo"},
-    # Complementary color combos
+    "cyan": {"primary": "#06b6d4", "secondary": "#0891b2", "name": "Cyan"},
+    "rose": {"primary": "#f43f5e", "secondary": "#e11d48", "name": "Rose"},
+    "amber": {"primary": "#f59e0b", "secondary": "#d97706", "name": "Amber"},
+    "emerald": {"primary": "#10b981", "secondary": "#059669", "name": "Emerald"},
+    
+    # Bold complementary combos (opposite on color wheel)
     "ocean_sunset": {"primary": "#0ea5e9", "secondary": "#f97316", "name": "Ocean Sunset"},
     "forest_berry": {"primary": "#22c55e", "secondary": "#e11d48", "name": "Forest Berry"},
     "royal_gold": {"primary": "#6366f1", "secondary": "#eab308", "name": "Royal Gold"},
-    "coral_teal": {"primary": "#f43f5e", "secondary": "#14b8a6", "name": "Coral Teal"},
-    # Split-complementary combos
+    "fire_ice": {"primary": "#ef4444", "secondary": "#06b6d4", "name": "Fire & Ice"},
+    "sunset_ocean": {"primary": "#fb923c", "secondary": "#3b82f6", "name": "Sunset Ocean"},
+    
+    # Split-complementary combos (vibrant contrasts)
     "twilight": {"primary": "#8b5cf6", "secondary": "#06b6d4", "name": "Twilight"},
-    "autumn": {"primary": "#f59e0b", "secondary": "#7c3aed", "name": "Autumn"},
     "spring": {"primary": "#84cc16", "secondary": "#ec4899", "name": "Spring"},
+    "neon_nights": {"primary": "#a855f7", "secondary": "#22c55e", "name": "Neon Nights"},
+    
     # Analogous (harmonious neighbors)
-    "sunset_glow": {"primary": "#f97316", "secondary": "#ec4899", "name": "Sunset Glow"},
-    "ocean_breeze": {"primary": "#06b6d4", "secondary": "#3b82f6", "name": "Ocean Breeze"},
-    "mint_lime": {"primary": "#10b981", "secondary": "#84cc16", "name": "Mint Lime"},
+    "purple_pink": {"primary": "#a855f7", "secondary": "#ec4899", "name": "Purple Pink"},
+    "blue_violet": {"primary": "#3b82f6", "secondary": "#8b5cf6", "name": "Blue Violet"},
+    "warm_sunset": {"primary": "#ef4444", "secondary": "#f97316", "name": "Warm Sunset"},
+    
+    # Triadic (bold, balanced)
+    "primary_triad": {"primary": "#ef4444", "secondary": "#3b82f6", "name": "Patriot"},
+    "secondary_triad": {"primary": "#f59e0b", "secondary": "#8b5cf6", "name": "Royalty"},
+    "nature_triad": {"primary": "#22c55e", "secondary": "#f97316", "name": "Nature"},
 }
 
 
