@@ -11,12 +11,18 @@ from typing import Optional
 
 from fastapi import APIRouter, Request, Form, File, UploadFile, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
-from pathlib import Path
 
 from app.storage.app_settings import AppSettingsStorageService
 from app.templates_config import templates, init_template_globals
-from app.helpers.settings import COLOR_PRESETS
+from app.helpers.settings import (
+    COLOR_PRESETS,
+    DEFAULT_APP_TITLE,
+    DEFAULT_APP_SUBTITLE,
+    DEFAULT_LOGO_URL,
+    DEFAULT_CHAT_LOGO_URL,
+    DEFAULT_PRIMARY_COLOR,
+    DEFAULT_SECONDARY_COLOR,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,15 +31,6 @@ admin_router = APIRouter(prefix="/admin", tags=["admin-settings"])
 
 # API router for fetching settings
 api_router = APIRouter(prefix="/api", tags=["settings"])
-
-
-# Default values
-DEFAULT_APP_TITLE = "Chat Agent"
-DEFAULT_APP_SUBTITLE = "Bedrock AgentCore + Strands Agents SDK"
-DEFAULT_LOGO_URL = "/static/favicon.svg"
-DEFAULT_CHAT_LOGO_URL = "/static/chat-placeholder.svg"
-DEFAULT_PRIMARY_COLOR = "#7c3aed"
-DEFAULT_SECONDARY_COLOR = "#6b21a8"
 
 
 def is_valid_hex_color(color: str) -> bool:
