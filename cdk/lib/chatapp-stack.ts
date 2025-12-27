@@ -227,6 +227,9 @@ export class ChatAppStack extends cdk.Stack {
     // Trigger CodeBuild
     // ========================================================================
     
+    // Use build timestamp to force CodeBuild trigger on every deploy
+    const buildTimestamp = new Date().toISOString();
+    
     const triggerBuild = new cr.AwsCustomResource(this, 'TriggerChatAppBuild', {
       onCreate: {
         service: 'CodeBuild',
@@ -245,6 +248,8 @@ export class ChatAppStack extends cdk.Stack {
           projectName: this.buildProject.projectName,
           sourceTypeOverride: 'S3',
           sourceLocationOverride: `${this.sourceBucket.bucketName}/chatapp-source/`,
+          // Timestamp forces CloudFormation to see a change and trigger the build
+          idempotencyToken: buildTimestamp.replace(/[^a-zA-Z0-9]/g, '').substring(0, 64),
         },
         physicalResourceId: cr.PhysicalResourceId.fromResponse('build.id'),
       },
@@ -256,6 +261,9 @@ export class ChatAppStack extends cdk.Stack {
         }),
       ]),
     });
+    
+    // Tag the custom resource with build timestamp for visibility
+    cdk.Tags.of(triggerBuild).add('BuildTimestamp', buildTimestamp);
 
     triggerBuild.node.addDependency(chatappSourceDeployment);
 
