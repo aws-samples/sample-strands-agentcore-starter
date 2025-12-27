@@ -20,8 +20,10 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as cr from 'aws-cdk-lib/custom-resources';
 import * as bedrockagentcore from 'aws-cdk-lib/aws-bedrockagentcore';
+import { NagSuppressions } from 'cdk-nag';
 import { Construct } from 'constructs';
 import { config, exportNames } from './config';
+import { applyCommonSuppressions, applyBucketDeploymentSuppressions, applyCodeBuildSuppressions, applyBedrockSuppressions } from './nag-suppressions';
 import * as path from 'path';
 
 export class AgentStack extends cdk.Stack {
@@ -77,12 +79,19 @@ export class AgentStack extends cdk.Stack {
     });
 
     // --- S3 Bucket for CodeBuild source ---
+    // Import access logs bucket from Foundation stack
+    const accessLogsBucketName = cdk.Fn.importValue(`${config.appName}-AccessLogsBucketName`);
+    const accessLogsBucket = s3.Bucket.fromBucketName(this, 'ImportedAccessLogsBucket', accessLogsBucketName);
+
     this.sourceBucket = new s3.Bucket(this, 'BuildSourceBucket', {
       bucketName: `${config.buildSourceBucketName}-${this.account}-${this.region}`,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
+      serverAccessLogsBucket: accessLogsBucket,
+      serverAccessLogsPrefix: 'agent-build-source/',
       lifecycleRules: [
         {
           id: 'ExpireOldObjects',
@@ -91,6 +100,9 @@ export class AgentStack extends cdk.Stack {
         },
       ],
     });
+
+    // Acknowledge that logging permissions are handled in Foundation stack
+    cdk.Annotations.of(this.sourceBucket).acknowledgeWarning('@aws-cdk/aws-s3:accessLogsPolicyNotAdded', 'Logging permissions added to access logs bucket in Foundation stack');
 
     // --- CodeBuild Role ---
     const codeBuildRole = new iam.Role(this, 'CodeBuildRole', {
@@ -448,9 +460,14 @@ def handler(event, context):
       })
     );
 
+    const buildWaiterProviderLogGroup = new logs.LogGroup(this, 'BuildWaiterProviderLogs', {
+      retention: logs.RetentionDays.ONE_DAY,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
     const buildWaiterProvider = new cr.Provider(this, 'BuildWaiterProvider', {
       onEventHandler: buildWaiterFunction,
-      logRetention: logs.RetentionDays.ONE_DAY,
+      logGroup: buildWaiterProviderLogGroup,
     });
 
     const buildWaiter = new cdk.CustomResource(this, 'BuildWaiter', {
@@ -918,9 +935,14 @@ def handler(event, context):
       })
     );
 
+    const updateSecretProviderLogGroup = new logs.LogGroup(this, 'UpdateSecretProviderLogs', {
+      retention: logs.RetentionDays.ONE_DAY,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
     const updateSecretProvider = new cr.Provider(this, 'UpdateSecretProvider', {
       onEventHandler: updateSecretFunction,
-      logRetention: logs.RetentionDays.ONE_DAY,
+      logGroup: updateSecretProviderLogGroup,
     });
 
     const updateSecretWithAgentRuntime = new cdk.CustomResource(this, 'UpdateSecretWithAgentRuntime', {
@@ -1004,5 +1026,167 @@ def handler(event, context):
       value: `https://${this.region}.console.aws.amazon.com/cloudwatch/home?region=${this.region}#xray:service-map`,
       description: 'X-Ray Service Map URL',
     });
+
+    // ========================================================================
+    // CDK-NAG SUPPRESSIONS
+    // ========================================================================
+    
+    applyCommonSuppressions(this);
+    applyBucketDeploymentSuppressions(this);
+    applyCodeBuildSuppressions(this);
+    applyBedrockSuppressions(this);
+
+    // Suppress ECR authorization token wildcard (required by ECR)
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Agent/AgentRuntimeRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'ECR GetAuthorizationToken requires Resource::* as it is account-level, not repository-specific.',
+          appliesTo: ['Resource::*'],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'AgentCore Runtime logs require wildcard for dynamic log group names.',
+          appliesTo: [`Resource::arn:aws:logs:${this.region}:${this.account}:log-group:/aws/bedrock-agentcore/*`],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'Bedrock Guardrail ID is dynamic. Scoped to guardrail resources only.',
+          appliesTo: [`Resource::arn:aws:bedrock:${this.region}:${this.account}:guardrail/*`],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'Bedrock Knowledge Base ID is dynamic. Scoped to knowledge-base resources only.',
+          appliesTo: [`Resource::arn:aws:bedrock:${this.region}:${this.account}:knowledge-base/*`],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'AgentCore Memory ID is dynamic. Scoped to memory resources only.',
+          appliesTo: [`Resource::arn:aws:bedrock-agentcore:${this.region}:${this.account}:memory/*`],
+        },
+      ]
+    );
+
+    // Suppress CodeBuild role wildcards
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Agent/CodeBuildRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'CodeBuild log groups include build number. Scoped to specific project prefix.',
+          appliesTo: [
+            `Resource::arn:aws:logs:${this.region}:${this.account}:log-group:/aws/codebuild/${config.agentBuildProjectName}*`,
+            `Resource::arn:aws:logs:${this.region}:${this.account}:log-group:/aws/codebuild/<AgentBuildProject0299660E>:*`,
+          ],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'CodeBuild report groups include dynamic names. Scoped to specific project.',
+          appliesTo: [`Resource::arn:aws:codebuild:${this.region}:${this.account}:report-group/<AgentBuildProject0299660E>-*`],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'CodeBuild needs access to all objects in source bucket.',
+          appliesTo: ['Resource::<BuildSourceBucketB61842F6.Arn>/*'],
+        },
+      ]
+    );
+
+    // Suppress BucketDeployment wildcards
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Agent/Custom::CDKBucketDeployment8693BB64968944B69AAFB0CC9EB8756C512MiB/ServiceRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'BucketDeployment needs access to CDK assets bucket for deployment.',
+          appliesTo: [`Resource::arn:aws:s3:::cdk-hnb659fds-assets-${this.account}-${this.region}/*`],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'BucketDeployment needs access to all objects in destination bucket.',
+          appliesTo: ['Resource::<BuildSourceBucketB61842F6.Arn>/*'],
+        },
+      ]
+    );
+
+    // Suppress provider framework wildcards
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Agent/BuildWaiterProvider/framework-onEvent/ServiceRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'CDK Provider framework requires lambda:InvokeFunction with wildcard for versioned invocations.',
+          appliesTo: ['Resource::<BuildWaiterFunction2EBEED87.Arn>:*'],
+        },
+      ]
+    );
+
+    // Suppress XRay config function wildcards
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Agent/XRayConfigFunction/ServiceRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'X-Ray configuration requires account-level permissions for trace settings.',
+          appliesTo: ['Resource::*'],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'Application Signals log groups are AWS-managed with fixed names.',
+          appliesTo: [
+            `Resource::arn:aws:logs:${this.region}:${this.account}:log-group:/aws/application-signals/data:*`,
+            `Resource::arn:aws:logs:${this.region}:${this.account}:log-group:aws/spans:*`,
+          ],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'CloudTrail channel for Application Signals requires wildcard.',
+          appliesTo: [`Resource::arn:aws:cloudtrail:${this.region}:${this.account}:channel/aws-service-channel/application-signals/*`],
+        },
+      ]
+    );
+
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Agent/XRayConfigProvider/framework-onEvent/ServiceRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'CDK Provider framework requires lambda:InvokeFunction with wildcard for versioned invocations.',
+          appliesTo: ['Resource::<XRayConfigFunctionCF1D2705.Arn>:*'],
+        },
+      ]
+    );
+
+    // Suppress update secret function wildcards
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Agent/UpdateSecretFunction/ServiceRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'Secret ARN includes random suffix. Scoped to specific secret name prefix.',
+          appliesTo: [`Resource::arn:aws:secretsmanager:${this.region}:${this.account}:secret:${config.secretName}*`],
+        },
+      ]
+    );
+
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Agent/UpdateSecretProvider/framework-onEvent/ServiceRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'CDK Provider framework requires lambda:InvokeFunction with wildcard for versioned invocations.',
+          appliesTo: ['Resource::<UpdateSecretFunction83556651.Arn>:*'],
+        },
+      ]
+    );
   }
 }

@@ -24,10 +24,13 @@ import * as cdk from 'aws-cdk-lib';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as cr from 'aws-cdk-lib/custom-resources';
+import { NagSuppressions } from 'cdk-nag';
 import { Construct } from 'constructs';
 import { config, exportNames } from './config';
+import { applyCommonSuppressions, applyEcsSuppressions, applySecretsManagerSuppressions } from './nag-suppressions';
 
 export class FoundationStack extends cdk.Stack {
   // ========================================================================
@@ -46,6 +49,9 @@ export class FoundationStack extends cdk.Stack {
   // ========================================================================
   // Storage Resources
   // ========================================================================
+  
+  /** S3 bucket for server access logs (shared across stacks) */
+  public readonly accessLogsBucket: s3.Bucket;
   
   /** Usage records table */
   public readonly usageTable: dynamodb.Table;
@@ -161,7 +167,47 @@ export class FoundationStack extends cdk.Stack {
     });
 
     // ========================================================================
-    // SECTION 2: DYNAMODB TABLES (Storage)
+    // SECTION 2: S3 ACCESS LOGS BUCKET (Shared across stacks)
+    // Requirements: Security best practices
+    // ========================================================================
+    
+    this.accessLogsBucket = new s3.Bucket(this, 'AccessLogsBucket', {
+      bucketName: `${config.appName}-access-logs-${this.account}-${this.region}`,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
+      lifecycleRules: [
+        {
+          id: 'ExpireOldLogs',
+          enabled: true,
+          expiration: cdk.Duration.days(90),
+        },
+      ],
+    });
+
+    // Add bucket policy to allow S3 server access logging from other buckets
+    this.accessLogsBucket.addToResourcePolicy(
+      new iam.PolicyStatement({
+        sid: 'S3ServerAccessLogsPolicy',
+        effect: iam.Effect.ALLOW,
+        principals: [new iam.ServicePrincipal('logging.s3.amazonaws.com')],
+        actions: ['s3:PutObject'],
+        resources: [`${this.accessLogsBucket.bucketArn}/*`],
+        conditions: {
+          ArnLike: {
+            'aws:SourceArn': `arn:aws:s3:::${config.appName}-*`,
+          },
+          StringEquals: {
+            'aws:SourceAccount': this.account,
+          },
+        },
+      })
+    );
+
+    // ========================================================================
+    // SECTION 3: DYNAMODB TABLES (Storage)
     // Requirements: 1.2, 2.1
     // ========================================================================
     
@@ -368,7 +414,7 @@ export class FoundationStack extends cdk.Stack {
     seedDefaultSettings.node.addDependency(this.appSettingsTable);
 
     // ========================================================================
-    // SECTION 3: IAM ROLES
+    // SECTION 4: IAM ROLES
     // Requirements: 1.2, 2.1
     // ========================================================================
     
@@ -531,7 +577,7 @@ export class FoundationStack extends cdk.Stack {
     );
 
     // ========================================================================
-    // SECTION 4: SECRETS MANAGER
+    // SECTION 5: SECRETS MANAGER
     // Requirements: 1.2, 2.1
     // Note: Some values will be added by other stacks via custom resource updates
     // ========================================================================
@@ -619,7 +665,7 @@ export class FoundationStack extends cdk.Stack {
 
 
     // ========================================================================
-    // SECTION 5: EXPORTS
+    // SECTION 6: EXPORTS
     // Requirements: 2.3
     // 
     // Only exports needed by other stacks are defined here.
@@ -693,6 +739,131 @@ export class FoundationStack extends cdk.Stack {
       value: this.secret.secretName,
       description: 'Secrets Manager secret name',
     });
+
+    new cdk.CfnOutput(this, 'AccessLogsBucketName', {
+      value: this.accessLogsBucket.bucketName,
+      description: 'S3 bucket for server access logs',
+      exportName: `${config.appName}-AccessLogsBucketName`,
+    });
+
+    new cdk.CfnOutput(this, 'AccessLogsBucketArn', {
+      value: this.accessLogsBucket.bucketArn,
+      description: 'S3 bucket ARN for server access logs',
+      exportName: `${config.appName}-AccessLogsBucketArn`,
+    });
+
+    // ========================================================================
+    // CDK-NAG SUPPRESSIONS
+    // ========================================================================
+    
+    applyCommonSuppressions(this);
+    applyEcsSuppressions(this);
+    applySecretsManagerSuppressions(this);
+
+    // Suppress Cognito findings - acceptable for starter kit
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Foundation/UserPool/Resource`,
+      [
+        {
+          id: 'AwsSolutions-COG1',
+          reason: 'Password policy requires 8+ chars, uppercase, lowercase, and digits. Special chars not required for starter kit usability.',
+        },
+        {
+          id: 'AwsSolutions-COG2',
+          reason: 'MFA not required for starter kit / PoC. Can be enabled for production deployments.',
+        },
+        {
+          id: 'AwsSolutions-COG3',
+          reason: 'Advanced security mode not enabled for starter kit to reduce costs. Can be enabled for production.',
+        },
+      ]
+    );
+
+    // Suppress access logs bucket self-logging (cannot log to itself)
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Foundation/AccessLogsBucket/Resource`,
+      [
+        {
+          id: 'AwsSolutions-S1',
+          reason: 'Access logs bucket cannot log to itself. This is the central logging bucket for all other S3 buckets.',
+        },
+      ]
+    );
+
+    // Suppress DynamoDB PITR warnings - acceptable for starter kit
+    NagSuppressions.addStackSuppressions(this, [
+      {
+        id: 'AwsSolutions-DDB3',
+        reason: 'Point-in-time recovery not enabled for starter kit to reduce costs. Can be enabled for production deployments.',
+      },
+    ]);
+
+    // Suppress execution role secret access wildcard
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Foundation/TaskExecutionRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'Secret ARN includes random suffix generated by Secrets Manager. Scoped to specific secret name prefix.',
+          appliesTo: [`Resource::arn:aws:secretsmanager:${this.region}:${this.account}:secret:${config.secretName}*`],
+        },
+      ]
+    );
+
+    // Suppress wildcard for Cognito user pool (custom resource needs to describe any pool)
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Foundation/GetCognitoClientSecret/CustomResourcePolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'Custom resource needs to describe user pool client to retrieve client secret. Pool ID is not known at synthesis time.',
+          appliesTo: [`Resource::arn:aws:cognito-idp:${this.region}:${this.account}:userpool/*`],
+        },
+      ]
+    );
+
+    // Suppress wildcards for task role - these are scoped appropriately
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Foundation/TaskRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'AgentCore Runtime invocation requires wildcard as runtime ARN is not known at synthesis time.',
+          appliesTo: ['Resource::*'],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'Bedrock foundation models require wildcard pattern. Scoped to InvokeModel actions only.',
+          appliesTo: [`Resource::arn:aws:bedrock:${this.region}::foundation-model/*`],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'AgentCore Memory ID is dynamic. Scoped to memory resources only.',
+          appliesTo: [`Resource::arn:aws:bedrock-agentcore:${this.region}:${this.account}:memory/*`],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'CloudWatch log group name includes dynamic service name. Scoped to app-specific log groups.',
+          appliesTo: [`Resource::arn:aws:logs:${this.region}:${this.account}:log-group:/ecs/${config.appName}*`],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'DynamoDB GSI access requires index/* pattern. Scoped to specific tables.',
+          appliesTo: [
+            'Resource::<UsageTable28300137.Arn>/index/*',
+            'Resource::<FeedbackTableF528636C.Arn>/index/*',
+            'Resource::<GuardrailTableE43D96F7.Arn>/index/*',
+            'Resource::<PromptTemplatesTableAA30D6E4.Arn>/index/*',
+            'Resource::<AppSettingsTable41A0871E.Arn>/index/*',
+          ],
+        },
+      ]
+    );
   }
 
   /**

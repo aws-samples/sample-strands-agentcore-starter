@@ -19,6 +19,8 @@
 
 import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
+import { Aspects } from 'aws-cdk-lib';
+import { AwsSolutionsChecks } from 'cdk-nag';
 import { config, validateConfig } from '../lib/config';
 
 // Import consolidated stack classes
@@ -31,6 +33,9 @@ import { ChatAppStack } from '../lib/chatapp-stack';
 validateConfig();
 
 const app = new cdk.App();
+
+// Apply cdk-nag AWS Solutions checks to all stacks
+Aspects.of(app).add(new AwsSolutionsChecks({ verbose: true }));
 
 // Environment configuration from CDK context or environment variables
 const env: cdk.Environment = {
