@@ -19,6 +19,83 @@ const MEMORY_COLLAPSED_KEY = 'agentcore-memory-collapsed';
 const MODEL_SELECTION_KEY = 'agentcore-selected-model';
 
 // ============================================================================
+// Memory Cache
+// Browser-side caching for AgentCore memory with localStorage persistence
+// ============================================================================
+
+const MEMORY_CACHE_KEY = 'agentcore-memory-cache';
+
+/**
+ * Cache for memory data to avoid constant API queries.
+ * Persisted to localStorage to survive page refreshes.
+ */
+const memoryCache = {
+    events: null,
+    facts: null,
+    summaries: null,
+    preferences: null,
+    sessionId: null,
+};
+
+/**
+ * Load memory cache from localStorage.
+ */
+function loadMemoryCacheFromStorage() {
+    try {
+        const stored = localStorage.getItem(MEMORY_CACHE_KEY);
+        if (stored) {
+            const parsed = JSON.parse(stored);
+            memoryCache.events = parsed.events || null;
+            memoryCache.facts = parsed.facts || null;
+            memoryCache.summaries = parsed.summaries || null;
+            memoryCache.preferences = parsed.preferences || null;
+            memoryCache.sessionId = parsed.sessionId || null;
+            console.debug('Memory cache loaded from localStorage');
+        }
+    } catch (e) {
+        console.warn('Failed to load memory cache from localStorage:', e);
+    }
+}
+
+/**
+ * Save memory cache to localStorage.
+ */
+function saveMemoryCacheToStorage() {
+    try {
+        localStorage.setItem(MEMORY_CACHE_KEY, JSON.stringify(memoryCache));
+    } catch (e) {
+        console.warn('Failed to save memory cache to localStorage:', e);
+    }
+}
+
+/**
+ * Clear all memory cache data.
+ * Called when session changes or user clicks refresh.
+ */
+function clearMemoryCache() {
+    memoryCache.events = null;
+    memoryCache.facts = null;
+    memoryCache.summaries = null;
+    memoryCache.preferences = null;
+    memoryCache.sessionId = null;
+    localStorage.removeItem(MEMORY_CACHE_KEY);
+    console.debug('Memory cache cleared');
+}
+
+/**
+ * Check if cache is valid for the current session.
+ * 
+ * @returns {boolean} True if cache is valid for current session
+ */
+function isCacheValidForSession() {
+    const currentSessionId = typeof getSessionId === 'function' ? getSessionId() : sessionId;
+    return memoryCache.sessionId === currentSessionId;
+}
+
+// Load cache from localStorage on script load
+loadMemoryCacheFromStorage();
+
+// ============================================================================
 // Model Selection
 // Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 10.8, 10.9
 // ============================================================================
@@ -251,22 +328,65 @@ function initializeModelSelection() {
 // Requirements: 1.1, 1.2, 1.3, 1.4
 // ============================================================================
 
+const TEMPLATES_CACHE_KEY = 'agentcore-templates-cache';
+
 /**
- * Cached templates loaded from the API.
+ * Cached templates loaded from the API or localStorage.
  */
 let cachedTemplates = null;
 
 /**
+ * Load templates from localStorage.
+ */
+function loadTemplatesFromStorage() {
+    try {
+        const stored = localStorage.getItem(TEMPLATES_CACHE_KEY);
+        if (stored) {
+            cachedTemplates = JSON.parse(stored);
+            console.debug('Templates loaded from localStorage:', cachedTemplates.length);
+        }
+    } catch (e) {
+        console.warn('Failed to load templates from localStorage:', e);
+    }
+}
+
+/**
+ * Save templates to localStorage.
+ */
+function saveTemplatesToStorage() {
+    try {
+        if (cachedTemplates) {
+            localStorage.setItem(TEMPLATES_CACHE_KEY, JSON.stringify(cachedTemplates));
+        }
+    } catch (e) {
+        console.warn('Failed to save templates to localStorage:', e);
+    }
+}
+
+/**
+ * Clear templates cache (called when admin updates templates).
+ */
+function clearTemplatesCache() {
+    cachedTemplates = null;
+    localStorage.removeItem(TEMPLATES_CACHE_KEY);
+    console.debug('Templates cache cleared');
+}
+
+// Load templates from localStorage on script load
+loadTemplatesFromStorage();
+
+/**
  * Fetch prompt templates from the API.
- * Caches the result to avoid repeated API calls.
+ * Uses localStorage cache, falls back to API if not cached.
  * 
+ * @param {boolean} forceRefresh - If true, bypass cache and fetch from API
  * @returns {Promise<Array>} Array of template objects
  * 
  * Requirements: 1.2
  */
-async function fetchTemplates() {
-    // Return cached templates if available
-    if (cachedTemplates !== null) {
+async function fetchTemplates(forceRefresh = false) {
+    // Return cached templates if available and not forcing refresh
+    if (!forceRefresh && cachedTemplates !== null) {
         return cachedTemplates;
     }
     
@@ -277,11 +397,13 @@ async function fetchTemplates() {
         }
         
         cachedTemplates = await response.json();
-        console.debug('Templates loaded:', cachedTemplates.length);
+        saveTemplatesToStorage();
+        console.debug('Templates loaded from API:', cachedTemplates.length);
         return cachedTemplates;
     } catch (error) {
         console.error('Error fetching templates:', error);
-        return [];
+        // Return cached templates if API fails
+        return cachedTemplates || [];
     }
 }
 
@@ -511,6 +633,9 @@ function startNewChat() {
     // Generate new session ID
     clearAndCreateNewSession();
     
+    // Clear memory cache for new session
+    clearMemoryCache();
+    
     // Clear message list using safe DOM manipulation (avoids innerHTML XSS risks)
     const messageList = document.getElementById('message-list');
     if (messageList) {
@@ -582,6 +707,11 @@ async function sendMessage(event) {
     
     // Add user message to the list
     addMessage('user', message);
+    
+    // Add user message to memory cache
+    if (typeof addMessageToEventCache === 'function') {
+        addMessageToEventCache('user', message);
+    }
     
     // Clear input and reset textarea height
     input.value = '';
@@ -655,6 +785,10 @@ async function sendMessage(event) {
                     // Handle done event (Requirement 2.6 - completion indicator)
                     if (data === '[DONE]') {
                         finalizeMessage(assistantMsgId, fullContent);
+                        // Add assistant message to memory cache
+                        if (typeof addMessageToEventCache === 'function' && fullContent) {
+                            addMessageToEventCache('assistant', fullContent);
+                        }
                         hasReceivedContent = true;
                         fullContent = ''; // Clear to prevent double finalization
                         continue;
@@ -663,8 +797,8 @@ async function sendMessage(event) {
                     try {
                         const sseEvent = JSON.parse(data);
                         
-                        // Transition to streaming state once we receive first content
-                        if (!hasReceivedContent && (sseEvent.type === 'message' || sseEvent.type === 'tool_use')) {
+                        // Transition to streaming state once we receive any valid event
+                        if (!hasReceivedContent && sseEvent.type) {
                             setConnectionState('streaming');
                         }
                         
@@ -680,13 +814,17 @@ async function sendMessage(event) {
         // Finalize if we received content but no explicit [DONE]
         if (hasReceivedContent && fullContent) {
             finalizeMessage(assistantMsgId, fullContent);
+            // Add assistant message to memory cache
+            if (typeof addMessageToEventCache === 'function') {
+                addMessageToEventCache('assistant', fullContent);
+            }
         }
         
         // Clear the failed message since we succeeded
         lastFailedMessage = null;
         
-        // Refresh memory after message completes (Requirement 4.5)
-        setTimeout(refreshMemory, 500);
+        // Note: Memory is updated via cache during conversation
+        // Full refresh only happens on page load or manual refresh button click
         
     } catch (error) {
         console.error('Chat error:', error);
@@ -713,6 +851,79 @@ async function sendMessage(event) {
     
     // Reset to ready state on success
     setConnectionState('ready');
+}
+
+/**
+ * Check if a tool result indicates an error.
+ * Detects common error patterns in tool results.
+ * 
+ * @param {Object|string} toolResult - The tool result to check
+ * @returns {boolean} True if the result indicates an error
+ */
+function isToolResultError(toolResult) {
+    if (!toolResult) return false;
+    
+    // If it's a string, check for error patterns
+    if (typeof toolResult === 'string') {
+        const lowerResult = toolResult.toLowerCase();
+        return lowerResult.includes('"success": false') ||
+               lowerResult.includes('"error":') ||
+               lowerResult.includes('error:') ||
+               lowerResult.startsWith('error');
+    }
+    
+    // If it's an object, check for error indicators
+    if (typeof toolResult === 'object') {
+        // Check for explicit success: false
+        if (toolResult.success === false) return true;
+        // Check for error field
+        if (toolResult.error !== undefined && toolResult.error !== null) return true;
+        // Check for isError field
+        if (toolResult.isError === true) return true;
+        // Check for status field indicating error
+        if (toolResult.status === 'error' || toolResult.status === 'failed') return true;
+    }
+    
+    return false;
+}
+
+/**
+ * Format an object or JSON string as key-value pairs, one per line.
+ * 
+ * @param {Object|string} data - The data to format
+ * @returns {string} Formatted key-value pairs
+ */
+function formatAsKeyValuePairs(data) {
+    if (!data) return '';
+    
+    let obj = data;
+    if (typeof data === 'string') {
+        try {
+            obj = JSON.parse(data);
+        } catch (e) {
+            return data; // Return as-is if not valid JSON
+        }
+    }
+    
+    if (typeof obj !== 'object' || obj === null) {
+        return String(obj);
+    }
+    
+    const lines = [];
+    for (const [key, value] of Object.entries(obj)) {
+        let displayValue;
+        if (value === null) {
+            displayValue = 'null';
+        } else if (typeof value === 'object') {
+            displayValue = JSON.stringify(value);
+        } else if (typeof value === 'string') {
+            displayValue = value;
+        } else {
+            displayValue = String(value);
+        }
+        lines.push(`${key}: ${displayValue}`);
+    }
+    return lines.join('\n');
 }
 
 /**
@@ -772,8 +983,9 @@ function handleSSEEvent(event, msgId, currentContent) {
             // Check if this tool is already displayed
             if (toolsContainer.querySelector(`[data-tool-id="${toolUseId}"]`)) break;
             
-            // Format tool input for display
+            // Format tool input for display as key-value pairs
             const toolInputJson = event.tool_input ? JSON.stringify(event.tool_input, null, 2) : '';
+            const toolInputDisplay = event.tool_input ? formatAsKeyValuePairs(event.tool_input) : 'No input';
             
             const toolUseHtml = `
                 <div id="tool-${escapeHtml(toolUseId)}" class="tool-card border rounded-lg overflow-hidden bg-primary-50 border-primary-200 my-1" data-tool-id="${escapeHtml(toolUseId)}" data-tool-name="${escapeHtml(event.tool_name)}" data-tool-input="${escapeHtml(toolInputJson)}">
@@ -807,7 +1019,7 @@ function handleSSEEvent(event, msgId, currentContent) {
                                     Copy
                                 </button>
                             </div>
-                            <pre class="text-xs bg-gray-50 p-2 rounded border border-gray-200 overflow-x-auto"><code class="text-gray-800">${escapeHtml(toolInputJson) || 'No input'}</code></pre>
+                            <pre class="text-xs bg-gray-50 p-2 rounded border border-gray-200 overflow-x-auto whitespace-pre-wrap break-words"><code class="text-gray-800">${escapeHtml(toolInputDisplay)}</code></pre>
                         </div>
                         <div class="tool-result-section px-4 py-3 hidden">
                             <div class="flex items-center justify-between mb-2">
@@ -824,7 +1036,7 @@ function handleSSEEvent(event, msgId, currentContent) {
                                     Copy
                                 </button>
                             </div>
-                            <pre class="tool-result-content text-xs bg-gray-50 p-2 rounded border border-gray-200 overflow-x-auto max-h-64"><code class="text-gray-800">Waiting for result...</code></pre>
+                            <pre class="tool-result-content text-xs bg-gray-50 p-2 rounded border border-gray-200 overflow-x-auto max-h-64 whitespace-pre-wrap break-words"><code class="text-gray-800">Waiting for result...</code></pre>
                         </div>
                     </div>
                 </div>
@@ -855,32 +1067,60 @@ function handleSSEEvent(event, msgId, currentContent) {
                 }
             }
             
-            // Update the card to show completion (only if not already completed)
+            // Check if the tool result indicates an error
+            const isToolError = isToolResultError(event.tool_result);
+            
+            // Update the card to show completion or error (only if not already completed)
             if (toolCard && !toolCard.classList.contains('completed')) {
                 toolCard.classList.add('completed');
                 toolCard.classList.remove('bg-primary-50', 'border-primary-200');
-                toolCard.classList.add('bg-blue-50', 'border-blue-200');
                 
                 const toolIcon = toolCard.querySelector('.tool-icon');
-                if (toolIcon) {
-                    toolIcon.classList.remove('spin', 'text-primary-600');
-                    toolIcon.classList.add('text-blue-600');
-                }
-                
-                // Update status text (desktop)
                 const statusSpan = toolCard.querySelector('.tool-status');
-                if (statusSpan) {
-                    statusSpan.classList.remove('text-primary-600');
-                    statusSpan.classList.add('text-blue-600');
-                    statusSpan.textContent = 'Completed';
-                }
-                
-                // Update status icon (mobile) - change from spinner to checkmark
                 const statusIcon = toolCard.querySelector('.tool-status-icon');
-                if (statusIcon) {
-                    statusIcon.classList.remove('text-primary-600', 'spin');
-                    statusIcon.classList.add('text-blue-600');
-                    statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />';
+                
+                if (isToolError) {
+                    // Error styling - red theme
+                    toolCard.classList.add('bg-red-50', 'border-red-200');
+                    
+                    if (toolIcon) {
+                        toolIcon.classList.remove('spin', 'text-primary-600');
+                        toolIcon.classList.add('text-red-600');
+                    }
+                    
+                    if (statusSpan) {
+                        statusSpan.classList.remove('text-primary-600');
+                        statusSpan.classList.add('text-red-600');
+                        statusSpan.textContent = 'Error';
+                    }
+                    
+                    if (statusIcon) {
+                        statusIcon.classList.remove('text-primary-600', 'spin');
+                        statusIcon.classList.add('text-red-600');
+                        // X icon for error
+                        statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />';
+                    }
+                } else {
+                    // Success styling - blue theme
+                    toolCard.classList.add('bg-blue-50', 'border-blue-200');
+                    
+                    if (toolIcon) {
+                        toolIcon.classList.remove('spin', 'text-primary-600');
+                        toolIcon.classList.add('text-blue-600');
+                    }
+                    
+                    if (statusSpan) {
+                        statusSpan.classList.remove('text-primary-600');
+                        statusSpan.classList.add('text-blue-600');
+                        statusSpan.textContent = 'Completed';
+                    }
+                    
+                    if (statusIcon) {
+                        statusIcon.classList.remove('text-primary-600', 'spin');
+                        statusIcon.classList.add('text-blue-600');
+                        // Checkmark icon for success
+                        statusIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />';
+                    }
                 }
                 
                 // Show and populate tool result section
@@ -888,17 +1128,20 @@ function handleSSEEvent(event, msgId, currentContent) {
                 const resultContent = toolCard.querySelector('.tool-result-content code');
                 if (resultSection && resultContent && event.tool_result) {
                     resultSection.classList.remove('hidden');
-                    const resultText = typeof event.tool_result === 'string' 
+                    // Format as key-value pairs for display
+                    const resultDisplay = formatAsKeyValuePairs(event.tool_result);
+                    // Keep original JSON for copy button
+                    const resultJson = typeof event.tool_result === 'string' 
                         ? event.tool_result 
                         : JSON.stringify(event.tool_result, null, 2);
-                    resultContent.textContent = resultText;
+                    resultContent.textContent = resultDisplay;
                     
-                    // Set up copy button for result
+                    // Set up copy button for result (copies original JSON)
                     const copyBtn = resultSection.querySelector('.copy-result-btn');
                     if (copyBtn) {
                         copyBtn.onclick = (e) => {
                             e.stopPropagation();
-                            copyToClipboard(copyBtn, resultText);
+                            copyToClipboard(copyBtn, resultJson);
                         };
                     }
                 }
@@ -2384,12 +2627,19 @@ function collapseMemorySidebar() {
  * Refresh both event and semantic memory.
  * Shows loading state and animates refresh button.
  * 
+ * @param {boolean} forceRefresh - If true, bypass cache and fetch from API
+ * 
  * Requirements: 4.4 (refresh button handler)
  */
-async function refreshMemory() {
+async function refreshMemory(forceRefresh = false) {
     if (isRefreshingMemory) return;
     
     isRefreshingMemory = true;
+    
+    // If force refresh, clear the cache first
+    if (forceRefresh) {
+        clearMemoryCache();
+    }
     
     // Animate refresh button
     const refreshBtn = document.getElementById('memory-refresh-btn');
@@ -2408,13 +2658,13 @@ async function refreshMemory() {
         const promises = [];
         
         if (typeof loadEventMemory === 'function') {
-            promises.push(loadEventMemory());
+            promises.push(loadEventMemory(forceRefresh));
         }
         
         if (typeof loadSemanticMemoryByType === 'function') {
-            promises.push(loadSemanticMemoryByType('facts'));
-            promises.push(loadSemanticMemoryByType('summaries'));
-            promises.push(loadSemanticMemoryByType('preferences'));
+            promises.push(loadSemanticMemoryByType('facts', forceRefresh));
+            promises.push(loadSemanticMemoryByType('summaries', forceRefresh));
+            promises.push(loadSemanticMemoryByType('preferences', forceRefresh));
         }
         
         await Promise.all(promises);
