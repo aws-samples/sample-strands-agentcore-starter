@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="yellowGradChat" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#eab308;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#ca8a04;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background with rounded corners -->
+  <rect width="200" height="200" rx="30" ry="30" fill="url(#yellowGradChat)"/>
+  
+  <!-- Chat bubble icon in white -->
+  <g>
+    <!-- Main chat bubble -->
+    <path d="M 40 60 L 160 60 Q 170 60 170 70 L 170 120 Q 170 130 160 130 L 90 130 L 60 150 L 60 130 L 40 130 Q 30 130 30 120 L 30 70 Q 30 60 40 60 Z" 
+          fill="none" stroke="white" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    
+    <!-- Three dots inside bubble -->
+    <circle cx="70" cy="95" r="6" fill="white"/>
+    <circle cx="100" cy="95" r="6" fill="white"/>
+    <circle cx="130" cy="95" r="6" fill="white"/>
+  </g>
+</svg>

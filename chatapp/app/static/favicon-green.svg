@@ -13,10 +13,9 @@
   <!-- White border -->
   <rect width="200" height="200" fill="none" stroke="white" stroke-width="8"/>
   
-  <!-- Bold "C" for Chat -->
+  <!-- Bold "A" -->
   <g>
-    <!-- C shape - open curve -->
-    <path d="M 145 65 Q 145 40 100 40 Q 55 40 55 100 Q 55 160 100 160 Q 145 160 145 135" 
+    <path d="M 100 40 L 55 160 M 100 40 L 145 160 M 70 120 L 130 120" 
           fill="none" stroke="white" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
 </svg>
