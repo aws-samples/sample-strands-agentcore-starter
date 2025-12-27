@@ -100,6 +100,11 @@
             color: var(--foreground);
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
         }
+        
+        .chat-container {
+            height: 100vh; /* Fallback for older browsers */
+            height: 100dvh; /* Dynamic viewport height - excludes browser chrome */
+        }
 
         /* Custom scrollbar */
         ::-webkit-scrollbar {
