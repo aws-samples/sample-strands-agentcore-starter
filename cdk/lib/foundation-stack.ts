@@ -315,7 +315,7 @@ export class FoundationStack extends cdk.Stack {
           TableName: this.promptTemplatesTable.tableName,
           Item: {
             template_id: { S: 'default-capabilities' },
-            title: { S: 'Capabilities' },
+            title: { S: 'Agent Capabilities' },
             description: { S: 'How the agent can help' },
             prompt_detail: { S: 'How can you help me?' },
             created_at: { S: new Date().toISOString() },
