@@ -533,10 +533,10 @@ function startNewChat() {
             textCenter.appendChild(welcomeP);
         }
         
-        // Add instruction text
+        // Add instruction text (use configurable welcome message)
         const instructionP = document.createElement('p');
         instructionP.className = 'text-gray-500 text-base';
-        instructionP.textContent = 'Start a conversation by typing a message below';
+        instructionP.textContent = window.welcomeMessage || 'Start a conversation by typing a message below';
         textCenter.appendChild(instructionP);
         
         emptyState.appendChild(textCenter);

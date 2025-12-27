@@ -20,6 +20,7 @@ from app.helpers.settings import (
     DEFAULT_APP_SUBTITLE,
     DEFAULT_LOGO_URL,
     DEFAULT_CHAT_LOGO_URL,
+    DEFAULT_WELCOME_MESSAGE,
     DEFAULT_PRIMARY_COLOR,
     DEFAULT_SECONDARY_COLOR,
 )
@@ -81,6 +82,7 @@ async def update_settings(
     request: Request,
     app_title: str = Form(...),
     app_subtitle: str = Form(...),
+    welcome_message: str = Form(...),
     logo_file: Optional[UploadFile] = File(None),
     chat_logo_file: Optional[UploadFile] = File(None),
     reset_header_logo: str = Form("false"),
@@ -96,6 +98,7 @@ async def update_settings(
         request: Incoming request
         app_title: New app title
         app_subtitle: New app subtitle
+        welcome_message: Welcome message shown in empty chat state
         logo_file: Optional logo image file
         chat_logo_file: Optional chat placeholder logo file
         reset_header_logo: Whether to reset header logo to default
@@ -131,6 +134,17 @@ async def update_settings(
             description="Application subtitle displayed in header",
         )
         logger.info("Updated app subtitle", extra={"value": app_subtitle})
+    
+    # Update welcome message
+    welcome_message = welcome_message.strip()
+    if welcome_message:
+        await storage.update_setting(
+            setting_key="welcome_message",
+            setting_value=welcome_message,
+            setting_type="text",
+            description="Welcome message shown in empty chat state",
+        )
+        logger.info("Updated welcome message", extra={"value": welcome_message})
     
     # Handle color reset
     if reset_colors == "true":

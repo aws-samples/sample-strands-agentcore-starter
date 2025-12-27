@@ -37,7 +37,7 @@
                         <p class="text-gray-700 text-lg font-medium mb-2">Welcome, {{ user_email }}</p>
                         {% endif %}
                         <p class="text-gray-500 text-base">
-                            Start a conversation by typing a message below
+                            {{ welcome_message if welcome_message is defined else 'Start a conversation by typing a message below' }}
                         </p>
                     </div>
                 </div>
@@ -204,9 +204,10 @@
 {% endblock %}
 
 {% block scripts %}
-<!-- Pass user email to JavaScript for new chat empty state -->
+<!-- Pass user email and welcome message to JavaScript for new chat empty state -->
 <script>
     window.userEmail = {{ user_email|tojson if user_email else 'null' }};
+    window.welcomeMessage = {{ (welcome_message if welcome_message is defined else 'Start a conversation by typing a message below')|tojson }};
 </script>
 <!-- Chat application JavaScript -->
 <script src="/static/js/chat.js"></script>

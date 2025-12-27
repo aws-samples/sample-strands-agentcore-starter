@@ -127,7 +127,7 @@
                     </div>
 
                     <!-- App Subtitle -->
-                    <div>
+                    <div class="mb-6 pb-6 border-b border-gray-200">
                         <label for="app_subtitle" class="block text-sm font-medium text-gray-700 mb-2">
                             Application Tagline
                         </label>
@@ -143,6 +143,26 @@
                         />
                         <p class="mt-1 text-xs text-gray-500">
                             Displayed below the title in the header
+                        </p>
+                    </div>
+
+                    <!-- Welcome Message -->
+                    <div>
+                        <label for="welcome_message" class="block text-sm font-medium text-gray-700 mb-2">
+                            Welcome Message
+                        </label>
+                        <input
+                            type="text"
+                            id="welcome_message"
+                            name="welcome_message"
+                            value="{{ welcome_message }}"
+                            required
+                            maxlength="200"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            placeholder="Start a conversation by typing a message below"
+                        />
+                        <p class="mt-1 text-xs text-gray-500">
+                            Displayed in the empty chat state before the user sends a message
                         </p>
                     </div>
                 </div>
@@ -335,6 +355,7 @@ let isSubmitting = false;
 const originalValues = {
     app_title: '{{ app_title }}',
     app_subtitle: '{{ app_subtitle }}',
+    welcome_message: '{{ welcome_message }}',
     logo_url: '{{ logo_url }}',
     chat_logo_url: '{{ chat_logo_url }}',
     primary_color: '{{ primary_color }}',
@@ -391,6 +412,7 @@ function cancelChanges() {
     // Reset branding fields
     document.getElementById('app_title').value = originalValues.app_title;
     document.getElementById('app_subtitle').value = originalValues.app_subtitle;
+    document.getElementById('welcome_message').value = originalValues.welcome_message;
     document.getElementById('logo-preview').src = originalValues.logo_url;
     document.getElementById('chat-logo-preview').src = originalValues.chat_logo_url;
     document.getElementById('logo_file').value = '';
