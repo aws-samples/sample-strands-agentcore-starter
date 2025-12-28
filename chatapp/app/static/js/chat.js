@@ -867,7 +867,9 @@ function isToolResultError(toolResult) {
     if (typeof toolResult === 'string') {
         const lowerResult = toolResult.toLowerCase();
         return lowerResult.includes('"success": false') ||
+               lowerResult.includes("'success': false") ||
                lowerResult.includes('"error":') ||
+               lowerResult.includes("'error':") ||
                lowerResult.includes('error:') ||
                lowerResult.startsWith('error');
     }
