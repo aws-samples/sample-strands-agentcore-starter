@@ -58,7 +58,7 @@
                     <div>
                         <p class="text-sm font-medium text-gray-500">Total Cost</p>
                         <p class="text-2xl font-bold text-gray-900 mt-1">
-                            ${{ "%.2f"|format(session_stats.total_cost) }}
+                            ${{ "%.4f"|format(session_stats.total_cost) }}
                         </p>
                     </div>
                     <div class="p-3 bg-green-100 rounded-full">
@@ -67,9 +67,10 @@
                         </svg>
                     </div>
                 </div>
-                <p class="mt-3 text-xs text-gray-500">
-                    {{ session_stats.invocation_count }} invocation{{ 's' if session_stats.invocation_count != 1 else '' }}
-                </p>
+                <div class="mt-3 flex gap-4 text-xs text-gray-500">
+                    <span>Tokens: ${{ "%.4f"|format(session_stats.token_cost) }}</span>
+                    <span>Runtime: ${{ "%.4f"|format(session_stats.runtime_cost) }}</span>
+                </div>
             </div>
 
             <!-- Avg Latency Card -->
@@ -119,61 +120,27 @@
             </div>
         </div>
 
-        <!-- Models Used -->
+        <!-- Runtime Usage (if available) -->
+        {% if runtime_stats %}
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
-            <h2 class="text-lg font-semibold text-gray-900 mb-4">Models Used</h2>
-            <div class="flex flex-wrap gap-2">
-                {% for model in session_stats.models_used %}
-                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
-                    {{ model }}
-                </span>
-                {% endfor %}
-            </div>
-        </div>
-
-        <!-- Tool Usage Table -->
-        {% if tool_usage %}
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-8">
-            <div class="px-6 py-4 border-b border-gray-200">
-                <h2 class="text-lg font-semibold text-gray-900">Tool Use</h2>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full">
-                    <thead class="bg-gray-50">
-                        <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tool Name</th>
-                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Calls</th>
-                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Success</th>
-                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Errors</th>
-                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Success Rate</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-200">
-                        {% for tool in tool_usage %}
-                        <tr class="hover:bg-gray-50">
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-sm font-medium bg-purple-100 text-purple-800">
-                                    {{ tool.tool_name }}
-                                </span>
-                            </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
-                                {{ "{:,}".format(tool.call_count) }}
-                            </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm text-green-600">
-                                {{ "{:,}".format(tool.success_count) }}
-                            </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm {% if tool.error_count > 0 %}text-red-600 font-medium{% else %}text-gray-500{% endif %}">
-                                {{ "{:,}".format(tool.error_count) }}
-                            </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
-                                <span class="{% if tool.success_rate >= 0.95 %}text-green-600{% elif tool.success_rate >= 0.8 %}text-amber-600{% else %}text-red-600{% endif %}">
-                                    {{ "%.1f"|format(tool.success_rate * 100) }}%
-                                </span>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Runtime Usage</h2>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+                <div>
+                    <p class="text-sm text-gray-500">Duration</p>
+                    <p class="text-xl font-bold text-gray-900">{{ "%.2f"|format(runtime_stats.total_time_seconds) }}s</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500">vCPU Hours</p>
+                    <p class="text-xl font-bold text-gray-900">{{ "%.6f"|format(runtime_stats.total_vcpu_hours) }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500">Memory GB-Hours</p>
+                    <p class="text-xl font-bold text-gray-900">{{ "%.6f"|format(runtime_stats.total_memory_gb_hours) }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500">Runtime Cost</p>
+                    <p class="text-xl font-bold text-green-600">${{ "%.4f"|format(runtime_stats.runtime_cost) }}</p>
+                </div>
             </div>
         </div>
         {% endif %}
@@ -248,6 +215,54 @@
             </div>
             {% endif %}
         </div>
+
+        <!-- Tool Usage Table -->
+        {% if tool_usage %}
+        &nbsp;
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-8">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-lg font-semibold text-gray-900">Tool Use</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tool Name</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Calls</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Success</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Errors</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Success Rate</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200">
+                        {% for tool in tool_usage %}
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-sm font-medium bg-purple-100 text-purple-800">
+                                    {{ tool.tool_name }}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
+                                {{ "{:,}".format(tool.call_count) }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm text-green-600">
+                                {{ "{:,}".format(tool.success_count) }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm {% if tool.error_count > 0 %}text-red-600 font-medium{% else %}text-gray-500{% endif %}">
+                                {{ "{:,}".format(tool.error_count) }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
+                                <span class="{% if tool.success_rate >= 0.95 %}text-green-600{% elif tool.success_rate >= 0.8 %}text-amber-600{% else %}text-red-600{% endif %}">
+                                    {{ "%.1f"|format(tool.success_rate * 100) }}%
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}        
 
         <!-- Session Time Range -->
         <div class="mt-6 text-center text-sm text-gray-500">

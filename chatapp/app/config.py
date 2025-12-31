@@ -57,6 +57,7 @@ class AppConfig:
     guardrail_table_name: str = "agentcore-guardrail-violations"
     prompt_templates_table_name: str = "agentcore-prompt-templates"
     app_settings_table_name: str = "agentcore-app-settings"
+    runtime_usage_table_name: str = "agentcore-runtime-usage"
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -135,6 +136,11 @@ class AppConfig:
         # App settings configuration
         values["app_settings_table_name"] = os.environ.get(
             "APP_SETTINGS_TABLE_NAME", "agentcore-app-settings"
+        ).strip()
+
+        # Runtime usage configuration
+        values["runtime_usage_table_name"] = os.environ.get(
+            "RUNTIME_USAGE_TABLE_NAME", "agentcore-runtime-usage"
         ).strip()
 
         return cls(**values)

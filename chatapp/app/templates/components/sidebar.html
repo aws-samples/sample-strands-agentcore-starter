@@ -273,7 +273,7 @@ function renderEventMemoryItems(messages, container) {
     container.innerHTML = messages.map(function(event, idx) {
         var role = (event.role || '').toLowerCase();
         var isUser = role === 'user';
-        var roleLabel = isUser ? 'You' : 'Assistant';
+        var roleLabel = isUser ? 'You' : 'Agent';
         var roleEmoji = isUser ? '👤' : '🤖';
         var timestamp = event.timestamp ? new Date(event.timestamp).toLocaleTimeString() : '';
         var content = event.content || '';

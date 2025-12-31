@@ -49,6 +49,7 @@ chatapp/
 │   │   ├── repository.py        # Usage analytics DynamoDB queries
 │   │   ├── feedback_repository.py # Feedback queries
 │   │   ├── guardrail_repository.py # Guardrail violation queries
+│   │   ├── runtime_usage_repository.py # AgentCore Runtime usage queries
 │   │   └── cost_calculator.py   # Cost calculations
 │   ├── storage/                  # Data storage services
 │   │   ├── usage.py             # Usage record storage
@@ -116,6 +117,7 @@ chatapp/
 - `app/routes/chat.py`: SSE streaming endpoint proxying to AgentCore
 - `app/routes/admin.py`: Admin dashboard with usage analytics
 - `app/admin/repository.py`: DynamoDB queries for usage data
+- `app/admin/runtime_usage_repository.py`: DynamoDB queries for AgentCore Runtime metrics
 
 ## Configuration Files
 

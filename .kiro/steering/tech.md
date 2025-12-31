@@ -70,7 +70,8 @@ uvicorn app.main:app --reload --port 8080
 **Container**: Docker with uvicorn
 **Agent Backend**: AgentCore Runtime
 **Memory**: AgentCore Memory (event + semantic strategies)
-**Storage**: DynamoDB (usage analytics, feedback, guardrail violations, app settings)
+**Storage**: DynamoDB (usage analytics, feedback, guardrail violations, app settings, compute usage)
+**Compute Tracking**: Firehose + Lambda pipeline for AgentCore Runtime usage logs
 **Guardrails**: Amazon Bedrock Guardrails (content filtering)
 **Knowledge Base**: Amazon Bedrock Knowledge Bases (S3 Vectors)
 **Streaming**: Server-Sent Events (SSE)
@@ -95,7 +96,7 @@ npm install
 ### CDK Stack Architecture
 - **Foundation**: Cognito, DynamoDB, IAM roles, Secrets Manager
 - **Bedrock**: Guardrail, Knowledge Base, AgentCore Memory
-- **Agent**: ECR, CodeBuild, AgentCore Runtime, Observability
+- **Agent**: ECR, CodeBuild, AgentCore Runtime, Observability, Compute Usage Pipeline (Firehose + Lambda)
 - **ChatApp**: ECS Express Mode service
 
 Supports multi-region deployment in the same AWS account.

@@ -20,7 +20,7 @@ Building AI agents is exciting, but understanding their usage, results, and cost
 - 🤖 **AI-powered conversational agent** with short-term (STM) and long-term memory (LTM)
 - ⚡ **Streaming chat** with embedded memory viewer
 - 📊 **Admin dashboard** with usage analytics and cost tracking
-- 💰 **Cost projections** based on actual usage patterns
+- 💰 **Cost projections** based on actual usage patterns (token + compute costs)
 - 👍 **User feedback** with sentiment ratings and comments
 - 🛡️ **Guardrails analytics** with violation tracking and content filtering
 - 🔧 **Tool usage details** with per-tool invocation analytics
@@ -40,9 +40,10 @@ The built-in admin dashboard (`/admin`) provides comprehensive usage analytics:
 
 **📊 Dashboard Overview** `/admin`
 - Total tokens, invocations, estimated costs
+- **Total cost breakdown** (token cost + compute cost)
 - Top users and tools by usage
 - Model breakdown with per-model costs
-- Projected monthly cost
+- **Runtime metrics** (duration, vCPU hours, memory GB-hours)
 - Feedback and guardrails summary
 
 </td>
@@ -73,6 +74,7 @@ The built-in admin dashboard (`/admin`) provides comprehensive usage analytics:
 - Tools invoked with success/error rates
 - Individual invocation records
 - Model and latency information
+- **Runtime usage** (vCPU hours, runtime cost)
 
 </td>
 </tr>
@@ -147,14 +149,19 @@ The built-in admin dashboard (`/admin`) provides comprehensive usage analytics:
         │                       │                                           │           │
         │                       ▼                                           │           ▼
         │                ┌─────────────────┐                                │   ┌───────────────┐
-        │                │    DynamoDB     │                                │   │    Bedrock    │
-        │                │  Usage/Feedback │                                │   │ Choice of LLM │
-        │                └─────────────────┘                                │   └───────────────┘
-        ▼                                                                   ▼
-┌─────────────────┐                                                 ┌─────────────────┐
-│     Cognito     │                                                 │    AgentCore    │
-│      Auth       │                                                 │     Memory      │
-└─────────────────┘                                                 └─────────────────┘
+        │                │    DynamoDB     │◀───────────────────────────────┤   │    Bedrock    │
+        │                │  Usage/Feedback │      Runtime Usage             │   │ Choice of LLM │
+        │                │  Runtime Usage  │◀──┐                            │   └───────────────┘
+        │                └─────────────────┘   │  │                         │
+        │                                      │  │                         │
+        ▼                                ┌─────┴──┴──┐                      ▼
+┌─────────────────┐                      │  Lambda   │              ┌─────────────────┐
+│     Cognito     │                      │ Transform │              │    AgentCore    │
+│      Auth       │                      └─────┬─────┘              │     Memory      │──┐
+└─────────────────┘                            │                    └─────────────────┘  │
+                                         ┌─────┴─────┐                                   │
+                                         │ Firehose  │◀─── USAGE_LOGS (Runtime) │
+                                         └───────────┘◀──────────────────────────────────┘
 ```
 
 ## Prerequisites
@@ -359,6 +366,7 @@ Options:
 | `GUARDRAIL_ENABLED` | No | Enable/disable guardrail evaluation (default: true) |
 | `PROMPT_TEMPLATES_TABLE_NAME` | Yes | DynamoDB table for prompt templates |
 | `APP_SETTINGS_TABLE_NAME` | Yes | DynamoDB table for application settings |
+| `RUNTIME_USAGE_TABLE_NAME` | Yes | DynamoDB table for AgentCore runtime usage |
 | `APP_URL` | No | Application URL for callbacks |
 | `AWS_REGION` | Yes | AWS region |
 
@@ -401,7 +409,9 @@ sample-strands-agentcore-starter/
 
 ## Cost Tracking
 
-The system tracks usage metrics for cost analysis:
+The system tracks usage metrics for cost analysis.
+
+_**Note:** Telemetry data is provided for monitoring purposes. Actual billing is calculated based on metered usage data and may differ from telemetry values due to aggregation timing, reconciliation processes, and measurement precision. Refer to your AWS billing statement for authoritative charges._
 
 ### Captured Metrics
 - **Input/Output Tokens**: Per invocation token counts
@@ -422,9 +432,35 @@ The system tracks usage metrics for cost analysis:
 ### Monthly Projections
 The dashboard calculates projected monthly costs using:
 ```
-projected_monthly = (total_cost / days_in_period) * 20
+projected_monthly = (total_cost / days_in_period) * 30
 ```
-Uses 20 business days for realistic production estimates.
+Uses 30 calendar days for monthly estimates.
+
+### AgentCore Runtime Usage Costs
+
+In addition to token costs, the system tracks AgentCore Runtime usage:
+
+| Metric | Rate |
+|--------|------|
+| vCPU Hours | $0.0895/hour |
+| Memory GB-Hours | $0.00945/GB-hour |
+
+**How it works:**
+1. AgentCore Runtime emits USAGE_LOGS with metrics per operation
+2. Logs are streamed via Kinesis Data Firehose to Lambda transform functions
+3. Lambda parses the logs and writes usage records to DynamoDB (keyed by session_id)
+4. The admin dashboard aggregates runtime costs alongside token costs
+
+**Runtime metrics captured per invocation:**
+- `time_elapsed_seconds` - Runtime duration
+- `vcpu_hours` - vCPU time consumed
+- `memory_gb_hours` - Memory time consumed
+- `session_id` - Links runtime usage to chat session
+
+The dashboard shows:
+- **Total Cost** = Token Cost + Runtime Cost
+- Per-session breakdown of token vs runtime costs
+- Runtime metrics (duration, vCPU hours, memory GB-hours)
 
 ## Customization
 

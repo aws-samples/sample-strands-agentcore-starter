@@ -17,6 +17,7 @@ from app.admin.repository import UsageRepository
 from app.admin.cost_calculator import CostCalculator
 from app.admin.guardrail_repository import GuardrailRepository, GuardrailAggregateStats
 from app.admin.feedback_repository import FeedbackRepository
+from app.admin.runtime_usage_repository import RuntimeUsageRepository
 from app.auth.cognito import get_user_emails_by_ids
 from app.templates_config import templates
 
@@ -91,7 +92,7 @@ async def dashboard(
     - Key metrics overview
     - Top users by usage
     - Top tools by calls
-    - Cost summary
+    - Cost summary (token + compute)
     """
     # Parse time range
     start_dt, end_dt = _parse_time_range(start_time, end_time)
@@ -101,6 +102,7 @@ async def dashboard(
     repository = UsageRepository()
     guardrail_repo = GuardrailRepository()
     feedback_repo = FeedbackRepository()
+    runtime_repo = RuntimeUsageRepository()
     
     # OPTIMIZATION: Fetch usage records once and reuse for all computations
     records = await repository.get_all_records(start_dt, end_dt)
@@ -110,6 +112,9 @@ async def dashboard(
     user_stats = repository.compute_stats_by_user(records)
     tool_stats = repository.compute_tool_analytics(records)
     model_stats = repository.compute_stats_by_model(records)
+    
+    # Fetch runtime usage stats
+    runtime_stats = await runtime_repo.get_aggregate_stats(start_dt, end_dt)
     
     # Get top 5 for each category
     top_users = user_stats[:5]
@@ -128,21 +133,40 @@ async def dashboard(
     guardrail_stats = await guardrail_repo.get_aggregate_stats(start_dt, end_dt)
     feedback_stats = await feedback_repo.get_feedback_stats(start_dt, end_dt)
     
+    # Calculate tool totals for summary card
+    total_tool_calls = sum(t.call_count for t in tool_stats)
+    total_tool_success = sum(t.success_count for t in tool_stats)
+    total_tool_errors = sum(t.error_count for t in tool_stats)
+    tool_success_rate = total_tool_success / total_tool_calls if total_tool_calls > 0 else 0.0
+    
     # Get current user ID from request state (set by auth middleware)
     current_user = getattr(request.state, "user", None)
     current_user_id = current_user.user_id if current_user else None
+    
+    # Calculate total cost (token + runtime)
+    total_cost = aggregate_stats.total_cost + float(runtime_stats.total_runtime_cost)
+    
+    # Calculate projected monthly cost (30 calendar days)
+    projected_monthly = (total_cost / days_in_period) * 30 if days_in_period > 0 else 0.0
     
     return templates.TemplateResponse(
         "admin/dashboard.html",
         {
             "request": request,
             "stats": aggregate_stats,
+            "runtime_stats": runtime_stats,
+            "total_cost": total_cost,
+            "projected_monthly": projected_monthly,
             "top_users": top_users,
             "user_emails": user_emails,
             "top_tools": top_tools,
             "top_models": sorted_models,
             "guardrail_stats": guardrail_stats,
             "feedback_stats": feedback_stats,
+            "total_tool_calls": total_tool_calls,
+            "total_tool_success": total_tool_success,
+            "total_tool_errors": total_tool_errors,
+            "tool_success_rate": tool_success_rate,
             "start_time": start_dt.isoformat(),
             "end_time": end_dt.isoformat(),
             "days_in_period": days_in_period,
@@ -210,6 +234,7 @@ async def user_analytics(
     Displays:
     - List of users with token usage totals
     - Session counts per user
+    - Runtime costs per user
     - Search functionality for filtering users
     - Users sorted by total tokens descending
     
@@ -219,8 +244,9 @@ async def user_analytics(
     start_dt, end_dt = _parse_time_range(start_time, end_time)
     days_in_period = max(1, (end_dt - start_dt).days)
     
-    # Initialize repository
+    # Initialize repositories
     repository = UsageRepository()
+    runtime_repo = RuntimeUsageRepository()
     
     # Fetch user stats (with optional search)
     if search and search.strip():
@@ -231,6 +257,37 @@ async def user_analytics(
     # Fetch user emails from Cognito
     user_ids = [user.user_id for user in user_stats]
     user_emails = await get_user_emails_by_ids(user_ids)
+    
+    # Fetch all records to get session IDs per user
+    all_records = await repository.get_all_records(start_dt, end_dt)
+    user_sessions: Dict[str, set] = {}
+    for record in all_records:
+        if record.user_id not in user_sessions:
+            user_sessions[record.user_id] = set()
+        user_sessions[record.user_id].add(record.session_id)
+    
+    # Fetch runtime costs for all sessions
+    all_session_ids = set()
+    for session_ids in user_sessions.values():
+        all_session_ids.update(session_ids)
+    
+    session_runtime_costs = await runtime_repo.get_runtime_costs_for_sessions(
+        list(all_session_ids)
+    )
+    
+    # Calculate total runtime cost per user
+    user_runtime_costs: Dict[str, float] = {}
+    for user_id, session_ids in user_sessions.items():
+        total_cost = sum(
+            float(session_runtime_costs.get(sid, 0))
+            for sid in session_ids
+        )
+        user_runtime_costs[user_id] = total_cost
+    
+    # Add runtime costs to user stats
+    for user in user_stats:
+        user.runtime_cost = user_runtime_costs.get(user.user_id, 0.0)
+        user.total_cost = user.total_cost + user.runtime_cost
     
     # Get current user ID from request state (set by auth middleware)
     current_user = getattr(request.state, "user", None)
@@ -264,15 +321,20 @@ async def session_detail(
     - Tools invoked with call counts and success rates
     - Duration and latency
     - Individual invocation records
+    - Compute costs (vCPU, memory)
     
     Requirements: 4.2
     """
     # Initialize repository and cost calculator
     repository = UsageRepository()
     cost_calculator = CostCalculator()
+    runtime_repo = RuntimeUsageRepository()
     
     # Fetch all records for this session using GSI
     records = await repository.get_session_records(session_id)
+    
+    # Fetch runtime stats for this session
+    runtime_stats = await runtime_repo.get_session_runtime_stats(session_id)
     
     if not records:
         return templates.TemplateResponse(
@@ -283,6 +345,7 @@ async def session_detail(
                 "session_stats": None,
                 "records": [],
                 "tool_usage": [],
+                "runtime_stats": runtime_stats,
             },
         )
     
@@ -296,11 +359,15 @@ async def session_detail(
     models_used = list(set(r.model_id for r in records))
     user_id = records[0].user_id if records else ""
     
-    # Calculate total cost
-    total_cost = sum(
+    # Calculate total token cost
+    token_cost = sum(
         cost_calculator.calculate_cost(r.input_tokens, r.output_tokens, r.model_id)
         for r in records
     )
+    
+    # Calculate total cost (token + runtime)
+    runtime_cost = float(runtime_stats.runtime_cost) if runtime_stats else 0.0
+    total_cost = token_cost + runtime_cost
     
     # Aggregate tool usage across all records
     tool_data = {}
@@ -354,6 +421,8 @@ async def session_detail(
         "total_input_tokens": total_input,
         "total_output_tokens": total_output,
         "total_tokens": total_tokens,
+        "token_cost": token_cost,
+        "runtime_cost": runtime_cost,
         "total_cost": total_cost,
         "invocation_count": len(records),
         "avg_latency_ms": total_latency / len(records) if records else 0,
@@ -370,6 +439,7 @@ async def session_detail(
             "session_stats": session_stats,
             "records": sorted_records,
             "tool_usage": tool_usage,
+            "runtime_stats": runtime_stats,
         },
     )
 
@@ -510,7 +580,7 @@ async def user_detail(
     Displays:
     - User's total token usage
     - Session count and list
-    - Cost breakdown
+    - Cost breakdown (token + runtime)
     - Invocation history
     
     Requirements: 4.1, 4.2
@@ -522,6 +592,7 @@ async def user_detail(
     # Initialize repository and cost calculator
     repository = UsageRepository()
     cost_calculator = CostCalculator()
+    runtime_repo = RuntimeUsageRepository()
     
     # Fetch user stats
     user_stats = await repository.get_user_detail(user_id, start_dt, end_dt)
@@ -529,6 +600,19 @@ async def user_detail(
     # Fetch all records for this user to get session details
     all_records = await repository.get_all_records(start_dt, end_dt)
     user_records = [r for r in all_records if r.user_id == user_id]
+    
+    # Fetch runtime stats for all sessions this user has
+    session_ids = list(set(r.session_id for r in user_records))
+    session_runtime_stats = {}
+    for session_id in session_ids:
+        stats = await runtime_repo.get_session_runtime_stats(session_id)
+        if stats:
+            session_runtime_stats[session_id] = stats
+    
+    # Calculate total runtime cost for user
+    total_runtime_cost = sum(
+        float(s.runtime_cost) for s in session_runtime_stats.values()
+    )
     
     # Group records by session
     sessions = {}
@@ -540,6 +624,8 @@ async def user_detail(
                 "total_tokens": 0,
                 "input_tokens": 0,
                 "output_tokens": 0,
+                "token_cost": 0.0,
+                "runtime_cost": 0.0,
                 "total_cost": 0.0,
                 "invocation_count": 0,
                 "first_timestamp": record.timestamp,
@@ -553,7 +639,7 @@ async def user_detail(
         session["total_tokens"] += record.total_tokens
         session["input_tokens"] += record.input_tokens
         session["output_tokens"] += record.output_tokens
-        session["total_cost"] += cost_calculator.calculate_cost(
+        session["token_cost"] += cost_calculator.calculate_cost(
             record.input_tokens, record.output_tokens, record.model_id
         )
         session["invocation_count"] += 1
@@ -567,6 +653,12 @@ async def user_detail(
             session["first_timestamp"] = record.timestamp
         if record.timestamp > session["last_timestamp"]:
             session["last_timestamp"] = record.timestamp
+    
+    # Add runtime costs to sessions and calculate total cost
+    for session_id, session in sessions.items():
+        if session_id in session_runtime_stats:
+            session["runtime_cost"] = float(session_runtime_stats[session_id].runtime_cost)
+        session["total_cost"] = session["token_cost"] + session["runtime_cost"]
     
     # Convert sets to lists for template
     for session in sessions.values():
@@ -584,6 +676,10 @@ async def user_detail(
     user_emails = await get_user_emails_by_ids([user_id])
     user_email = user_emails.get(user_id)
     
+    # Calculate total cost (token + runtime)
+    total_token_cost = user_stats.total_cost if user_stats else 0.0
+    total_cost = total_token_cost + total_runtime_cost
+    
     return templates.TemplateResponse(
         "admin/user_detail.html",
         {
@@ -592,6 +688,9 @@ async def user_detail(
             "user_email": user_email,
             "user_stats": user_stats,
             "sessions": sorted_sessions,
+            "total_token_cost": total_token_cost,
+            "total_runtime_cost": total_runtime_cost,
+            "total_cost": total_cost,
             "start_time": start_dt.isoformat(),
             "end_time": end_dt.isoformat(),
             "days_in_period": days_in_period,
