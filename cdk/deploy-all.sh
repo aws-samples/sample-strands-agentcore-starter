@@ -266,6 +266,30 @@ if [ "$DRY_RUN" != true ]; then
         --require-approval never --outputs-file cdk-outputs.json
     
     echo -e "${GREEN}ChatApp stack deployed${NC}"
+    
+    # Force ECS to pull the new image (if not already deploying)
+    echo ""
+    echo -e "${YELLOW}Checking ECS deployment status...${NC}"
+    DEPLOYMENT_COUNT=$(aws ecs describe-services \
+        --cluster default \
+        --services "${APP_NAME}-express" \
+        --region "$AWS_REGION" \
+        --query 'length(services[0].deployments)' \
+        --output text 2>/dev/null || echo "1")
+    
+    if [ "$DEPLOYMENT_COUNT" = "1" ]; then
+        echo -e "${YELLOW}Forcing ECS deployment to pull new image...${NC}"
+        aws ecs update-service \
+            --cluster default \
+            --service "${APP_NAME}-express" \
+            --force-new-deployment \
+            --region "$AWS_REGION" \
+            --query 'service.serviceName' \
+            --output text > /dev/null
+        echo -e "${GREEN}ECS deployment triggered${NC}"
+    else
+        echo -e "${GREEN}ECS deployment already in progress (${DEPLOYMENT_COUNT} deployments)${NC}"
+    fi
 else
     echo -e "${CYAN}[DRY RUN] Would deploy ChatApp stack${NC}"
 fi
