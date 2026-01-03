@@ -20,7 +20,7 @@ Building AI agents is exciting, but understanding their usage, results, and cost
 - 🤖 **AI-powered conversational agent** with short-term (STM) and long-term memory (LTM)
 - ⚡ **Streaming chat** with embedded memory viewer
 - 📊 **Admin dashboard** with usage analytics and cost tracking
-- 💰 **Cost projections** based on actual usage patterns (token + compute costs)
+- 💰 **Cost projections** based on actual usage patterns (token + runtime costs)
 - 👍 **User feedback** with sentiment ratings and comments
 - 🛡️ **Guardrails analytics** with violation tracking and content filtering
 - 🔧 **Tool usage details** with per-tool invocation analytics
@@ -39,42 +39,33 @@ The built-in admin dashboard (`/admin`) provides comprehensive usage analytics:
 <td width="50%" valign="top">
 
 **📊 Dashboard Overview** `/admin`
-- Total tokens, invocations, estimated costs
-- **Total cost breakdown** (token cost + compute cost)
+- Total cost breakdown (token cost + runtime cost)
 - Top users and tools by usage
 - Model breakdown with per-model costs
-- **Runtime metrics** (duration, vCPU hours, memory GB-hours)
-- Feedback and guardrails summary
 
 </td>
 <td width="50%" valign="top">
 
-**🔢 Token Analytics** `/admin/tokens`
+**🔢 Token Usage** `/admin/tokens`
 - Token usage breakdown by model
 - Input vs output distribution
-- Cost per model comparison
-- Time-range filtering
+- Monthly projections
 
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
 
-**👥 User Analytics** `/admin/users`
-- Per-user token usage and session counts
-- Search users by ID
-- Drill-down to individual sessions
-- Sorted by total tokens
+**💬 Chat History** `/admin/history`
+- Browse all chat sessions with time filtering
+- Token cost vs runtime cost breakdown
 
 </td>
 <td width="50%" valign="top">
 
 **📋 Session Details** `/admin/sessions/{id}`
-- Complete session token usage
+- Complete session token and runtime usage
 - Tools invoked with success/error rates
-- Individual invocation records
-- Model and latency information
-- **Runtime usage** (vCPU hours, runtime cost)
 
 </td>
 </tr>
@@ -82,35 +73,30 @@ The built-in admin dashboard (`/admin`) provides comprehensive usage analytics:
 <td width="50%" valign="top">
 
 **👍 Feedback Analytics** `/admin/feedback`
-- Thumbs up/down on responses
-- Optional comments on negative feedback
-- Filter by sentiment and date range
-- Drill-down to conversation context
+- User sentiment and comments capture
+- Review related conversation context
 
 </td>
 <td width="50%" valign="top">
 
-**🛡️ Guardrails Analytics** `/admin/guardrails`
-- Violation tracking by filter type
-- Filter strength and confidence levels
-- Source breakdown (input vs output)
-- Expandable violation details
+**👥 User Analytics** `/admin/users`
+- Per-user token usage and session counts
 
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
 
-**🔧 Tool Analytics** `/admin/tools`
-- Call counts per tool
-- Success/error rates
-- Average execution times
-- Drill-down to tool detail view
+**🛡️ Guardrails Analytics** `/admin/guardrails`
+- Violation tracking by filter type
+- Filter strength and confidence levels
 
 </td>
 <td width="50%" valign="top">
 
-
+**🔧 Tool Analytics** `/admin/tools`
+- Call counts per tool with success/error rates
+- Average execution times
 
 </td>
 </tr>
@@ -118,19 +104,15 @@ The built-in admin dashboard (`/admin`) provides comprehensive usage analytics:
 <td width="50%" valign="top">
 
 **📝 Prompt Templates** `/admin/templates`
-- Create reusable prompt templates
+- Create reusable prompt templates that appear in chat UI dropdown
 - Edit title, description, and prompt text
-- Templates appear in chat UI dropdown
-- Default "Capabilities" template included
 
 </td>
 <td width="50%" valign="top">
 
 **🎨 Application Settings** `/admin/settings`
-- Customize app title and subtitle
-- Upload custom header and chat logos
-- Theme color customization with presets
-- Live preview of color changes
+- Customize app title, subtitle, and welcome message
+- Set app theme including color and custom logos
 
 </td>
 </tr>

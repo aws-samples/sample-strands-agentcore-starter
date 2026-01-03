@@ -430,7 +430,6 @@ export class FoundationStack extends cdk.Stack {
       },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
-      timeToLiveAttribute: 'ttl',
     });
 
     // GSI for querying by date range across all sessions

@@ -799,3 +799,242 @@ async def guardrails_analytics(
             "days_in_period": days_in_period,
         },
     )
+
+
+@router.get("/history", response_class=HTMLResponse)
+async def chat_history(
+    request: Request,
+    start_time: Optional[str] = Query(None, description="Start time (ISO format)"),
+    end_time: Optional[str] = Query(None, description="End time (ISO format)"),
+):
+    """Chat history page listing all sessions in reverse chronological order.
+    
+    Displays:
+    - All chat sessions with timestamps
+    - User information for each session
+    - Token usage and cost per session
+    """
+    # Parse time range
+    start_dt, end_dt = _parse_time_range(start_time, end_time)
+    days_in_period = max(1, (end_dt - start_dt).days)
+    
+    # Initialize repositories
+    repository = UsageRepository()
+    cost_calculator = CostCalculator()
+    runtime_repo = RuntimeUsageRepository()
+    
+    # Fetch all records in time range
+    all_records = await repository.get_all_records(start_dt, end_dt)
+    
+    # Group records by session
+    sessions: Dict[str, Dict[str, Any]] = {}
+    for record in all_records:
+        if record.session_id not in sessions:
+            sessions[record.session_id] = {
+                "session_id": record.session_id,
+                "user_id": record.user_id,
+                "total_tokens": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "token_cost": 0.0,
+                "runtime_cost": 0.0,
+                "total_cost": 0.0,
+                "invocation_count": 0,
+                "first_timestamp": record.timestamp,
+                "last_timestamp": record.timestamp,
+                "models_used": set(),
+                "tools_used": set(),
+            }
+        
+        session = sessions[record.session_id]
+        session["total_tokens"] += record.total_tokens
+        session["input_tokens"] += record.input_tokens
+        session["output_tokens"] += record.output_tokens
+        session["token_cost"] += cost_calculator.calculate_cost(
+            record.input_tokens, record.output_tokens, record.model_id
+        )
+        session["invocation_count"] += 1
+        session["models_used"].add(record.model_id)
+        
+        for tool_name in record.tool_usage.keys():
+            session["tools_used"].add(tool_name)
+        
+        # Track time range
+        if record.timestamp < session["first_timestamp"]:
+            session["first_timestamp"] = record.timestamp
+        if record.timestamp > session["last_timestamp"]:
+            session["last_timestamp"] = record.timestamp
+    
+    # Fetch runtime costs for all sessions
+    session_ids = list(sessions.keys())
+    session_runtime_costs = await runtime_repo.get_runtime_costs_for_sessions(session_ids)
+    
+    # Add runtime costs to sessions
+    for session_id, session in sessions.items():
+        session["runtime_cost"] = float(session_runtime_costs.get(session_id, 0))
+        session["total_cost"] = session["token_cost"] + session["runtime_cost"]
+        # Convert sets to lists for template
+        session["models_used"] = list(session["models_used"])
+        session["tools_used"] = list(session["tools_used"])
+    
+    # Sort sessions by last activity (most recent first)
+    sorted_sessions = sorted(
+        sessions.values(),
+        key=lambda s: s["last_timestamp"],
+        reverse=True,
+    )
+    
+    # Fetch user emails for all users
+    user_ids = list(set(s["user_id"] for s in sorted_sessions))
+    user_emails = await get_user_emails_by_ids(user_ids) if user_ids else {}
+    
+    # Calculate summary stats
+    total_sessions = len(sorted_sessions)
+    total_messages = sum(s["invocation_count"] for s in sorted_sessions)
+    total_cost = sum(s["total_cost"] for s in sorted_sessions)
+    
+    return templates.TemplateResponse(
+        "admin/history.html",
+        {
+            "request": request,
+            "sessions": sorted_sessions,
+            "user_emails": user_emails,
+            "total_sessions": total_sessions,
+            "total_messages": total_messages,
+            "total_cost": total_cost,
+            "start_time": start_dt.isoformat(),
+            "end_time": end_dt.isoformat(),
+            "days_in_period": days_in_period,
+        },
+    )
+
+
+@router.get("/history/{session_id}", response_class=HTMLResponse)
+async def chat_history_detail(
+    request: Request,
+    session_id: str,
+):
+    """Detailed view of a chat session from history.
+    
+    Shows the same session detail page but with breadcrumbs pointing
+    back to Chat History instead of User Sessions.
+    """
+    # Initialize repository and cost calculator
+    repository = UsageRepository()
+    cost_calculator = CostCalculator()
+    runtime_repo = RuntimeUsageRepository()
+    
+    # Fetch all records for this session using GSI
+    records = await repository.get_session_records(session_id)
+    
+    # Fetch runtime stats for this session
+    runtime_stats = await runtime_repo.get_session_runtime_stats(session_id)
+    
+    if not records:
+        return templates.TemplateResponse(
+            "admin/session_detail.html",
+            {
+                "request": request,
+                "session_id": session_id,
+                "session_stats": None,
+                "records": [],
+                "tool_usage": [],
+                "runtime_stats": runtime_stats,
+                "from_history": True,
+            },
+        )
+    
+    # Calculate session-level stats
+    total_input = sum(r.input_tokens for r in records)
+    total_output = sum(r.output_tokens for r in records)
+    total_tokens = sum(r.total_tokens for r in records)
+    total_latency = sum(r.latency_ms for r in records)
+    
+    # Get unique models and user
+    models_used = list(set(r.model_id for r in records))
+    user_id = records[0].user_id if records else ""
+    
+    # Calculate total token cost
+    token_cost = sum(
+        cost_calculator.calculate_cost(r.input_tokens, r.output_tokens, r.model_id)
+        for r in records
+    )
+    
+    # Calculate total cost (token + runtime)
+    runtime_cost = float(runtime_stats.runtime_cost) if runtime_stats else 0.0
+    total_cost = token_cost + runtime_cost
+    
+    # Aggregate tool usage across all records
+    tool_data = {}
+    for record in records:
+        for tool_name, usage in record.tool_usage.items():
+            if tool_name not in tool_data:
+                tool_data[tool_name] = {
+                    "call_count": 0,
+                    "success_count": 0,
+                    "error_count": 0,
+                }
+            tool_data[tool_name]["call_count"] += usage.call_count
+            tool_data[tool_name]["success_count"] += usage.success_count
+            tool_data[tool_name]["error_count"] += usage.error_count
+    
+    # Convert to list with calculated rates
+    tool_usage = []
+    for tool_name, data in tool_data.items():
+        call_count = data["call_count"]
+        success_rate = data["success_count"] / call_count if call_count > 0 else 0.0
+        error_rate = data["error_count"] / call_count if call_count > 0 else 0.0
+        
+        tool_usage.append({
+            "tool_name": tool_name,
+            "call_count": call_count,
+            "success_count": data["success_count"],
+            "error_count": data["error_count"],
+            "success_rate": success_rate,
+            "error_rate": error_rate,
+        })
+    
+    # Sort tools by call count
+    tool_usage.sort(key=lambda x: x["call_count"], reverse=True)
+    
+    # Get time range from records
+    timestamps = [r.timestamp for r in records]
+    first_timestamp = min(timestamps)
+    last_timestamp = max(timestamps)
+    
+    # Sort records by timestamp (most recent first)
+    sorted_records = sorted(records, key=lambda r: r.timestamp, reverse=True)
+    
+    # Fetch user email from Cognito
+    user_emails = await get_user_emails_by_ids([user_id]) if user_id else {}
+    user_email = user_emails.get(user_id)
+    
+    session_stats = {
+        "session_id": session_id,
+        "user_id": user_id,
+        "user_email": user_email,
+        "total_input_tokens": total_input,
+        "total_output_tokens": total_output,
+        "total_tokens": total_tokens,
+        "token_cost": token_cost,
+        "runtime_cost": runtime_cost,
+        "total_cost": total_cost,
+        "invocation_count": len(records),
+        "avg_latency_ms": total_latency / len(records) if records else 0,
+        "models_used": models_used,
+        "first_timestamp": first_timestamp,
+        "last_timestamp": last_timestamp,
+    }
+    
+    return templates.TemplateResponse(
+        "admin/session_detail.html",
+        {
+            "request": request,
+            "session_id": session_id,
+            "session_stats": session_stats,
+            "records": sorted_records,
+            "tool_usage": tool_usage,
+            "runtime_stats": runtime_stats,
+            "from_history": True,
+        },
+    )

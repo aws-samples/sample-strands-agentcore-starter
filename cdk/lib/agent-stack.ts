@@ -633,9 +633,6 @@ def handler(event, context):
                 if timestamp < 10000000000:  # If less than year 2286 in seconds, convert to ms
                     timestamp = int(timestamp * 1000)
             
-            # Calculate TTL (365 days from now)
-            ttl = int((datetime.now() + timedelta(days=365)).timestamp())
-            
             # Create date partition for GSI (YYYY-MM-DD)
             date_partition = datetime.fromtimestamp(timestamp / 1000).strftime('%Y-%m-%d')
             
@@ -663,7 +660,6 @@ def handler(event, context):
                 'agent_name': agent_name,
                 'region': region,
                 'resource_arn': log_entry.get('resource_arn') or log_entry.get('resource.arn', ''),
-                'ttl': ttl,
             }
             
             table.put_item(Item=item)

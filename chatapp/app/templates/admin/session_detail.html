@@ -12,6 +12,13 @@
     {% set user_display = session_stats.user_email if session_stats.user_email else session_stats.user_id %}
     {% set show_admin_btn = false %}
     {% set primary_action = {'type': 'back_to_chat'} %}
+    {% if from_history %}
+    {% set breadcrumbs = [
+        {'label': 'Admin', 'url': '/admin'},
+        {'label': 'Chat History', 'url': '/admin/history'},
+        {'label': session_id}
+    ] %}
+    {% else %}
     {% set breadcrumbs = [
         {'label': 'Admin', 'url': '/admin'},
         {'label': 'User Sessions', 'url': '/admin/users'},
@@ -19,6 +26,7 @@
         {'label': 'Session'},
         {'label': session_id}
     ] %}
+    {% endif %}
     {% else %}
     {% set breadcrumbs = [
         {'label': 'Admin', 'url': '/admin'},
