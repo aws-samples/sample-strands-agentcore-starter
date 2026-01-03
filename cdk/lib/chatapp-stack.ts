@@ -1,13 +1,28 @@
 /**
- * ChatApp Stack - ECS Express Mode service for the chat application.
+ * ChatApp Stack - Multi-Ingress support for chat application.
  * 
- * This stack creates:
+ * This stack supports three deployment modes:
+ * 1. ECS Express Gateway Mode ('ecs') - Always-on container service (~$59.70/mo)
+ * 2. Lambda Function URL Mode ('furl') - Serverless pay-per-use (~$4.60/mo)
+ * 3. Both Modes ('both') - Deploy both simultaneously for A/B testing or migration
+ * 
+ * Deployment mode is configured via --ingress flag in deploy-all.sh which sets
+ * the CDK context parameter 'ingress'.
+ * 
+ * Common Resources (all modes):
  * - ECR repository for container images
  * - S3 bucket for CodeBuild source
- * - CodeBuild project for building Docker images
+ * - CodeBuild project(s) for building Docker images
+ * 
+ * ECS-Specific Resources (mode = 'ecs' or 'both'):
  * - CloudWatch log group for container logs
  * - ECS Express Gateway Service with auto-scaling
  * - Custom resource to update deployment configuration
+ * 
+ * Lambda-Specific Resources (mode = 'furl' or 'both'):
+ * - CloudWatch log group for Lambda logs
+ * - Lambda Function with Web Adapter
+ * - Lambda Function URL
  * 
  * Dependencies (consolidated stacks):
  * - Foundation Stack: IAM roles (execution, task, infrastructure), Secrets Manager secret
@@ -15,20 +30,21 @@
  * - Agent Stack: (values accessed via Secrets Manager)
  * 
  * Exports:
- * - ServiceUrl
- * - ServiceArn
- * - ChatAppRepositoryUri
+ * - ChatAppRepositoryUri (always)
+ * - EcsServiceUrl, EcsServiceArn (when mode = 'ecs' or 'both')
+ * - LambdaFunctionUrl, LambdaFunctionArn (when mode = 'furl' or 'both')
  */
 
 import * as cdk from 'aws-cdk-lib';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as codebuild from 'aws-cdk-lib/aws-codebuild';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as iam from 'aws-cdk-lib/aws-iam';
-import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as cr from 'aws-cdk-lib/custom-resources';
 import { NagSuppressions } from 'cdk-nag';
 import { Construct } from 'constructs';
@@ -37,24 +53,79 @@ import { applyCommonSuppressions, applyBucketDeploymentSuppressions, applyCodeBu
 import * as path from 'path';
 
 export class ChatAppStack extends cdk.Stack {
+  // ========================================================================
+  // Common Resources (always created)
+  // ========================================================================
+  
   /** ECR repository for chat application container images */
-  public readonly chatappRepository: ecr.Repository;
+  public chatappRepository!: ecr.Repository;
   
   /** S3 bucket for CodeBuild source files */
-  public readonly sourceBucket: s3.Bucket;
+  public sourceBucket!: s3.Bucket;
   
-  /** CodeBuild project for building ChatApp Docker images */
-  public readonly buildProject: codebuild.Project;
+  /** Source deployment to S3 */
+  private sourceDeployment!: s3deploy.BucketDeployment;
   
-  /** CloudWatch log group for container logs */
-  public readonly logGroup: logs.LogGroup;
+  // ========================================================================
+  // ECS Resources (mode = 'ecs' or 'both')
+  // ========================================================================
+  
+  /** CodeBuild project for building ECS Docker images */
+  public ecsBuildProject?: codebuild.Project;
+  
+  /** CloudWatch log group for ECS container logs */
+  public ecsLogGroup?: logs.LogGroup;
   
   /** ECS Express Gateway Service */
-  public readonly expressGatewayService: ecs.CfnExpressGatewayService;
+  public expressGatewayService?: ecs.CfnExpressGatewayService;
+  
+  // ========================================================================
+  // Lambda Resources (mode = 'furl' or 'both')
+  // ========================================================================
+  
+  /** CodeBuild project for building Lambda container images */
+  public lambdaBuildProject?: codebuild.Project;
+  
+  /** CloudWatch log group for Lambda logs */
+  public lambdaLogGroup?: logs.LogGroup;
+  
+  /** Lambda Function with Web Adapter */
+  public lambdaFunction?: lambda.DockerImageFunction;
+  
+  /** Lambda Function URL */
+  public functionUrl?: lambda.FunctionUrl;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
+    const mode = config.deploymentMode;
+
+    // ========================================================================
+    // Create Common Resources
+    // ========================================================================
+    this.createCommonResources();
+
+    // ========================================================================
+    // Create Mode-Specific Resources
+    // ========================================================================
+    if (mode === 'ecs' || mode === 'both') {
+      this.createEcsResources();
+    }
+
+    if (mode === 'furl' || mode === 'both') {
+      this.createLambdaResources();
+    }
+
+    // ========================================================================
+    // Create Stack Outputs
+    // ========================================================================
+    this.createOutputs();
+  }
+
+  /**
+   * Create resources common to all deployment modes
+   */
+  private createCommonResources(): void {
     // ========================================================================
     // ECR Repository for ChatApp container images
     // ========================================================================
@@ -104,100 +175,10 @@ export class ChatAppStack extends cdk.Stack {
     cdk.Annotations.of(this.sourceBucket).acknowledgeWarning('@aws-cdk/aws-s3:accessLogsPolicyNotAdded', 'Logging permissions added to access logs bucket in Foundation stack');
 
     // ========================================================================
-    // CodeBuild Role and Project
-    // ========================================================================
-    
-    const codeBuildRole = new iam.Role(this, 'ChatAppCodeBuildRole', {
-      roleName: `${config.appName}-chatapp-codebuild-role-${this.region}`,
-      assumedBy: new iam.ServicePrincipal('codebuild.amazonaws.com'),
-      description: 'CodeBuild role for building ChatApp Docker images',
-    });
-
-    this.chatappRepository.grantPullPush(codeBuildRole);
-    this.sourceBucket.grantRead(codeBuildRole);
-
-    codeBuildRole.addToPolicy(
-      new iam.PolicyStatement({
-        sid: 'CloudWatchLogsAccess',
-        effect: iam.Effect.ALLOW,
-        actions: [
-          'logs:CreateLogGroup',
-          'logs:CreateLogStream',
-          'logs:PutLogEvents',
-        ],
-        resources: [
-          `arn:aws:logs:${this.region}:${this.account}:log-group:/aws/codebuild/${config.appName}-chatapp-build*`,
-        ],
-      })
-    );
-
-    // CodeBuild Project - uses AMD64 for ECS Express Mode compatibility
-    this.buildProject = new codebuild.Project(this, 'ChatAppBuildProject', {
-      projectName: `${config.appName}-chatapp-build`,
-      description: 'Build AMD64 Docker images for ChatApp',
-      role: codeBuildRole,
-      source: codebuild.Source.s3({
-        bucket: this.sourceBucket,
-        path: 'chatapp-source/',
-      }),
-      environment: {
-        buildImage: codebuild.LinuxBuildImage.AMAZON_LINUX_2_5,
-        computeType: codebuild.ComputeType.SMALL,
-        privileged: true,
-        environmentVariables: {
-          AWS_ACCOUNT_ID: {
-            type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
-            value: this.account,
-          },
-          AWS_REGION: {
-            type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
-            value: this.region,
-          },
-          ECR_REPO_URI: {
-            type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
-            value: this.chatappRepository.repositoryUri,
-          },
-        },
-      },
-      buildSpec: codebuild.BuildSpec.fromObject({
-        version: '0.2',
-        phases: {
-          pre_build: {
-            commands: [
-              'echo Logging in to Amazon ECR...',
-              'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com',
-            ],
-          },
-          build: {
-            commands: [
-              'echo Build started on `date`',
-              'echo Running unit tests...',
-              'pip install -r requirements.txt -q',
-              'python -m pytest tests/ -v --tb=short',
-              'echo Tests passed, building Docker image...',
-              'docker build --platform linux/amd64 -t $ECR_REPO_URI:latest .',
-              'docker tag $ECR_REPO_URI:latest $ECR_REPO_URI:$CODEBUILD_BUILD_NUMBER',
-            ],
-          },
-          post_build: {
-            commands: [
-              'echo Build completed on `date`',
-              'echo Pushing the Docker image...',
-              'docker push $ECR_REPO_URI:latest',
-              'docker push $ECR_REPO_URI:$CODEBUILD_BUILD_NUMBER',
-              'echo Image pushed successfully',
-            ],
-          },
-        },
-      }),
-      timeout: cdk.Duration.minutes(30),
-    });
-
-    // ========================================================================
     // Deploy ChatApp source files to S3
     // ========================================================================
     
-    const chatappSourceDeployment = new s3deploy.BucketDeployment(this, 'ChatAppSourceDeployment', {
+    this.sourceDeployment = new s3deploy.BucketDeployment(this, 'ChatAppSourceDeployment', {
       sources: [
         s3deploy.Source.asset(path.join(__dirname, '../../chatapp'), {
           exclude: [
@@ -224,20 +205,127 @@ export class ChatAppStack extends cdk.Stack {
       retainOnDelete: false,
       memoryLimit: 512,
     });
+  }
+
+  /**
+   * Create ECS-specific resources (when mode = 'ecs' or 'both')
+   */
+  private createEcsResources(): void {
+    const mode = config.deploymentMode;
+    
+    // Determine image tag based on mode
+    const imageTag = mode === 'both' ? 'ecs-latest' : 'latest';
 
     // ========================================================================
-    // Trigger CodeBuild
+    // CodeBuild Role and Project for ECS
+    // ========================================================================
+    
+<<<<<<< HEAD
+    // Use build timestamp to force CodeBuild trigger on every deploy
+    const buildTimestamp = new Date().toISOString();
+    
+    const triggerBuild = new cr.AwsCustomResource(this, 'TriggerChatAppBuild', {
+=======
+    const ecsCodeBuildRole = new iam.Role(this, 'EcsCodeBuildRole', {
+      roleName: `${config.appName}-ecs-codebuild-role-${this.region}`,
+      assumedBy: new iam.ServicePrincipal('codebuild.amazonaws.com'),
+      description: 'CodeBuild role for building ECS ChatApp Docker images',
+    });
+
+    this.chatappRepository.grantPullPush(ecsCodeBuildRole);
+    this.sourceBucket.grantRead(ecsCodeBuildRole);
+
+    ecsCodeBuildRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'CloudWatchLogsAccess',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'logs:CreateLogGroup',
+          'logs:CreateLogStream',
+          'logs:PutLogEvents',
+        ],
+        resources: [
+          `arn:aws:logs:${this.region}:${this.account}:log-group:/aws/codebuild/${config.appName}-chatapp-ecs-build*`,
+        ],
+      })
+    );
+
+    // CodeBuild Project - uses AMD64 for ECS Express Mode compatibility
+    this.ecsBuildProject = new codebuild.Project(this, 'EcsCodeBuildProject', {
+      projectName: `${config.appName}-chatapp-ecs-build`,
+      description: 'Build AMD64 Docker images for ChatApp ECS deployment',
+      role: ecsCodeBuildRole,
+      source: codebuild.Source.s3({
+        bucket: this.sourceBucket,
+        path: 'chatapp-source/',
+      }),
+      environment: {
+        buildImage: codebuild.LinuxBuildImage.AMAZON_LINUX_2_5,
+        computeType: codebuild.ComputeType.SMALL,
+        privileged: true,
+        environmentVariables: {
+          AWS_ACCOUNT_ID: {
+            type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
+            value: this.account,
+          },
+          AWS_REGION: {
+            type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
+            value: this.region,
+          },
+          ECR_REPO_URI: {
+            type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
+            value: this.chatappRepository.repositoryUri,
+          },
+          IMAGE_TAG: {
+            type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
+            value: imageTag,
+          },
+        },
+      },
+      buildSpec: codebuild.BuildSpec.fromObject({
+        version: '0.2',
+        phases: {
+          pre_build: {
+            commands: [
+              'echo Logging in to Amazon ECR...',
+              'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com',
+            ],
+          },
+          build: {
+            commands: [
+              'echo Build started on `date`',
+              'echo Building ECS Docker image...',
+              'docker build --platform linux/amd64 -t $ECR_REPO_URI:$IMAGE_TAG .',
+              'docker tag $ECR_REPO_URI:$IMAGE_TAG $ECR_REPO_URI:ecs-$CODEBUILD_BUILD_NUMBER',
+            ],
+          },
+          post_build: {
+            commands: [
+              'echo Build completed on `date`',
+              'echo Pushing Docker images...',
+              'docker push $ECR_REPO_URI:$IMAGE_TAG',
+              'docker push $ECR_REPO_URI:ecs-$CODEBUILD_BUILD_NUMBER',
+              'echo Images pushed successfully',
+            ],
+          },
+        },
+      }),
+      timeout: cdk.Duration.minutes(30),
+    });
+
+    // ========================================================================
+    // Trigger ECS CodeBuild
     // ========================================================================
     
     // Use build timestamp to force CodeBuild trigger on every deploy
     const buildTimestamp = new Date().toISOString();
     
-    const triggerBuild = new cr.AwsCustomResource(this, 'TriggerChatAppBuild', {
+    const triggerEcsBuild = new cr.AwsCustomResource(this, 'TriggerEcsBuild', {
       onCreate: {
         service: 'CodeBuild',
         action: 'startBuild',
         parameters: {
-          projectName: this.buildProject.projectName,
+          projectName: this.ecsBuildProject.projectName,
           sourceTypeOverride: 'S3',
           sourceLocationOverride: `${this.sourceBucket.bucketName}/chatapp-source/`,
         },
@@ -247,7 +335,7 @@ export class ChatAppStack extends cdk.Stack {
         service: 'CodeBuild',
         action: 'startBuild',
         parameters: {
-          projectName: this.buildProject.projectName,
+          projectName: this.ecsBuildProject.projectName,
           sourceTypeOverride: 'S3',
           sourceLocationOverride: `${this.sourceBucket.bucketName}/chatapp-source/`,
           // Timestamp forces CloudFormation to see a change and trigger the build
@@ -259,22 +347,23 @@ export class ChatAppStack extends cdk.Stack {
         new iam.PolicyStatement({
           effect: iam.Effect.ALLOW,
           actions: ['codebuild:StartBuild'],
-          resources: [this.buildProject.projectArn],
+          resources: [this.ecsBuildProject.projectArn],
         }),
       ]),
     });
     
     // Tag the custom resource with build timestamp for visibility
-    cdk.Tags.of(triggerBuild).add('BuildTimestamp', buildTimestamp);
+    cdk.Tags.of(triggerEcsBuild).add('BuildTimestamp', buildTimestamp);
 
-    triggerBuild.node.addDependency(chatappSourceDeployment);
+    // Ensure build trigger waits for source deployment
+    triggerEcsBuild.node.addDependency(this.sourceDeployment);
 
     // ========================================================================
-    // Build Waiter - wait for CodeBuild to complete
+    // Build Waiter for ECS - wait for CodeBuild to complete
     // ========================================================================
     
-    const buildWaiterFunction = new lambda.Function(this, 'ChatAppBuildWaiterFunction', {
-      functionName: `${config.appName}-chatapp-build-waiter`,
+    const ecsBuildWaiterFunction = new lambda.Function(this, 'EcsBuildWaiterFunction', {
+      functionName: `${config.appName}-ecs-build-waiter`,
       runtime: lambda.Runtime.PYTHON_3_11,
       handler: 'index.handler',
       timeout: cdk.Duration.minutes(14),
@@ -332,49 +421,41 @@ def handler(event, context):
 `),
     });
 
-    buildWaiterFunction.addToRolePolicy(
+    ecsBuildWaiterFunction.addToRolePolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['codebuild:BatchGetBuilds'],
-        resources: [this.buildProject.projectArn],
+        resources: [this.ecsBuildProject.projectArn],
       })
     );
 
-    const buildWaiterProviderLogGroup = new logs.LogGroup(this, 'ChatAppBuildWaiterProviderLogs', {
-      retention: logs.RetentionDays.ONE_DAY,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    const ecsBuildWaiterProvider = new cr.Provider(this, 'EcsBuildWaiterProvider', {
+      onEventHandler: ecsBuildWaiterFunction,
+      logRetention: logs.RetentionDays.ONE_DAY,
     });
 
-    const buildWaiterProvider = new cr.Provider(this, 'ChatAppBuildWaiterProvider', {
-      onEventHandler: buildWaiterFunction,
-      logGroup: buildWaiterProviderLogGroup,
-    });
-
-    const buildWaiter = new cdk.CustomResource(this, 'ChatAppBuildWaiter', {
-      serviceToken: buildWaiterProvider.serviceToken,
+    const ecsBuildWaiter = new cdk.CustomResource(this, 'EcsBuildWaiter', {
+      serviceToken: ecsBuildWaiterProvider.serviceToken,
       properties: {
-        BuildId: triggerBuild.getResponseField('build.id'),
+        BuildId: triggerEcsBuild.getResponseField('build.id'),
         Timestamp: Date.now().toString(),
       },
     });
 
-    buildWaiter.node.addDependency(triggerBuild);
-
+    ecsBuildWaiter.node.addDependency(triggerEcsBuild);
 
     // ========================================================================
-    // Task 13.2: Create CloudWatch log group for container logs
-    // Requirements: 8.6
+    // Create CloudWatch log group for ECS container logs
     // ========================================================================
     
-    this.logGroup = new logs.LogGroup(this, 'ChatAppLogGroup', {
+    this.ecsLogGroup = new logs.LogGroup(this, 'EcsLogGroup', {
       logGroupName: `/ecs/${config.appName}/${config.ecsServiceName}`,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       retention: logs.RetentionDays.ONE_WEEK,
     });
 
     // ========================================================================
-    // Task 13.3: Create ECS Express Gateway Service
-    // Requirements: 8.2, 8.3, 8.4, 8.5
+    // Create ECS Express Gateway Service
     // ========================================================================
     
     // Import IAM roles from Foundation stack
@@ -383,26 +464,25 @@ def handler(event, context):
     const infrastructureRoleArn = cdk.Fn.importValue(exportNames.infrastructureRoleArn);
     
     // Import secret ARN from Foundation stack
-    // Note: The secret contains values from Foundation, Bedrock, and Agent stacks
     const secretArn = cdk.Fn.importValue(exportNames.secretArn);
 
     // Create ECS Express Gateway Service
     this.expressGatewayService = new ecs.CfnExpressGatewayService(this, 'ExpressGatewayService', {
       serviceName: config.ecsServiceName,
       
-      // IAM roles (Requirements: 8.2)
+      // IAM roles
       executionRoleArn: executionRoleArn.toString(),
       infrastructureRoleArn: infrastructureRoleArn.toString(),
       taskRoleArn: taskRoleArn.toString(),
       
-      // Resource allocation (Requirements: 8.2)
+      // Resource allocation
       cpu: config.cpu.toString(),
       memory: config.memory.toString(),
       
-      // Health check configuration (Requirements: 8.4)
+      // Health check configuration
       healthCheckPath: '/health',
       
-      // Auto-scaling configuration (Requirements: 8.3)
+      // Auto-scaling configuration
       scalingTarget: {
         minTaskCount: config.minTasks,
         maxTaskCount: config.maxTasks,
@@ -410,18 +490,18 @@ def handler(event, context):
         autoScalingTargetValue: 70,
       },
       
-      // Primary container configuration (Requirements: 8.5)
+      // Primary container configuration
       primaryContainer: {
-        image: `${this.chatappRepository.repositoryUri}:latest`,
+        image: `${this.chatappRepository.repositoryUri}:${imageTag}`,
         containerPort: config.containerPort,
         
         // CloudWatch Logs configuration
         awsLogsConfiguration: {
-          logGroup: this.logGroup.logGroupName,
+          logGroup: this.ecsLogGroup.logGroupName,
           logStreamPrefix: 'chatapp',
         },
         
-        // Inject secrets as environment variables (Requirements: 8.5)
+        // Inject secrets as environment variables
         secrets: [
           {
             name: 'COGNITO_USER_POOL_ID',
@@ -492,13 +572,11 @@ def handler(event, context):
     });
 
     // Ensure the service depends on the log group and build completion
-    this.expressGatewayService.node.addDependency(this.logGroup);
-    this.expressGatewayService.node.addDependency(buildWaiter);
-
+    this.expressGatewayService.node.addDependency(this.ecsLogGroup);
+    this.expressGatewayService.node.addDependency(ecsBuildWaiter);
 
     // ========================================================================
-    // Task 13.4: Create deployment configuration update custom resource
-    // Requirements: 8.7
+    // Create deployment configuration update custom resource
     // ========================================================================
     
     // Custom resource to update ECS service deployment configuration
@@ -549,104 +627,389 @@ def handler(event, context):
 
     // Ensure this runs after the Express Gateway Service is created
     updateDeploymentConfig.node.addDependency(this.expressGatewayService);
+  }
+
+  /**
+   * Create Lambda-specific resources (when mode = 'furl' or 'both')
+   */
+  private createLambdaResources(): void {
+    const mode = config.deploymentMode;
+    
+    // Determine image tag based on mode
+    const imageTag = mode === 'both' ? 'lambda-latest' : 'latest';
 
     // ========================================================================
-    // Task 13.5: Add stack outputs and exports
-    // Requirements: 8.9
+    // CodeBuild Role and Project for Lambda
     // ========================================================================
     
-    // Export ECR repository URI
+    const lambdaCodeBuildRole = new iam.Role(this, 'LambdaCodeBuildRole', {
+      roleName: `${config.appName}-lambda-codebuild-role-${this.region}`,
+      assumedBy: new iam.ServicePrincipal('codebuild.amazonaws.com'),
+      description: 'CodeBuild role for building Lambda ChatApp container images',
+    });
+
+    this.chatappRepository.grantPullPush(lambdaCodeBuildRole);
+    this.sourceBucket.grantRead(lambdaCodeBuildRole);
+
+    lambdaCodeBuildRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'CloudWatchLogsAccess',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'logs:CreateLogGroup',
+          'logs:CreateLogStream',
+          'logs:PutLogEvents',
+        ],
+        resources: [
+          `arn:aws:logs:${this.region}:${this.account}:log-group:/aws/codebuild/${config.appName}-chatapp-lambda-build*`,
+        ],
+      })
+    );
+
+    // CodeBuild Project - builds Lambda container using Dockerfile.lambda
+    this.lambdaBuildProject = new codebuild.Project(this, 'LambdaCodeBuildProject', {
+      projectName: `${config.appName}-chatapp-lambda-build`,
+      description: 'Build Lambda container images for ChatApp with Web Adapter',
+      role: lambdaCodeBuildRole,
+      source: codebuild.Source.s3({
+        bucket: this.sourceBucket,
+        path: 'chatapp-source/',
+      }),
+      environment: {
+        buildImage: codebuild.LinuxBuildImage.AMAZON_LINUX_2_5,
+        computeType: codebuild.ComputeType.SMALL,
+        privileged: true,
+        environmentVariables: {
+          AWS_ACCOUNT_ID: {
+            type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
+            value: this.account,
+          },
+          AWS_REGION: {
+            type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
+            value: this.region,
+          },
+          ECR_REPO_URI: {
+            type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
+            value: this.chatappRepository.repositoryUri,
+          },
+          IMAGE_TAG: {
+            type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
+            value: imageTag,
+          },
+        },
+      },
+      buildSpec: codebuild.BuildSpec.fromObject({
+        version: '0.2',
+        phases: {
+          pre_build: {
+            commands: [
+              'echo Logging in to Amazon ECR...',
+              'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com',
+            ],
+          },
+          build: {
+            commands: [
+              'echo Build started on `date`',
+              'echo Building Lambda container image with Web Adapter...',
+              'docker build -f Dockerfile.lambda --platform linux/amd64 -t $ECR_REPO_URI:$IMAGE_TAG .',
+              'docker tag $ECR_REPO_URI:$IMAGE_TAG $ECR_REPO_URI:lambda-$CODEBUILD_BUILD_NUMBER',
+            ],
+          },
+          post_build: {
+            commands: [
+              'echo Build completed on `date`',
+              'echo Pushing Docker images...',
+              'docker push $ECR_REPO_URI:$IMAGE_TAG',
+              'docker push $ECR_REPO_URI:lambda-$CODEBUILD_BUILD_NUMBER',
+              'echo Images pushed successfully',
+            ],
+          },
+        },
+      }),
+      timeout: cdk.Duration.minutes(30),
+    });
+
+    // ========================================================================
+    // Trigger Lambda CodeBuild
+    // ========================================================================
+    
+    const triggerLambdaBuild = new cr.AwsCustomResource(this, 'TriggerLambdaBuild', {
+      onCreate: {
+        service: 'CodeBuild',
+        action: 'startBuild',
+        parameters: {
+          projectName: this.lambdaBuildProject.projectName,
+          sourceTypeOverride: 'S3',
+          sourceLocationOverride: `${this.sourceBucket.bucketName}/chatapp-source/`,
+        },
+        physicalResourceId: cr.PhysicalResourceId.fromResponse('build.id'),
+      },
+      onUpdate: {
+        service: 'CodeBuild',
+        action: 'startBuild',
+        parameters: {
+          projectName: this.lambdaBuildProject.projectName,
+          sourceTypeOverride: 'S3',
+          sourceLocationOverride: `${this.sourceBucket.bucketName}/chatapp-source/`,
+        },
+        physicalResourceId: cr.PhysicalResourceId.fromResponse('build.id'),
+      },
+      policy: cr.AwsCustomResourcePolicy.fromStatements([
+        new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: ['codebuild:StartBuild'],
+          resources: [this.lambdaBuildProject.projectArn],
+        }),
+      ]),
+    });
+
+    // Ensure build trigger waits for source deployment
+    triggerLambdaBuild.node.addDependency(this.sourceDeployment);
+
+    // ========================================================================
+    // Build Waiter for Lambda - wait for CodeBuild to complete
+    // ========================================================================
+    
+    const lambdaBuildWaiterFunction = new lambda.Function(this, 'LambdaBuildWaiterFunction', {
+      functionName: `${config.appName}-lambda-build-waiter`,
+      runtime: lambda.Runtime.PYTHON_3_11,
+      handler: 'index.handler',
+      timeout: cdk.Duration.minutes(14),
+      memorySize: 128,
+      code: lambda.Code.fromInline(`
+import boto3
+import time
+import json
+import cfnresponse
+
+def handler(event, context):
+    print(f"Event: {json.dumps(event)}")
+    
+    if event['RequestType'] == 'Delete':
+        cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+        return
+    
+    try:
+        build_id = event['ResourceProperties']['BuildId']
+        codebuild = boto3.client('codebuild')
+        
+        max_attempts = 28
+        for attempt in range(max_attempts):
+            response = codebuild.batch_get_builds(ids=[build_id])
+            
+            if not response['builds']:
+                raise Exception(f"Build {build_id} not found")
+            
+            build = response['builds'][0]
+            status = build['buildStatus']
+            
+            print(f"Attempt {attempt + 1}: Build status = {status}")
+            
+            if status == 'SUCCEEDED':
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, {
+                    'BuildId': build_id,
+                    'Status': status
+                })
+                return
+            elif status in ['FAILED', 'FAULT', 'STOPPED', 'TIMED_OUT']:
+                error_msg = f"Build {build_id} failed with status: {status}"
+                print(error_msg)
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason=error_msg)
+                return
+            
+            time.sleep(30)
+        
+        error_msg = f"Build {build_id} timed out after 14 minutes"
+        print(error_msg)
+        cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason=error_msg)
+        
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason=str(e))
+`),
+    });
+
+    lambdaBuildWaiterFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['codebuild:BatchGetBuilds'],
+        resources: [this.lambdaBuildProject.projectArn],
+      })
+    );
+
+    const lambdaBuildWaiterProvider = new cr.Provider(this, 'LambdaBuildWaiterProvider', {
+      onEventHandler: lambdaBuildWaiterFunction,
+      logRetention: logs.RetentionDays.ONE_DAY,
+    });
+
+    const lambdaBuildWaiter = new cdk.CustomResource(this, 'LambdaBuildWaiter', {
+      serviceToken: lambdaBuildWaiterProvider.serviceToken,
+      properties: {
+        BuildId: triggerLambdaBuild.getResponseField('build.id'),
+        Timestamp: Date.now().toString(),
+      },
+    });
+
+    lambdaBuildWaiter.node.addDependency(triggerLambdaBuild);
+
+    // ========================================================================
+    // CloudWatch Log Group for Lambda
+    // ========================================================================
+    
+    this.lambdaLogGroup = new logs.LogGroup(this, 'LambdaLogGroup', {
+      logGroupName: `/aws/lambda/${config.lambdaFunctionName}`,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      retention: logs.RetentionDays.THREE_DAYS,
+    });
+
+    // ========================================================================
+    // Lambda Function with Web Adapter
+    // ========================================================================
+    
+    // Import IAM role and secret from Foundation stack
+    const taskRoleArn = cdk.Fn.importValue(exportNames.taskRoleArn);
+    const secretArn = cdk.Fn.importValue(exportNames.secretArn);
+    
+    const taskRole = iam.Role.fromRoleArn(this, 'TaskRole', taskRoleArn);
+    const secret = secretsmanager.Secret.fromSecretCompleteArn(this, 'Secret', secretArn);
+    
+    // Create Lambda function from container image
+    this.lambdaFunction = new lambda.DockerImageFunction(this, 'LambdaFunction', {
+      functionName: config.lambdaFunctionName,
+      description: 'FastAPI chat application with Lambda Web Adapter for SSE streaming',
+      code: lambda.DockerImageCode.fromEcr(this.chatappRepository, {
+        tagOrDigest: imageTag,
+      }),
+      memorySize: config.lambdaMemory,
+      timeout: cdk.Duration.seconds(config.lambdaTimeout),
+      role: taskRole,
+      logGroup: this.lambdaLogGroup,
+      
+      // Environment variables for Lambda Web Adapter (non-secret)
+      environment: {
+        'PORT': '8080',
+        'LOG_LEVEL': 'INFO',
+        'AWS_LWA_INVOKE_MODE': 'response_stream',  // Enable SSE streaming
+        'AWS_LWA_PORT': '8080',
+      },
+    });
+    
+    // Grant secret read permissions
+    secret.grantRead(this.lambdaFunction);
+    
+    // Lambda function depends on build completion
+    this.lambdaFunction.node.addDependency(lambdaBuildWaiter);
+    
+    // Add environment variables from Secrets Manager
+    const secretFields: { [key: string]: string } = {
+      'COGNITO_USER_POOL_ID': 'cognito_user_pool_id',
+      'COGNITO_CLIENT_ID': 'cognito_client_id',
+      'COGNITO_CLIENT_SECRET': 'cognito_client_secret',
+      'AGENTCORE_RUNTIME_ARN': 'agentcore_runtime_arn',
+      'MEMORY_ID': 'memory_id',
+      'USAGE_TABLE_NAME': 'usage_table_name',
+      'FEEDBACK_TABLE_NAME': 'feedback_table_name',
+      'GUARDRAIL_TABLE_NAME': 'guardrail_table_name',
+      'PROMPT_TEMPLATES_TABLE_NAME': 'prompt_templates_table_name',
+      'GUARDRAIL_ID': 'guardrail_id',
+      'GUARDRAIL_VERSION': 'guardrail_version',
+      'KB_ID': 'kb_id',
+    };
+    
+    // Add each secret as an environment variable
+    for (const [envVar, secretField] of Object.entries(secretFields)) {
+      this.lambdaFunction.addEnvironment(
+        envVar,
+        secret.secretValueFromJson(secretField).unsafeUnwrap()
+      );
+    }
+
+    // ========================================================================
+    // Lambda Function URL (with response streaming)
+    // ========================================================================
+    
+    this.functionUrl = this.lambdaFunction.addFunctionUrl({
+      authType: lambda.FunctionUrlAuthType.NONE,  // Public access
+      invokeMode: lambda.InvokeMode.RESPONSE_STREAM,  // Enable SSE streaming
+      cors: {
+        allowedOrigins: ['*'],  // In production, restrict to specific domains
+        allowedMethods: [lambda.HttpMethod.ALL],
+        allowedHeaders: ['*'],
+        maxAge: cdk.Duration.hours(1),
+      },
+    });
+  }
+
+  /**
+   * Create stack outputs based on deployment mode
+   */
+  private createOutputs(): void {
+    const mode = config.deploymentMode;
+
+    // ========================================================================
+    // Common Outputs
+    // ========================================================================
+    
     new cdk.CfnOutput(this, 'ChatAppRepositoryUri', {
       value: this.chatappRepository.repositoryUri,
       description: 'ECR repository URI for chat application container images',
       exportName: exportNames.chatappRepositoryUri,
     });
 
-    // Note: The actual service URL is not available as a CloudFormation attribute.
-    // The deploy-all.sh script fetches the real URL from the ECS API after deployment.
-    // This output provides a placeholder that indicates where to find the URL.
-    new cdk.CfnOutput(this, 'ServiceName', {
-      value: config.ecsServiceName,
-      description: 'ECS Express Mode service name (use deploy-all.sh to get actual URL)',
-      exportName: exportNames.serviceUrl,
-    });
-
-    // Export Service ARN
-    new cdk.CfnOutput(this, 'ServiceArn', {
-      value: this.expressGatewayService.attrServiceArn,
-      description: 'ECS Express Gateway Service ARN',
-      exportName: exportNames.serviceArn,
-    });
-
-    // Output log group name for reference
-    new cdk.CfnOutput(this, 'LogGroupName', {
-      value: this.logGroup.logGroupName,
-      description: 'CloudWatch log group name for container logs',
+    new cdk.CfnOutput(this, 'DeploymentMode', {
+      value: mode,
+      description: 'Deployment mode: ecs, furl, or both',
     });
 
     // ========================================================================
-    // CDK-NAG SUPPRESSIONS
+    // ECS Outputs (when mode = 'ecs' or 'both')
     // ========================================================================
     
-    applyCommonSuppressions(this);
-    applyBucketDeploymentSuppressions(this);
-    applyCodeBuildSuppressions(this);
+    if (mode === 'ecs' || mode === 'both') {
+      new cdk.CfnOutput(this, 'EcsServiceName', {
+        value: config.ecsServiceName,
+        description: 'ECS Express Mode service name (use deploy-all.sh to get actual URL)',
+        exportName: exportNames.ecsServiceUrl,
+      });
 
-    // Suppress CodeBuild role wildcards
-    NagSuppressions.addResourceSuppressionsByPath(
-      this,
-      `/${config.appName}-ChatApp/ChatAppCodeBuildRole/DefaultPolicy/Resource`,
-      [
-        {
-          id: 'AwsSolutions-IAM5',
-          reason: 'CodeBuild log groups include build number. Scoped to specific project prefix.',
-          appliesTo: [
-            `Resource::arn:aws:logs:${this.region}:${this.account}:log-group:/aws/codebuild/${config.appName}-chatapp-build*`,
-            `Resource::arn:aws:logs:${this.region}:${this.account}:log-group:/aws/codebuild/<ChatAppBuildProjectCED7EC7C>:*`,
-          ],
-        },
-        {
-          id: 'AwsSolutions-IAM5',
-          reason: 'CodeBuild report groups include dynamic names. Scoped to specific project.',
-          appliesTo: [`Resource::arn:aws:codebuild:${this.region}:${this.account}:report-group/<ChatAppBuildProjectCED7EC7C>-*`],
-        },
-        {
-          id: 'AwsSolutions-IAM5',
-          reason: 'CodeBuild needs access to all objects in source bucket.',
-          appliesTo: ['Resource::<ChatAppSourceBucket82B12907.Arn>/*'],
-        },
-      ]
-    );
+      new cdk.CfnOutput(this, 'EcsServiceArn', {
+        value: this.expressGatewayService!.attrServiceArn,
+        description: 'ECS Express Gateway Service ARN',
+        exportName: exportNames.ecsServiceArn,
+      });
 
-    // Suppress BucketDeployment wildcards
-    NagSuppressions.addResourceSuppressionsByPath(
-      this,
-      `/${config.appName}-ChatApp/Custom::CDKBucketDeployment8693BB64968944B69AAFB0CC9EB8756C512MiB/ServiceRole/DefaultPolicy/Resource`,
-      [
-        {
-          id: 'AwsSolutions-IAM5',
-          reason: 'BucketDeployment needs access to CDK assets bucket for deployment.',
-          appliesTo: [`Resource::arn:aws:s3:::cdk-hnb659fds-assets-${this.account}-${this.region}/*`],
-        },
-        {
-          id: 'AwsSolutions-IAM5',
-          reason: 'BucketDeployment needs access to all objects in destination bucket.',
-          appliesTo: ['Resource::<ChatAppSourceBucket82B12907.Arn>/*'],
-        },
-      ]
-    );
+      new cdk.CfnOutput(this, 'EcsLogGroupName', {
+        value: this.ecsLogGroup!.logGroupName,
+        description: 'CloudWatch log group name for ECS container logs',
+      });
+    }
 
-    // Suppress build waiter provider wildcards
-    NagSuppressions.addResourceSuppressionsByPath(
-      this,
-      `/${config.appName}-ChatApp/ChatAppBuildWaiterProvider/framework-onEvent/ServiceRole/DefaultPolicy/Resource`,
-      [
-        {
-          id: 'AwsSolutions-IAM5',
-          reason: 'CDK Provider framework requires lambda:InvokeFunction with wildcard for versioned invocations.',
-          appliesTo: ['Resource::<ChatAppBuildWaiterFunction8502DDEE.Arn>:*'],
-        },
-      ]
-    );
+    // ========================================================================
+    // Lambda Outputs (when mode = 'furl' or 'both')
+    // ========================================================================
+    
+    if (mode === 'furl' || mode === 'both') {
+      new cdk.CfnOutput(this, 'LambdaFunctionUrl', {
+        value: this.functionUrl!.url,
+        description: 'Lambda Function URL with streaming - direct access endpoint',
+        exportName: exportNames.lambdaFunctionUrl,
+      });
+
+      new cdk.CfnOutput(this, 'LambdaFunctionArn', {
+        value: this.lambdaFunction!.functionArn,
+        description: 'Lambda function ARN',
+        exportName: exportNames.lambdaFunctionArn,
+      });
+
+      new cdk.CfnOutput(this, 'LambdaFunctionName', {
+        value: this.lambdaFunction!.functionName,
+        description: 'Lambda function name for logs and monitoring',
+      });
+
+      new cdk.CfnOutput(this, 'LambdaLogGroupName', {
+        value: this.lambdaLogGroup!.logGroupName,
+        description: 'CloudWatch log group name for Lambda logs',
+      });
+    }
   }
 }

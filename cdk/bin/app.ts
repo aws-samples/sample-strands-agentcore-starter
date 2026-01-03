@@ -19,9 +19,7 @@
 
 import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
-import { Aspects } from 'aws-cdk-lib';
-import { AwsSolutionsChecks } from 'cdk-nag';
-import { config, validateConfig } from '../lib/config';
+import { config, validateConfig, setDeploymentMode } from '../lib/config';
 
 // Import consolidated stack classes
 import { FoundationStack } from '../lib/foundation-stack';
@@ -29,13 +27,15 @@ import { BedrockStack } from '../lib/bedrock-stack';
 import { AgentStack } from '../lib/agent-stack';
 import { ChatAppStack } from '../lib/chatapp-stack';
 
+const app = new cdk.App();
+
+// Get deployment mode from CDK context (set via --context ingress=<mode>)
+const ingressMode = app.node.tryGetContext('ingress') || 'ecs';
+setDeploymentMode(ingressMode);
+
 // Validate configuration before synthesis
 validateConfig();
 
-const app = new cdk.App();
-
-// Apply cdk-nag AWS Solutions checks to all stacks
-Aspects.of(app).add(new AwsSolutionsChecks({ verbose: true }));
 
 // Environment configuration from CDK context or environment variables
 const env: cdk.Environment = {

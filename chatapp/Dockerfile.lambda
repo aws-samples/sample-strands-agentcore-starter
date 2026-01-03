@@ -1,0 +1,40 @@
+# Lambda-optimized Dockerfile for FastAPI ChatApp with Lambda Web Adapter
+# This enables deployment via Lambda Function URL instead of ECS
+# 
+# Key features:
+# - Uses AWS Lambda Web Adapter for native FastAPI support
+# - Enables response streaming for SSE (Server-Sent Events)
+# - No application code changes required
+# - Cost-effective alternative to ECS (~$4.60/mo vs ~$59.70/mo)
+
+# Use Debian slim instead of Lambda base image
+# Lambda Web Adapter works better with standard Python images
+FROM public.ecr.aws/docker/library/python:3.11-slim-bullseye
+
+# Copy Lambda Web Adapter extension
+# This enables FastAPI to run unchanged in Lambda with SSE streaming support
+COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:0.9.1 /lambda-adapter /opt/extensions/lambda-adapter
+
+# Set working directory
+WORKDIR /app
+
+# Copy application code
+COPY app ./app
+COPY requirements.txt .
+
+# Install Python dependencies
+# Note: We exclude dev dependencies (pytest, arel) to reduce image size
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Lambda Web Adapter configuration
+# AWS_LWA_INVOKE_MODE=response_stream enables SSE streaming
+ENV AWS_LWA_INVOKE_MODE=response_stream
+ENV READINESS_CHECK_PORT=8080
+ENV READINESS_CHECK_PATH=/health
+
+# Disable buffering for better streaming performance
+ENV PYTHONUNBUFFERED=1
+
+# Lambda entrypoint - runs uvicorn directly
+# Lambda Web Adapter translates Lambda events to HTTP requests
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]

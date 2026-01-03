@@ -476,11 +476,14 @@ export class FoundationStack extends cdk.Stack {
       })
     );
 
-    // ECS task role
+    // Task role (used by both ECS tasks and Lambda functions)
     this.taskRole = new iam.Role(this, 'TaskRole', {
-      roleName: `${config.appName}-ecs-task-role-${this.region}`,
-      assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
-      description: 'ECS task role with permissions for AgentCore, Cognito, DynamoDB, Bedrock',
+      roleName: `${config.appName}-task-role-${this.region}`,
+      assumedBy: new iam.CompositePrincipal(
+        new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
+        new iam.ServicePrincipal('lambda.amazonaws.com')
+      ),
+      description: 'Task role for ECS and Lambda with permissions for AgentCore, Cognito, DynamoDB, Bedrock',
     });
 
     // AgentCore Runtime permissions

@@ -26,7 +26,8 @@ Building AI agents is exciting, but understanding their usage, results, and cost
 - 🔧 **Tool usage details** with per-tool invocation analytics
 - 📝 **Prompt templates** for quick access to pre-defined prompts
 - 🎨 **Application settings** for branding customization (title, logos, theme colors)
-- ☁️ Containerized deployment using **Amazon ECS Express Mode**
+- ☁️ **Flexible deployment** - Choose ECS Express Mode or Lambda Function URL
+- 💸 **Cost-optimized** - Lambda mode costs an estimated ~92% less than ECS (~$4.60/mo vs ~$59.70/mo)
 - 🧠 AI Agents powered by **Amazon Bedrock AgentCore** using the **Strands Agents SDK**
 - 🔐 Secure authentication via **Amazon Cognito**
 
@@ -122,6 +123,9 @@ The built-in admin dashboard (`/admin`) provides comprehensive usage analytics:
 
 ## Architecture
 
+The application supports two ingress modes: **ECS Express Gateway** (always-on containers) or **Lambda Function URL** (serverless).
+
+**ECS Mode** (default):
 ```
 ┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
 │     Browser     │      │   ECS Express   │      │   Guardrails    │      │    AgentCore    │
@@ -144,6 +148,26 @@ The built-in admin dashboard (`/admin`) provides comprehensive usage analytics:
                                          ┌─────┴─────┐                                   │
                                          │ Firehose  │◀─── USAGE_LOGS (Runtime) │
                                          └───────────┘◀──────────────────────────────────┘
+```
+
+**Lambda Function URL Mode** (use `--ingress furl`):
+```
+┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
+│     Browser     │      │ Lambda Function │      │   Guardrails    │      │    AgentCore    │
+│  Chat + Admin   │◀────▶│  (Web Adapter)  │◀────▶│   (Bedrock)     │◀────▶│     Runtime     │
+│                 │ SSE  │    FastAPI      │      │                 │      │  Strands Agent  │
+└─────────────────┘      └─────────────────┘      └─────────────────┘      └─────────────────┘
+        │                       │                                           │           │
+        │                       ▼                                           │           ▼
+        │                ┌─────────────────┐                                │   ┌───────────────┐
+        │                │    DynamoDB     │                                │   │    Bedrock    │
+        │                │  Usage/Feedback │                                │   │ Choice of LLM │
+        │                └─────────────────┘                                │   └───────────────┘
+        ▼                                                                   ▼
+┌─────────────────┐                                                 ┌─────────────────┐
+│     Cognito     │                                                 │    AgentCore    │
+│      Auth       │                                                 │     Memory      │
+└─────────────────┘                                                 └─────────────────┘
 ```
 
 ## Prerequisites
@@ -191,7 +215,7 @@ Note: Docker is not required locally - all container builds are handled by AWS C
    ./create-user.sh your-email@example.com YourPassword123@ --admin
    ```
 
-5. **Wait for ECS deployment** (4-6 minutes), then access the URL shown in the deployment output.
+5. **Wait for deployment** (4-6 minutes for ECS, 3-4 minutes for Lambda), then access the URL shown in the deployment output.
 
 The deployment creates:
 - Cognito User Pool for authentication
@@ -200,9 +224,21 @@ The deployment creates:
 - Bedrock Knowledge Base with S3 Vectors
 - AgentCore Memory with LTM strategies
 - AgentCore Runtime with the deployed agent
-- ECS Express Mode service for the ChatApp
+- ChatApp ingress (ECS Express Mode and/or Lambda Function URL based on --ingress flag)
 
 ### Deployment Options
+
+The application supports three ingress modes for different use cases and cost profiles:
+
+#### Ingress Modes
+
+| Mode | Description | Monthly Cost | Use Case |
+|------|-------------|--------------|----------|
+| **ecs** (default) | ECS Express Gateway - Always-on container service | ~$59.70 | Production workloads, consistent traffic, no cold starts |
+| **furl** | Lambda Function URL - Serverless pay-per-use | ~$4.60 | Development, PoC, sporadic usage, cost optimization |
+| **both** | Deploy both simultaneously | ~$64.30 | A/B testing, migration, redundancy |
+
+#### Deployment Command
 
 ```bash
 ./deploy-all.sh [options]
@@ -210,8 +246,38 @@ The deployment creates:
 Options:
   --region <region>    AWS region (default: us-east-1)
   --profile <profile>  AWS CLI profile to use
+  --ingress <mode>     Ingress mode: ecs, furl, or both (default: ecs)
   --dry-run            Show what would be deployed without deploying
 ```
+
+#### Examples
+
+```bash
+# Deploy with ECS Express Gateway (default)
+./deploy-all.sh --region us-east-1
+
+# Deploy with Lambda Function URL only
+./deploy-all.sh --region us-east-1 --ingress furl
+
+# Deploy both ECS and Lambda simultaneously
+./deploy-all.sh --region us-east-1 --ingress both
+```
+
+#### Cost Breakdown
+
+**ECS Mode** (~$59.70/month):
+- ECS Fargate: $17.73/mo (0.5 vCPU, 1GB RAM, always-on)
+- IPv4 addresses: $25.20/mo (2 public IPs)
+- Application Load Balancer: $16.20/mo
+- Data transfer: ~$0.57/mo
+
+**Lambda Function URL Mode** (~$4.60/month typical):
+- Lambda compute: $2.50/mo (10,000 requests/day @ 2GB/5s avg)
+- Data transfer: ~$2.10/mo
+- No charges for: IPv4, ALB, or idle time
+- Cold starts: First request after idle may take 3-5 seconds
+
+**Both Mode**: Combines costs of both deployment modes
 
 ### Stack Architecture
 
@@ -222,7 +288,7 @@ The CDK deployment creates 4 consolidated CloudFormation stacks:
 | **Foundation** | Auth, Storage, IAM, Secrets | Cognito, DynamoDB tables, ECS roles, Secrets Manager |
 | **Bedrock** | AI/ML Resources | Guardrail, Knowledge Base (S3 Vectors), AgentCore Memory |
 | **Agent** | Agent Infrastructure | ECR, CodeBuild, AgentCore Runtime, Observability |
-| **ChatApp** | Application | ECR, CodeBuild, S3 source, ECS Express Mode service |
+| **ChatApp** | Application | ECR, CodeBuild, S3 source, ECS Express Mode and/or Lambda Function |
 
 Deployment order: Foundation → Bedrock → Agent → ChatApp
 
