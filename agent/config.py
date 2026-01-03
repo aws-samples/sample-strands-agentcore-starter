@@ -22,8 +22,11 @@ class AgentConfig:
         kb_max_results: Maximum number of KB search results to return
         kb_min_score: Minimum relevance score threshold for KB results
     """
+    # Required fields (no defaults) must come first
     memory_id: str
     aws_region: str
+    kb_id: str
+    # Optional fields with defaults
     log_level: str = "INFO"
     otel_endpoint: Optional[str] = None
     otel_enabled: bool = True
@@ -31,7 +34,6 @@ class AgentConfig:
     guardrail_id: Optional[str] = None
     guardrail_version: str = "1"
     guardrail_enabled: bool = True
-    kb_id: str
     kb_max_results: int = 5
     kb_min_score: float = 0.5
     
