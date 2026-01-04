@@ -220,12 +220,6 @@ export class ChatAppStack extends cdk.Stack {
     // CodeBuild Role and Project for ECS
     // ========================================================================
     
-<<<<<<< HEAD
-    // Use build timestamp to force CodeBuild trigger on every deploy
-    const buildTimestamp = new Date().toISOString();
-    
-    const triggerBuild = new cr.AwsCustomResource(this, 'TriggerChatAppBuild', {
-=======
     const ecsCodeBuildRole = new iam.Role(this, 'EcsCodeBuildRole', {
       roleName: `${config.appName}-ecs-codebuild-role-${this.region}`,
       assumedBy: new iam.ServicePrincipal('codebuild.amazonaws.com'),
