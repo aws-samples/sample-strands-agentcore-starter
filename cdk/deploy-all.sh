@@ -177,98 +177,41 @@ npx cdk synth --quiet
 echo -e "${GREEN}Synthesis complete${NC}"
 
 # ============================================================================
-# STEP 4: Deploy Foundation stack (no dependencies)
+# STEP 4: Deploy all stacks
+# CDK automatically deploys stacks in dependency order:
+# Foundation → Bedrock → Agent → ChatApp
 # ============================================================================
 echo ""
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BLUE}Step 4: Deploy Foundation stack${NC}"
+echo -e "${BLUE}Step 4: Deploy all stacks${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
-# Consolidated stack deployment order:
-# Phase 1: Foundation (no dependencies)
-# Phase 2: Bedrock (depends on Foundation for secret updates)
-# Phase 3: Agent (depends on Bedrock, Foundation) - includes CodeBuild for agent image
-# Phase 4: ChatApp (depends on Foundation, Agent) - includes CodeBuild for chatapp image
-
 if [ "$DRY_RUN" = true ]; then
-    echo -e "${CYAN}[DRY RUN] Would deploy Foundation stack${NC}"
+    echo -e "${CYAN}[DRY RUN] Would deploy all stacks${NC}"
     echo ""
     echo -e "${YELLOW}Stacks that would be deployed:${NC}"
     npx cdk list
 else
-    echo -e "${YELLOW}Deploying Foundation stack...${NC}"
-    echo ""
-    
-    npx cdk deploy \
-        "${APP_NAME}-Foundation" \
-        --require-approval never
-    
-    echo -e "${GREEN}Foundation stack deployed${NC}"
-fi
-
-# ============================================================================
-# STEP 4b: Deploy Bedrock stack (depends on Foundation)
-# ============================================================================
-echo ""
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BLUE}Step 4b: Deploy Bedrock stack${NC}"
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-
-if [ "$DRY_RUN" != true ]; then
-    echo -e "${YELLOW}Deploying Bedrock stack...${NC}"
-    echo ""
-    
-    npx cdk deploy \
-        "${APP_NAME}-Bedrock" \
-        --require-approval never
-    
-    echo -e "${GREEN}Bedrock stack deployed${NC}"
-else
-    echo -e "${CYAN}[DRY RUN] Would deploy Bedrock stack${NC}"
-fi
-
-# ============================================================================
-# STEP 5: Deploy Agent stack (depends on Bedrock)
-# ============================================================================
-echo ""
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BLUE}Step 5: Deploy Agent stack${NC}"
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-
-if [ "$DRY_RUN" != true ]; then
-    echo -e "${YELLOW}Deploying Agent stack...${NC}"
-    echo ""
-    
-    npx cdk deploy \
-        "${APP_NAME}-Agent" \
-        --require-approval never
-    
-    echo -e "${GREEN}Agent stack deployed${NC}"
-else
-    echo -e "${CYAN}[DRY RUN] Would deploy Agent stack${NC}"
-fi
-
-# ============================================================================
-# STEP 6: Deploy ChatApp stack (depends on Foundation, Agent)
-# Note: ChatApp stack includes CodeBuild for building the Docker image
-# ============================================================================
-echo ""
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BLUE}Step 7: Deploy ChatApp stack${NC}"
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-
-if [ "$DRY_RUN" != true ]; then
-    echo -e "${YELLOW}Deploying ChatApp stack (includes CodeBuild for Docker image)...${NC}"
+    echo -e "${YELLOW}Deploying all stacks (CDK handles dependency order)...${NC}"
     echo ""
     
     npx cdk deploy \
         "${APP_NAME}-ChatApp" \
         --require-approval never --outputs-file cdk-outputs.json
     
-    echo -e "${GREEN}ChatApp stack deployed${NC}"
-    
+    echo -e "${GREEN}All stacks deployed${NC}"
+fi
+
+# ============================================================================
+# STEP 5: Force ECS deployment (if needed)
+# ============================================================================
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}Step 5: Check ECS deployment${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+if [ "$DRY_RUN" != true ]; then
     # Force ECS to pull the new image (if not already deploying)
-    echo ""
     echo -e "${YELLOW}Checking ECS deployment status...${NC}"
     DEPLOYMENT_COUNT=$(aws ecs describe-services \
         --cluster default \
@@ -291,11 +234,11 @@ if [ "$DRY_RUN" != true ]; then
         echo -e "${GREEN}ECS deployment already in progress (${DEPLOYMENT_COUNT} deployments)${NC}"
     fi
 else
-    echo -e "${CYAN}[DRY RUN] Would deploy ChatApp stack${NC}"
+    echo -e "${CYAN}[DRY RUN] Would check ECS deployment status${NC}"
 fi
 
 # ============================================================================
-# STEP 7: Display outputs and next steps
+# STEP 6: Display outputs and next steps
 # ============================================================================
 echo ""
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
