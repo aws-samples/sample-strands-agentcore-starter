@@ -171,7 +171,10 @@ export class ChatAppStack extends cdk.Stack {
           build: {
             commands: [
               'echo Build started on `date`',
-              'echo Building the Docker image...',
+              'echo Running unit tests...',
+              'pip install -r requirements.txt -q',
+              'python -m pytest tests/ -v --tb=short',
+              'echo Tests passed, building Docker image...',
               'docker build --platform linux/amd64 -t $ECR_REPO_URI:latest .',
               'docker tag $ECR_REPO_URI:latest $ECR_REPO_URI:$CODEBUILD_BUILD_NUMBER',
             ],
@@ -212,7 +215,6 @@ export class ChatAppStack extends cdk.Stack {
             'deploy/**',
             '*.log',
             '.DS_Store',
-            'tests/**',
           ],
         }),
       ],

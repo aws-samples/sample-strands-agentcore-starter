@@ -10,7 +10,7 @@ Requirements: 3.1, 3.2
 import json
 import uuid
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Optional
 
 from fastapi import Request, Response
@@ -107,7 +107,7 @@ class SessionManager:
         Returns:
             Newly created ChatSession
         """
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(UTC).isoformat()
         session = ChatSession(
             session_id=self.generate_session_id(),
             created_at=now,
@@ -151,7 +151,7 @@ class SessionManager:
         session = self.get_session(request)
         if session:
             # Update last activity
-            session.last_activity = datetime.utcnow().isoformat()
+            session.last_activity = datetime.now(UTC).isoformat()
             self._set_session_cookie(response, session)
             return session
         
@@ -184,7 +184,7 @@ class SessionManager:
         if not session:
             return None
         
-        session.last_activity = datetime.utcnow().isoformat()
+        session.last_activity = datetime.now(UTC).isoformat()
         self._set_session_cookie(response, session)
         return session
     

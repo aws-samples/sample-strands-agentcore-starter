@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 """Generate realistic test data for admin dashboard performance testing.
 
-This script creates usage records, feedback, and guardrail violations
-for 20 test users over 30 days, with 3 conversations per user per day.
+This script creates usage records, feedback, and guardrail violations.
+
+Configure as needed to determine the size of the test data set:
+    NUM_USERS = 5
+    DAYS_BACK = 7
+    CONVERSATIONS_PER_DAY = 2
+    MIN_TURNS = 4
+    MAX_TURNS = 10
 
 Usage:
     cd chatapp
@@ -39,7 +45,7 @@ CONVERSATIONS_PER_DAY = 2
 MIN_TURNS = 4
 MAX_TURNS = 10
 
-# Realistic model IDs
+# Possible model IDs
 MODELS = [
     "global.amazon.nova-2-lite-v1:0",
     "us.amazon.nova-pro-v1:0",
