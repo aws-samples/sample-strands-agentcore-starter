@@ -8,13 +8,12 @@ import json
 from typing import Optional
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import RedirectResponse, HTMLResponse
-from fastapi.templating import Jinja2Templates
 
 from app.auth.cognito import CognitoAuth, AuthenticationError
 from app.auth.middleware import SESSION_COOKIE_NAME
+from app.templates_config import templates
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
-templates = Jinja2Templates(directory="app/templates")
 
 
 @router.get("/login", response_class=HTMLResponse)

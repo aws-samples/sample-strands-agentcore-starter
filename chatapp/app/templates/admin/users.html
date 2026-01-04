@@ -2,13 +2,19 @@
 
 {% block title %}User Analytics - Admin Dashboard{% endblock %}
 
+{% block favicon %}
+<link rel="icon" type="image/svg+xml" href="{{ logo_url if logo_url is defined else '/static/favicon.svg' }}">
+{% endblock %}
+
 {% block body %}
 <div class="min-h-screen bg-gray-50">
+    {% set show_admin_btn = false %}
+    {% set primary_action = {'type': 'back_to_chat'} %}
     {% set breadcrumbs = [
         {'label': 'Admin', 'url': '/admin'},
-        {'label': 'Users'}
+        {'label': 'User Sessions'}
     ] %}
-    {% include "components/admin_header.html" %}
+    {% include "components/header.html" %}
 
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <!-- Search and Time Range -->
@@ -111,12 +117,12 @@
             <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
                 <div class="flex items-center justify-between">
                     <div>
-                        <p class="text-sm font-medium text-gray-500">Tokens</p>
-                        <p class="text-2xl font-bold text-gray-900 mt-1">{{ "{:,}".format(users|sum(attribute='total_tokens')) }}</p>
+                        <p class="text-sm font-medium text-gray-500">Total Cost</p>
+                        <p class="text-2xl font-bold text-green-600 mt-1">${{ "%.2f"|format(users|sum(attribute='total_cost')) }}</p>
                     </div>
                     <div class="p-3 bg-green-100 rounded-full">
                         <svg class="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                     </div>
                 </div>
@@ -146,7 +152,9 @@
                             <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Input Tokens</th>
                             <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Output Tokens</th>
                             <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total Tokens</th>
-                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Token Cost</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Runtime Cost</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total Cost</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-200">
@@ -181,6 +189,12 @@
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
                                 {{ "{:,}".format(user.total_tokens) }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-500">
+                                ${{ "%.4f"|format(user.total_cost - user.runtime_cost) }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm text-blue-600">
+                                ${{ "%.4f"|format(user.runtime_cost) }}
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-green-600">
                                 ${{ "%.2f"|format(user.total_cost) }}

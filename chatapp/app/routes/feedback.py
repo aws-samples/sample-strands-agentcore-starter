@@ -11,21 +11,15 @@ from typing import Optional, Dict, Any, List
 
 from fastapi import APIRouter, Request, HTTPException, Query
 from fastapi.responses import JSONResponse, HTMLResponse
-from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, field_validator
-from pathlib import Path
 
 from app.models.feedback import FeedbackRecord, FeedbackSubmission, FeedbackStats
 from app.storage.feedback import FeedbackStorageService
 from app.admin.feedback_repository import FeedbackRepository
 from app.auth.cognito import get_user_emails_by_ids
+from app.templates_config import templates
 
 logger = logging.getLogger(__name__)
-
-# Set up templates
-BASE_DIR = Path(__file__).resolve().parent.parent
-TEMPLATES_DIR = BASE_DIR / "templates"
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 router = APIRouter(prefix="/api", tags=["feedback"])
 

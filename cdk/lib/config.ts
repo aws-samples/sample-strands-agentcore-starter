@@ -33,6 +33,10 @@ export interface AppConfig {
   guardrailTableName: string;
   /** Prompt templates table name */
   promptTemplatesTableName: string;
+  /** App settings table name */
+  appSettingsTableName: string;
+  /** Runtime usage table name */
+  runtimeUsageTableName: string;
 
   // Bedrock configuration
   /** Bedrock Guardrail name */
@@ -120,6 +124,8 @@ export const config: AppConfig = {
   feedbackTableName: getEnvOrDefault('FEEDBACK_TABLE_NAME', 'agentcore-feedback'),
   guardrailTableName: getEnvOrDefault('GUARDRAIL_TABLE_NAME', 'agentcore-guardrail-violations'),
   promptTemplatesTableName: getEnvOrDefault('PROMPT_TEMPLATES_TABLE_NAME', 'agentcore-prompt-templates'),
+  appSettingsTableName: getEnvOrDefault('APP_SETTINGS_TABLE_NAME', 'agentcore-app-settings'),
+  runtimeUsageTableName: getEnvOrDefault('RUNTIME_USAGE_TABLE_NAME', 'agentcore-runtime-usage'),
 
   // Bedrock configuration
   guardrailName: getEnvOrDefault('GUARDRAIL_NAME', 'agentcore-chatapp-guardrail'),
@@ -197,6 +203,9 @@ export const exportNames = {
   
   /** AgentCore Runtime ARN - stored in secrets for ChatApp access */
   agentRuntimeArn: `${config.appName}-AgentRuntimeArn`,
+
+  /** Runtime usage table ARN - used by Agent Stack for Firehose delivery */
+  runtimeUsageTableArn: `${config.appName}-RuntimeUsageTableArn`,
 
   // ========================================================================
   // ChatApp Stack exports (terminal outputs, not used by other stacks)

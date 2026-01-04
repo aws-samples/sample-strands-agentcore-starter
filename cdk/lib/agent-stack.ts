@@ -20,8 +20,12 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as cr from 'aws-cdk-lib/custom-resources';
 import * as bedrockagentcore from 'aws-cdk-lib/aws-bedrockagentcore';
+import * as firehose from 'aws-cdk-lib/aws-kinesisfirehose';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import { NagSuppressions } from 'cdk-nag';
 import { Construct } from 'constructs';
 import { config, exportNames } from './config';
+import { applyCommonSuppressions, applyBucketDeploymentSuppressions, applyCodeBuildSuppressions, applyBedrockSuppressions } from './nag-suppressions';
 import * as path from 'path';
 
 export class AgentStack extends cdk.Stack {
@@ -77,12 +81,19 @@ export class AgentStack extends cdk.Stack {
     });
 
     // --- S3 Bucket for CodeBuild source ---
+    // Import access logs bucket from Foundation stack
+    const accessLogsBucketName = cdk.Fn.importValue(`${config.appName}-AccessLogsBucketName`);
+    const accessLogsBucket = s3.Bucket.fromBucketName(this, 'ImportedAccessLogsBucket', accessLogsBucketName);
+
     this.sourceBucket = new s3.Bucket(this, 'BuildSourceBucket', {
       bucketName: `${config.buildSourceBucketName}-${this.account}-${this.region}`,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
+      serverAccessLogsBucket: accessLogsBucket,
+      serverAccessLogsPrefix: 'agent-build-source/',
       lifecycleRules: [
         {
           id: 'ExpireOldObjects',
@@ -91,6 +102,9 @@ export class AgentStack extends cdk.Stack {
         },
       ],
     });
+
+    // Acknowledge that logging permissions are handled in Foundation stack
+    cdk.Annotations.of(this.sourceBucket).acknowledgeWarning('@aws-cdk/aws-s3:accessLogsPolicyNotAdded', 'Logging permissions added to access logs bucket in Foundation stack');
 
     // --- CodeBuild Role ---
     const codeBuildRole = new iam.Role(this, 'CodeBuildRole', {
@@ -448,9 +462,14 @@ def handler(event, context):
       })
     );
 
+    const buildWaiterProviderLogGroup = new logs.LogGroup(this, 'BuildWaiterProviderLogs', {
+      retention: logs.RetentionDays.ONE_DAY,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
     const buildWaiterProvider = new cr.Provider(this, 'BuildWaiterProvider', {
       onEventHandler: buildWaiterFunction,
-      logRetention: logs.RetentionDays.ONE_DAY,
+      logGroup: buildWaiterProviderLogGroup,
     });
 
     const buildWaiter = new cdk.CustomResource(this, 'BuildWaiter', {
@@ -520,6 +539,271 @@ def handler(event, context):
         { key: 'ManagedBy', value: 'CDK' },
       ],
     });
+
+    // --- Delivery Source for Usage Logs ---
+    const usageLogsDeliverySource = new logs.CfnDeliverySource(this, 'UsageLogsDeliverySource', {
+      name: `${runtimeId}-usage-logs-source`,
+      logType: 'USAGE_LOGS',
+      resourceArn: this.agentRuntime.attrAgentRuntimeArn,
+      tags: [
+        { key: 'Application', value: config.appName },
+        { key: 'ManagedBy', value: 'CDK' },
+      ],
+    });
+
+    // ========================================================================
+    // USAGE LOGS FIREHOSE PIPELINE
+    // Delivers usage metrics to DynamoDB for cost tracking
+    // ========================================================================
+
+    // Import runtime usage table from Foundation stack
+    const runtimeUsageTableArn = cdk.Fn.importValue(exportNames.runtimeUsageTableArn);
+    const runtimeUsageTable = dynamodb.Table.fromTableArn(this, 'ImportedComputeUsageTable', runtimeUsageTableArn);
+
+    // Lambda function to transform usage logs and write to DynamoDB
+    const usageLogsTransformFunction = new lambda.Function(this, 'UsageLogsTransformFunction', {
+      functionName: `${config.appName}-usage-logs-transform`,
+      runtime: lambda.Runtime.PYTHON_3_11,
+      handler: 'index.handler',
+      timeout: cdk.Duration.minutes(1),
+      memorySize: 256,
+      environment: {
+        RUNTIME_USAGE_TABLE: config.runtimeUsageTableName,
+      },
+      code: lambda.Code.fromInline(`
+import boto3
+import json
+import base64
+import os
+from datetime import datetime, timedelta, timezone
+
+dynamodb = boto3.resource('dynamodb')
+table = dynamodb.Table(os.environ['RUNTIME_USAGE_TABLE'])
+
+def handler(event, context):
+    """
+    Transform Firehose records from AgentCore usage logs and write to DynamoDB.
+    Returns transformed records for Firehose (even though we write directly to DDB).
+    
+    USAGE_LOGS schema per AWS docs:
+    - event_timestamp: timestamp of the log entry
+    - resource_arn: ARN of the resource
+    - service.name: service name
+    - cloud.provider: cloud provider
+    - cloud.region: cloud region
+    - account.id: AWS account ID
+    - region: region
+    - resource.id: resource ID
+    - session.id: session ID (TOP LEVEL, not in attributes)
+    - agent.name: agent name
+    - elapsed_time_seconds: elapsed time
+    - agent.runtime.vcpu.hours.used: vCPU hours used
+    - agent.runtime.memory.gb_hours.used: memory GB-hours used
+    """
+    output = []
+    
+    for record in event['records']:
+        try:
+            # Decode the base64 encoded data
+            payload = base64.b64decode(record['data']).decode('utf-8')
+            
+            # Parse the JSON log entry
+            log_entry = json.loads(payload)
+            
+            # Extract session_id from attributes (where it actually is in USAGE_LOGS)
+            attributes = log_entry.get('attributes', {})
+            session_id = attributes.get('session.id')
+            
+            if not session_id:
+                # Log skipped records for debugging
+                print(f"Skipping record without session_id. Log entry keys: {list(log_entry.keys())}, attributes keys: {list(attributes.keys())}")
+                output.append({
+                    'recordId': record['recordId'],
+                    'result': 'Dropped',
+                    'data': record['data']
+                })
+                continue
+            
+            # Extract timestamp (in milliseconds)
+            timestamp = log_entry.get('event_timestamp')
+            if not timestamp:
+                timestamp = int(datetime.now().timestamp() * 1000)
+            else:
+                # Ensure it's in milliseconds
+                if timestamp < 10000000000:  # If less than year 2286 in seconds, convert to ms
+                    timestamp = int(timestamp * 1000)
+            
+            # Create date partition for GSI (YYYY-MM-DD)
+            date_partition = datetime.fromtimestamp(timestamp / 1000).strftime('%Y-%m-%d')
+            
+            # Extract metrics from metrics dict (where they actually are)
+            metrics = log_entry.get('metrics', {})
+            vcpu_hours = metrics.get('agent.runtime.vcpu.hours.used', 0)
+            memory_gb_hours = metrics.get('agent.runtime.memory.gb_hours.used', 0)
+            elapsed_time = attributes.get('time_elapsed_seconds', 0)
+            agent_name = attributes.get('agent.name', '')
+            region = attributes.get('region') or log_entry.get('resource', {}).get('cloud.region', '')
+            
+            # Convert timestamp to ISO format with timezone
+            dt = datetime.fromtimestamp(timestamp / 1000, tz=timezone.utc)
+            iso_timestamp = dt.isoformat()
+            
+            # Write to DynamoDB
+            item = {
+                'session_id': session_id,
+                'timestamp': timestamp,
+                'timestamp_iso': iso_timestamp,  # ISO format: 2025-12-29T20:48:57.302658+00:00
+                'date_partition': date_partition,
+                'vcpu_hours': str(vcpu_hours),
+                'memory_gb_hours': str(memory_gb_hours),
+                'time_elapsed_seconds': str(elapsed_time),
+                'agent_name': agent_name,
+                'region': region,
+                'resource_arn': log_entry.get('resource_arn') or log_entry.get('resource.arn', ''),
+            }
+            
+            table.put_item(Item=item)
+            
+            print(f"Successfully wrote record for session {session_id}")
+            
+            # Return success - data is already in DDB, Firehose doesn't need to store it
+            output.append({
+                'recordId': record['recordId'],
+                'result': 'Ok',
+                'data': base64.b64encode(json.dumps(item).encode('utf-8')).decode('utf-8')
+            })
+            
+        except Exception as e:
+            print(f"Error processing record: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            output.append({
+                'recordId': record['recordId'],
+                'result': 'ProcessingFailed',
+                'data': record['data']
+            })
+    
+    return {'records': output}
+`),
+    });
+
+    // Grant DynamoDB write permissions to Lambda
+    runtimeUsageTable.grantWriteData(usageLogsTransformFunction);
+
+    // Firehose IAM role
+    const firehoseRole = new iam.Role(this, 'UsageLogsFirehoseRole', {
+      roleName: `${config.appName}-usage-firehose-role-${this.region}`,
+      assumedBy: new iam.ServicePrincipal('firehose.amazonaws.com'),
+      description: 'IAM role for Usage Logs Firehose delivery stream',
+    });
+
+    // Grant Firehose permission to invoke Lambda
+    usageLogsTransformFunction.grantInvoke(firehoseRole);
+
+    // S3 bucket for Firehose backup/errors (required by Firehose)
+    const firehoseBackupBucket = new s3.Bucket(this, 'UsageLogsFirehoseBackupBucket', {
+      bucketName: `${config.appName}-usage-firehose-backup-${this.account}-${this.region}`,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
+      lifecycleRules: [
+        {
+          id: 'ExpireOldBackups',
+          enabled: true,
+          expiration: cdk.Duration.days(7),
+        },
+      ],
+    });
+
+    firehoseBackupBucket.grantReadWrite(firehoseRole);
+
+    // CloudWatch Logs for Firehose errors
+    const firehoseLogGroup = new logs.LogGroup(this, 'UsageLogsFirehoseLogGroup', {
+      logGroupName: `/aws/kinesisfirehose/${config.appName}-usage-logs`,
+      retention: logs.RetentionDays.ONE_WEEK,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    const firehoseLogStream = new logs.LogStream(this, 'UsageLogsFirehoseLogStream', {
+      logGroup: firehoseLogGroup,
+      logStreamName: 'delivery-errors',
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    firehoseLogGroup.grantWrite(firehoseRole);
+
+    // Firehose delivery stream with Lambda transform
+    const usageLogsFirehose = new firehose.CfnDeliveryStream(this, 'UsageLogsFirehose', {
+      deliveryStreamName: `${config.appName}-usage-logs-stream`,
+      deliveryStreamType: 'DirectPut',
+      extendedS3DestinationConfiguration: {
+        bucketArn: firehoseBackupBucket.bucketArn,
+        roleArn: firehoseRole.roleArn,
+        bufferingHints: {
+          intervalInSeconds: 60,
+          sizeInMBs: 1,
+        },
+        compressionFormat: 'GZIP',
+        prefix: 'usage-logs/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/',
+        errorOutputPrefix: 'errors/!{firehose:error-output-type}/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/',
+        processingConfiguration: {
+          enabled: true,
+          processors: [
+            {
+              type: 'Lambda',
+              parameters: [
+                {
+                  parameterName: 'LambdaArn',
+                  parameterValue: usageLogsTransformFunction.functionArn,
+                },
+                {
+                  parameterName: 'BufferSizeInMBs',
+                  parameterValue: '1',
+                },
+                {
+                  parameterName: 'BufferIntervalInSeconds',
+                  parameterValue: '60',
+                },
+              ],
+            },
+          ],
+        },
+        cloudWatchLoggingOptions: {
+          enabled: true,
+          logGroupName: firehoseLogGroup.logGroupName,
+          logStreamName: firehoseLogStream.logStreamName,
+        },
+      },
+      tags: [
+        { key: 'Application', value: config.appName },
+        { key: 'ManagedBy', value: 'CDK' },
+      ],
+    });
+
+    // Delivery Destination for Usage Logs (Firehose)
+    const usageLogsDeliveryDestination = new logs.CfnDeliveryDestination(this, 'UsageLogsDeliveryDestination', {
+      name: `${runtimeId}-usage-firehose-destination`,
+      deliveryDestinationType: 'FH',
+      destinationResourceArn: usageLogsFirehose.attrArn,
+      tags: [
+        { key: 'Application', value: config.appName },
+        { key: 'ManagedBy', value: 'CDK' },
+      ],
+    });
+
+    // Delivery: Connect Usage Logs Source to Firehose Destination
+    const usageLogsDelivery = new logs.CfnDelivery(this, 'UsageLogsDelivery', {
+      deliverySourceName: usageLogsDeliverySource.name,
+      deliveryDestinationArn: usageLogsDeliveryDestination.attrArn,
+      tags: [
+        { key: 'Application', value: config.appName },
+        { key: 'ManagedBy', value: 'CDK' },
+      ],
+    });
+    usageLogsDelivery.addDependency(usageLogsDeliverySource);
+    usageLogsDelivery.addDependency(usageLogsDeliveryDestination);
 
     // --- Delivery Source for Traces ---
     const tracesDeliverySource = new logs.CfnDeliverySource(this, 'TracesDeliverySource', {
@@ -918,9 +1202,14 @@ def handler(event, context):
       })
     );
 
+    const updateSecretProviderLogGroup = new logs.LogGroup(this, 'UpdateSecretProviderLogs', {
+      retention: logs.RetentionDays.ONE_DAY,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
     const updateSecretProvider = new cr.Provider(this, 'UpdateSecretProvider', {
       onEventHandler: updateSecretFunction,
-      logRetention: logs.RetentionDays.ONE_DAY,
+      logGroup: updateSecretProviderLogGroup,
     });
 
     const updateSecretWithAgentRuntime = new cdk.CustomResource(this, 'UpdateSecretWithAgentRuntime', {
@@ -1004,5 +1293,222 @@ def handler(event, context):
       value: `https://${this.region}.console.aws.amazon.com/cloudwatch/home?region=${this.region}#xray:service-map`,
       description: 'X-Ray Service Map URL',
     });
+
+    // ========================================================================
+    // CDK-NAG SUPPRESSIONS
+    // ========================================================================
+    
+    applyCommonSuppressions(this);
+    applyBucketDeploymentSuppressions(this);
+    applyCodeBuildSuppressions(this);
+    applyBedrockSuppressions(this);
+
+    // Suppress ECR authorization token wildcard (required by ECR)
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Agent/AgentRuntimeRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'ECR GetAuthorizationToken requires Resource::* as it is account-level, not repository-specific.',
+          appliesTo: ['Resource::*'],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'AgentCore Runtime logs require wildcard for dynamic log group names.',
+          appliesTo: [`Resource::arn:aws:logs:${this.region}:${this.account}:log-group:/aws/bedrock-agentcore/*`],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'Bedrock Guardrail ID is dynamic. Scoped to guardrail resources only.',
+          appliesTo: [`Resource::arn:aws:bedrock:${this.region}:${this.account}:guardrail/*`],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'Bedrock Knowledge Base ID is dynamic. Scoped to knowledge-base resources only.',
+          appliesTo: [`Resource::arn:aws:bedrock:${this.region}:${this.account}:knowledge-base/*`],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'AgentCore Memory ID is dynamic. Scoped to memory resources only.',
+          appliesTo: [`Resource::arn:aws:bedrock-agentcore:${this.region}:${this.account}:memory/*`],
+        },
+      ]
+    );
+
+    // Suppress CodeBuild role wildcards
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Agent/CodeBuildRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'CodeBuild log groups include build number. Scoped to specific project prefix.',
+          appliesTo: [
+            `Resource::arn:aws:logs:${this.region}:${this.account}:log-group:/aws/codebuild/${config.agentBuildProjectName}*`,
+            `Resource::arn:aws:logs:${this.region}:${this.account}:log-group:/aws/codebuild/<AgentBuildProject0299660E>:*`,
+          ],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'CodeBuild report groups include dynamic names. Scoped to specific project.',
+          appliesTo: [`Resource::arn:aws:codebuild:${this.region}:${this.account}:report-group/<AgentBuildProject0299660E>-*`],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'CodeBuild needs access to all objects in source bucket.',
+          appliesTo: ['Resource::<BuildSourceBucketB61842F6.Arn>/*'],
+        },
+      ]
+    );
+
+    // Suppress BucketDeployment wildcards
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Agent/Custom::CDKBucketDeployment8693BB64968944B69AAFB0CC9EB8756C512MiB/ServiceRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'BucketDeployment needs access to CDK assets bucket for deployment.',
+          appliesTo: [`Resource::arn:aws:s3:::cdk-hnb659fds-assets-${this.account}-${this.region}/*`],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'BucketDeployment needs access to all objects in destination bucket.',
+          appliesTo: ['Resource::<BuildSourceBucketB61842F6.Arn>/*'],
+        },
+      ]
+    );
+
+    // Suppress provider framework wildcards
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Agent/BuildWaiterProvider/framework-onEvent/ServiceRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'CDK Provider framework requires lambda:InvokeFunction with wildcard for versioned invocations.',
+          appliesTo: ['Resource::<BuildWaiterFunction2EBEED87.Arn>:*'],
+        },
+      ]
+    );
+
+    // Suppress XRay config function wildcards
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Agent/XRayConfigFunction/ServiceRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'X-Ray configuration requires account-level permissions for trace settings.',
+          appliesTo: ['Resource::*'],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'Application Signals log groups are AWS-managed with fixed names.',
+          appliesTo: [
+            `Resource::arn:aws:logs:${this.region}:${this.account}:log-group:/aws/application-signals/data:*`,
+            `Resource::arn:aws:logs:${this.region}:${this.account}:log-group:aws/spans:*`,
+          ],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'CloudTrail channel for Application Signals requires wildcard.',
+          appliesTo: [`Resource::arn:aws:cloudtrail:${this.region}:${this.account}:channel/aws-service-channel/application-signals/*`],
+        },
+      ]
+    );
+
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Agent/XRayConfigProvider/framework-onEvent/ServiceRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'CDK Provider framework requires lambda:InvokeFunction with wildcard for versioned invocations.',
+          appliesTo: ['Resource::<XRayConfigFunctionCF1D2705.Arn>:*'],
+        },
+      ]
+    );
+
+    // Suppress update secret function wildcards
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Agent/UpdateSecretFunction/ServiceRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'Secret ARN includes random suffix. Scoped to specific secret name prefix.',
+          appliesTo: [`Resource::arn:aws:secretsmanager:${this.region}:${this.account}:secret:${config.secretName}*`],
+        },
+      ]
+    );
+
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Agent/UpdateSecretProvider/framework-onEvent/ServiceRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'CDK Provider framework requires lambda:InvokeFunction with wildcard for versioned invocations.',
+          appliesTo: ['Resource::<UpdateSecretFunction83556651.Arn>:*'],
+        },
+      ]
+    );
+
+    // Suppress Usage Logs Transform Lambda wildcards
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Agent/UsageLogsTransformFunction/ServiceRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'DynamoDB table ARN imported from Foundation stack requires index/* pattern for GSI access.',
+          appliesTo: ['Resource::<ImportedComputeUsageTable.Arn>/index/*'],
+        },
+      ]
+    );
+
+    // Suppress Firehose role wildcards
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Agent/UsageLogsFirehoseRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'Firehose needs access to all objects in backup bucket for error handling.',
+          appliesTo: ['Resource::<UsageLogsFirehoseBackupBucket2A1E4868.Arn>/*'],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'Lambda invoke permission requires wildcard for versioned function invocations.',
+          appliesTo: ['Resource::<UsageLogsTransformFunctionCDE17FC9.Arn>:*'],
+        },
+      ]
+    );
+
+    // Suppress Firehose backup bucket - acceptable for starter kit
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Agent/UsageLogsFirehoseBackupBucket/Resource`,
+      [
+        {
+          id: 'AwsSolutions-S1',
+          reason: 'Firehose backup bucket does not require access logging for starter kit. Contains only error records.',
+        },
+      ]
+    );
+
+    // Suppress Firehose encryption - uses S3 managed encryption
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Agent/UsageLogsFirehose`,
+      [
+        {
+          id: 'AwsSolutions-KDF1',
+          reason: 'Firehose uses S3 managed encryption for backup bucket. Server-side encryption enabled on destination.',
+        },
+      ]
+    );
   }
 }

@@ -1,0 +1,618 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Admin{% endblock %}
+
+{% block favicon %}
+<link rel="icon" type="image/svg+xml" href="{{ logo_url if logo_url is defined else '/static/favicon.svg' }}">
+{% endblock %}
+
+{% block body %}
+<!-- Header -->
+{% include "components/header.html" with context %}
+
+<div class="flex-1 overflow-y-auto bg-gray-50">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Page Title -->
+        <div class="mb-6">
+            <h1 class="text-3xl font-bold text-gray-900">Application Settings</h1>
+            <!-- <p class="mt-2 text-sm text-gray-600">
+                Customize the appearance and behavior of your chat application.
+            </p> -->
+        </div>
+        
+        <!-- Tabs Navigation -->
+        <div class="bg-white rounded-t-lg shadow-sm border border-gray-200 border-b-0">
+            <nav class="flex" aria-label="Settings tabs">
+                <button
+                    type="button"
+                    id="tab-branding"
+                    onclick="switchSettingsTab('branding')"
+                    class="settings-tab flex-1 px-6 py-4 text-sm font-medium border-b-2 transition-colors focus:outline-none"
+                    aria-selected="true"
+                >
+                    <div class="flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                        <span>Branding</span>
+                    </div>
+                </button>
+                <button
+                    type="button"
+                    id="tab-icons"
+                    onclick="switchSettingsTab('icons')"
+                    class="settings-tab flex-1 px-6 py-4 text-sm font-medium border-b-2 border-transparent transition-colors focus:outline-none text-gray-500 hover:text-gray-700"
+                    aria-selected="false"
+                >
+                    <div class="flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <span>Icons</span>
+                    </div>
+                </button>
+                <button
+                    type="button"
+                    id="tab-colors"
+                    onclick="switchSettingsTab('colors')"
+                    class="settings-tab flex-1 px-6 py-4 text-sm font-medium border-b-2 border-transparent transition-colors focus:outline-none text-gray-500 hover:text-gray-700"
+                    aria-selected="false"
+                >
+                    <div class="flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+                        </svg>
+                        <span>Colors</span>
+                    </div>
+                </button>
+            </nav>
+        </div>
+
+        <!-- Unsaved Changes Indicator - Below Tabs -->
+        <div id="unsaved-indicator" class="hidden">
+            <div class="text-white px-4 py-3 border-x border-gray-200" style="background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        <span class="font-medium text-sm">You have unsaved changes</span>
+                    </div>
+                    <button type="button" onclick="isSubmitting = true; document.querySelector('form[action=\'/admin/settings/update\']').submit()" class="px-3 py-1 bg-white/90 hover:bg-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2" style="color: var(--primary);">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                        Save
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Form -->
+        <form action="/admin/settings/update" method="POST" enctype="multipart/form-data">
+            <!-- Hidden fields for reset actions and tab tracking -->
+            <input type="hidden" id="reset_header_logo" name="reset_header_logo" value="false">
+            <input type="hidden" id="reset_chat_logo" name="reset_chat_logo" value="false">
+            <input type="hidden" id="reset_colors" name="reset_colors" value="false">
+            <input type="hidden" id="active_tab" name="active_tab" value="branding">
+            
+            <!-- Tab Content Container -->
+            <div class="bg-white shadow-sm rounded-b-lg border border-gray-200 border-t-0">
+                
+                <!-- Branding Tab Content -->
+                <div id="content-branding" class="settings-tab-content p-6">
+                    <div class="mb-6">
+                        <h2 class="text-lg font-semibold text-gray-900">Branding</h2>
+                        <p class="text-sm text-gray-600 mt-1">Configure your application's name and tagline.</p>
+                    </div>
+                    
+                    <!-- App Title -->
+                    <div class="mb-6 pb-6 border-b border-gray-200">
+                        <label for="app_title" class="block text-sm font-medium text-gray-700 mb-2">
+                            Application Name
+                        </label>
+                        <input
+                            type="text"
+                            id="app_title"
+                            name="app_title"
+                            value="{{ app_title }}"
+                            required
+                            maxlength="100"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            placeholder="Chat Agent"
+                        />
+                        <p class="mt-1 text-xs text-gray-500">
+                            Displayed in the header of all pages and the login screen
+                        </p>
+                    </div>
+
+                    <!-- App Subtitle -->
+                    <div class="mb-6 pb-6 border-b border-gray-200">
+                        <label for="app_subtitle" class="block text-sm font-medium text-gray-700 mb-2">
+                            Application Tagline
+                        </label>
+                        <input
+                            type="text"
+                            id="app_subtitle"
+                            name="app_subtitle"
+                            value="{{ app_subtitle }}"
+                            required
+                            maxlength="200"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            placeholder="Bedrock AgentCore + Strands Agents SDK"
+                        />
+                        <p class="mt-1 text-xs text-gray-500">
+                            Displayed below the title in the header
+                        </p>
+                    </div>
+
+                    <!-- Welcome Message -->
+                    <div>
+                        <label for="welcome_message" class="block text-sm font-medium text-gray-700 mb-2">
+                            Welcome Message
+                        </label>
+                        <input
+                            type="text"
+                            id="welcome_message"
+                            name="welcome_message"
+                            value="{{ welcome_message }}"
+                            required
+                            maxlength="200"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            placeholder="Start a conversation by typing a message below"
+                        />
+                        <p class="mt-1 text-xs text-gray-500">
+                            Displayed in the empty chat state before the user sends a message
+                        </p>
+                    </div>
+                </div>
+                
+                <!-- Icons Tab Content -->
+                <div id="content-icons" class="settings-tab-content p-6 hidden">
+                    <div class="mb-6">
+                        <h2 class="text-lg font-semibold text-gray-900">Icons</h2>
+                        <p class="text-sm text-gray-600 mt-1">Configure your application's logos and icons.</p>
+                    </div>
+
+                    <!-- Header Logo Upload -->
+                    <div class="mb-6 pb-6 border-b border-gray-200">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Header Logo
+                        </label>
+                        
+                        <div class="mb-4 flex items-center gap-4">
+                            <div class="w-16 h-16 border-gray-200 rounded-lg flex items-center justify-center bg-white">
+                                <img id="logo-preview" src="{{ logo_url }}" alt="Current header logo" class="max-w-full max-h-full object-contain" />
+                            </div>
+                            <div class="flex-1 text-sm text-gray-600">
+                                <p class="font-medium">Current header logo</p>
+                                <p class="text-xs text-gray-500">Displayed in the top navigation bar</p>
+                                <p class="text-xs text-gray-500">Recommended: Square image, 64x64px or larger</p>
+                            </div>
+                            <button type="button" onclick="resetHeaderLogo()" class="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                                Reset to Default
+                            </button>
+                        </div>
+
+                        <input type="file" id="logo_file" name="logo_file" accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                            class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 cursor-pointer" />
+                        <p class="mt-1 text-xs text-gray-500">Supported formats: PNG, JPEG, SVG, WebP. Max size: 200KB.</p>
+                        <p id="logo-error" class="mt-1 text-xs text-red-600 hidden"></p>
+                    </div>
+
+                    <!-- Chat Placeholder Logo Upload -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Chat Placeholder Logo
+                        </label>
+                        
+                        <div class="mb-4 flex items-center gap-4">
+                            <div class="w-24 h-24 border-gray-200 rounded-lg flex items-center justify-center bg-gray-50">
+                                <img id="chat-logo-preview" src="{{ chat_logo_url }}" alt="Current chat placeholder logo" class="max-w-full max-h-full object-contain" />
+                            </div>
+                            <div class="flex-1 text-sm text-gray-600">
+                                <p class="font-medium">Current chat placeholder logo</p>
+                                <p class="text-xs text-gray-500">Displayed in the center of empty chat screen</p>
+                                <p class="text-xs text-gray-500">Recommended: Square image, 96x96px or larger</p>
+                            </div>
+                            <button type="button" onclick="resetChatLogo()" class="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                                Reset to Default
+                            </button>
+                        </div>
+
+                        <input type="file" id="chat_logo_file" name="chat_logo_file" accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                            class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 cursor-pointer" />
+                        <p class="mt-1 text-xs text-gray-500">Supported formats: PNG, JPEG, SVG, WebP. Max size: 200KB.</p>
+                        <p id="chat-logo-error" class="mt-1 text-xs text-red-600 hidden"></p>
+                    </div>
+                </div>
+                
+                <!-- Colors Tab Content -->
+                <div id="content-colors" class="settings-tab-content p-6 hidden">
+                    <div class="mb-6">
+                        <h2 class="text-lg font-semibold text-gray-900">Colors</h2>
+                        <p class="text-sm text-gray-600 mt-1">Customize the color scheme of your application.</p>
+                    </div>
+                    
+                    <!-- Two-column layout: Presets on left, Custom + Preview on right -->
+                    <div class="flex gap-6">
+                        <!-- Left Column: Presets -->
+                        <div class="w-64 flex-shrink-0">
+                            <label class="block text-sm font-medium text-gray-700 mb-3">Quick Presets</label>
+                            <div class="flex flex-col gap-1.5 max-h-[400px] overflow-y-auto pr-2">
+                                {% for preset_key, preset in color_presets.items() %}
+                                <button type="button" onclick="applyColorPreset('{{ preset.primary }}', '{{ preset.secondary }}')"
+                                    class="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-gray-200 hover:bg-gray-50 hover:border-gray-300 transition-colors text-left" title="{{ preset.name }}">
+                                    <span class="w-5 h-5 rounded-full border border-gray-300 flex-shrink-0" style="background: {{ preset.primary }};"></span>
+                                    <span class="w-5 h-5 rounded-full border border-gray-300 flex-shrink-0 -ml-3" style="background: {{ preset.secondary }};"></span>
+                                    <span class="ml-1 truncate">{{ preset.name }}</span>
+                                </button>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        
+                        <!-- Right Column: Custom Colors + Preview -->
+                        <div class="flex-1 border-l border-gray-200 pl-6">
+                            <!-- Custom Colors -->
+                            <div class="mb-6 pb-6 border-b border-gray-200">
+                                <label class="block text-sm font-medium text-gray-700 mb-3">Custom Colors</label>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label for="primary_color" class="block text-xs font-medium text-gray-600 mb-2">Primary Color</label>
+                                        <div class="flex items-center gap-2">
+                                            <input type="color" id="primary_color" name="primary_color" value="{{ primary_color }}" class="w-10 h-10 rounded-lg border border-gray-300 cursor-pointer p-1" />
+                                            <input type="text" id="primary_color_text" value="{{ primary_color }}" pattern="^#[0-9A-Fa-f]{6}$" maxlength="7"
+                                                class="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent font-mono text-sm" placeholder="#7c3aed" />
+                                        </div>
+                                        <p class="mt-1 text-xs text-gray-500">Buttons, links, primary UI</p>
+                                    </div>
+                                    
+                                    <div>
+                                        <label for="secondary_color" class="block text-xs font-medium text-gray-600 mb-2">Secondary Color</label>
+                                        <div class="flex items-center gap-2">
+                                            <input type="color" id="secondary_color" name="secondary_color" value="{{ secondary_color }}" class="w-10 h-10 rounded-lg border border-gray-300 cursor-pointer p-1" />
+                                            <input type="text" id="secondary_color_text" value="{{ secondary_color }}" pattern="^#[0-9A-Fa-f]{6}$" maxlength="7"
+                                                class="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent font-mono text-sm" placeholder="#6b21a8" />
+                                        </div>
+                                        <p class="mt-1 text-xs text-gray-500">Gradients, accents</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Live Preview -->
+                            <div class="mb-6">
+                                <label class="block text-sm font-medium text-gray-700 mb-3">Live Preview</label>
+                                <div class="bg-gray-100 rounded-lg p-4">
+                                    <div class="flex flex-col gap-3">
+                                        <div class="flex items-center gap-3">
+                                            <span class="text-xs text-gray-500 w-16">Buttons:</span>
+                                            <button type="button" id="preview-btn-primary" class="px-4 py-2 text-sm font-medium text-white rounded-lg" style="background: {{ primary_color }};">Primary</button>
+                                            <button type="button" id="preview-btn-secondary" class="px-4 py-2 text-sm font-medium text-white rounded-lg" style="background: {{ secondary_color }};">Secondary</button>
+                                        </div>
+                                        <div class="flex items-center gap-3">
+                                            <span class="text-xs text-gray-500 w-16">Message:</span>
+                                            <div id="preview-message" class="px-4 py-2 text-sm text-white rounded-lg" style="background: linear-gradient(135deg, {{ primary_color }} 0%, {{ secondary_color }} 100%);">User message bubble</div>
+                                        </div>
+                                        <div class="flex items-center gap-3">
+                                            <span class="text-xs text-gray-500 w-16">Links:</span>
+                                            <a href="#" id="preview-link" class="text-sm underline" style="color: {{ primary_color }};" onclick="return false;">Sample link text</a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Reset Colors Button -->
+                            <div class="flex justify-end">
+                                <button type="button" onclick="resetColors()" class="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                                    Reset to Default Colors
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Save Button (outside tabs, always visible) -->
+            <div class="flex justify-end gap-3 mt-6">
+                <button type="button" onclick="cancelChanges()" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
+                <button type="submit" id="save-btn" class="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors">Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+@keyframes slideDown {
+    from { transform: translateY(-100%); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+.animate-slide-down { animation: slideDown 0.3s ease-out; }
+
+/* Active tab styling */
+.settings-tab.active {
+    color: var(--primary);
+    border-color: var(--primary);
+}
+.settings-tab:not(.active) {
+    color: #6b7280;
+    border-color: transparent;
+}
+.settings-tab:not(.active):hover {
+    color: #374151;
+    background-color: #f9fafb;
+}
+</style>
+
+<script>
+const MAX_FILE_SIZE = 200 * 1024;
+const DEFAULT_PRIMARY_COLOR = '#7c3aed';
+const DEFAULT_SECONDARY_COLOR = '#6b21a8';
+let currentTab = 'branding';
+let hasUnsavedChanges = false;
+let isSubmitting = false;
+
+// Store original values for cancel/reset
+const originalValues = {
+    app_title: '{{ app_title }}',
+    app_subtitle: '{{ app_subtitle }}',
+    welcome_message: '{{ welcome_message }}',
+    logo_url: '{{ logo_url }}',
+    chat_logo_url: '{{ chat_logo_url }}',
+    primary_color: '{{ primary_color }}',
+    secondary_color: '{{ secondary_color }}'
+};
+
+// Tab switching
+function switchSettingsTab(tab) {
+    currentTab = tab;
+    
+    // Update hidden field for form submission
+    document.getElementById('active_tab').value = tab;
+    
+    // Update URL without reload
+    const url = new URL(window.location);
+    url.searchParams.set('tab', tab);
+    window.history.replaceState({}, '', url);
+    
+    // Update tab buttons
+    document.querySelectorAll('.settings-tab').forEach(btn => {
+        btn.classList.remove('active', 'text-primary-600', 'border-primary-600');
+        btn.classList.add('text-gray-500', 'border-transparent');
+        btn.setAttribute('aria-selected', 'false');
+    });
+    
+    const activeTab = document.getElementById('tab-' + tab);
+    if (activeTab) {
+        activeTab.classList.add('active', 'text-primary-600', 'border-primary-600');
+        activeTab.classList.remove('text-gray-500', 'border-transparent');
+        activeTab.setAttribute('aria-selected', 'true');
+    }
+    
+    // Update content visibility
+    document.querySelectorAll('.settings-tab-content').forEach(content => {
+        content.classList.add('hidden');
+    });
+    
+    const activeContent = document.getElementById('content-' + tab);
+    if (activeContent) {
+        activeContent.classList.remove('hidden');
+    }
+}
+
+// Cancel changes - reset to original values and stay on current tab
+function cancelChanges() {
+    if (!hasUnsavedChanges) {
+        return; // Nothing to cancel
+    }
+    
+    if (!confirm('Discard unsaved changes?')) {
+        return;
+    }
+    
+    // Reset branding fields
+    document.getElementById('app_title').value = originalValues.app_title;
+    document.getElementById('app_subtitle').value = originalValues.app_subtitle;
+    document.getElementById('welcome_message').value = originalValues.welcome_message;
+    document.getElementById('logo-preview').src = originalValues.logo_url;
+    document.getElementById('chat-logo-preview').src = originalValues.chat_logo_url;
+    document.getElementById('logo_file').value = '';
+    document.getElementById('chat_logo_file').value = '';
+    document.getElementById('reset_header_logo').value = 'false';
+    document.getElementById('reset_chat_logo').value = 'false';
+    
+    // Reset color fields
+    document.getElementById('primary_color').value = originalValues.primary_color;
+    document.getElementById('primary_color_text').value = originalValues.primary_color;
+    document.getElementById('secondary_color').value = originalValues.secondary_color;
+    document.getElementById('secondary_color_text').value = originalValues.secondary_color;
+    document.getElementById('reset_colors').value = 'false';
+    
+    // Update color preview
+    updateColorPreview();
+    
+    // Hide unsaved indicator
+    hideUnsavedIndicator();
+}
+
+function validateFileSize(file, errorElementId) {
+    const errorElement = document.getElementById(errorElementId);
+    if (file.size > MAX_FILE_SIZE) {
+        const sizeKB = (file.size / 1024).toFixed(0);
+        errorElement.textContent = 'File too large (' + sizeKB + 'KB). Please choose an image under 200KB.';
+        errorElement.classList.remove('hidden');
+        return false;
+    }
+    errorElement.classList.add('hidden');
+    return true;
+}
+
+function resetHeaderLogo() {
+    if (confirm('Reset header logo to default?')) {
+        document.getElementById('reset_header_logo').value = 'true';
+        document.getElementById('logo_file').value = '';
+        document.getElementById('logo-preview').src = '/static/favicon.svg';
+        showUnsavedIndicator();
+    }
+}
+
+function resetChatLogo() {
+    if (confirm('Reset chat placeholder logo to default?')) {
+        document.getElementById('reset_chat_logo').value = 'true';
+        document.getElementById('chat_logo_file').value = '';
+        document.getElementById('chat-logo-preview').src = '/static/chat-placeholder.svg';
+        showUnsavedIndicator();
+    }
+}
+
+function syncColorInputs() {
+    const primaryPicker = document.getElementById('primary_color');
+    const primaryText = document.getElementById('primary_color_text');
+    const secondaryPicker = document.getElementById('secondary_color');
+    const secondaryText = document.getElementById('secondary_color_text');
+    
+    primaryPicker.addEventListener('input', function() {
+        primaryText.value = this.value;
+        updateColorPreview();
+        showUnsavedIndicator();
+    });
+    
+    primaryText.addEventListener('input', function() {
+        if (/^#[0-9A-Fa-f]{6}$/.test(this.value)) {
+            primaryPicker.value = this.value;
+            updateColorPreview();
+        }
+        showUnsavedIndicator();
+    });
+    
+    secondaryPicker.addEventListener('input', function() {
+        secondaryText.value = this.value;
+        updateColorPreview();
+        showUnsavedIndicator();
+    });
+    
+    secondaryText.addEventListener('input', function() {
+        if (/^#[0-9A-Fa-f]{6}$/.test(this.value)) {
+            secondaryPicker.value = this.value;
+            updateColorPreview();
+        }
+        showUnsavedIndicator();
+    });
+}
+
+function updateColorPreview() {
+    const primary = document.getElementById('primary_color').value;
+    const secondary = document.getElementById('secondary_color').value;
+    
+    const btnPrimary = document.getElementById('preview-btn-primary');
+    const btnSecondary = document.getElementById('preview-btn-secondary');
+    if (btnPrimary) btnPrimary.style.background = primary;
+    if (btnSecondary) btnSecondary.style.background = secondary;
+    
+    const message = document.getElementById('preview-message');
+    if (message) message.style.background = 'linear-gradient(135deg, ' + primary + ' 0%, ' + secondary + ' 100%)';
+    
+    const link = document.getElementById('preview-link');
+    if (link) link.style.color = primary;
+}
+
+function applyColorPreset(primary, secondary) {
+    document.getElementById('primary_color').value = primary;
+    document.getElementById('primary_color_text').value = primary;
+    document.getElementById('secondary_color').value = secondary;
+    document.getElementById('secondary_color_text').value = secondary;
+    document.getElementById('reset_colors').value = 'false';
+    updateColorPreview();
+    showUnsavedIndicator();
+}
+
+function resetColors() {
+    if (confirm('Reset theme colors to default purple?')) {
+        document.getElementById('reset_colors').value = 'true';
+        document.getElementById('primary_color').value = DEFAULT_PRIMARY_COLOR;
+        document.getElementById('primary_color_text').value = DEFAULT_PRIMARY_COLOR;
+        document.getElementById('secondary_color').value = DEFAULT_SECONDARY_COLOR;
+        document.getElementById('secondary_color_text').value = DEFAULT_SECONDARY_COLOR;
+        updateColorPreview();
+        showUnsavedIndicator();
+    }
+}
+
+function showUnsavedIndicator() {
+    hasUnsavedChanges = true;
+    const indicator = document.getElementById('unsaved-indicator');
+    if (indicator) indicator.classList.remove('hidden');
+}
+
+function hideUnsavedIndicator() {
+    hasUnsavedChanges = false;
+    const indicator = document.getElementById('unsaved-indicator');
+    if (indicator) indicator.classList.add('hidden');
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Check URL for tab parameter and initialize correct tab
+    const urlParams = new URLSearchParams(window.location.search);
+    const tabParam = urlParams.get('tab');
+    const validTabs = ['branding', 'icons', 'colors'];
+    const initialTab = validTabs.includes(tabParam) ? tabParam : 'branding';
+    switchSettingsTab(initialTab);
+    
+    // Initialize color input sync
+    syncColorInputs();
+    
+    // File input handlers
+    document.getElementById('logo_file').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            if (!validateFileSize(file, 'logo-error')) {
+                e.target.value = '';
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                document.getElementById('logo-preview').src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+            showUnsavedIndicator();
+        }
+    });
+    
+    document.getElementById('chat_logo_file').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            if (!validateFileSize(file, 'chat-logo-error')) {
+                e.target.value = '';
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                document.getElementById('chat-logo-preview').src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+            showUnsavedIndicator();
+        }
+    });
+    
+    // Track text input changes
+    const form = document.querySelector('form[action="/admin/settings/update"]');
+    if (form) {
+        form.querySelectorAll('input[type="text"]').forEach(input => {
+            input.addEventListener('input', showUnsavedIndicator);
+        });
+        // Set submitting flag to bypass beforeunload warning
+        form.addEventListener('submit', function() {
+            isSubmitting = true;
+        });
+    }
+    
+    // Warn before leaving with unsaved changes (but not when submitting form)
+    window.addEventListener('beforeunload', function(e) {
+        if (hasUnsavedChanges && !isSubmitting) {
+            e.preventDefault();
+            e.returnValue = '';
+            return '';
+        }
+    });
+});
+</script>
+{% endblock %}

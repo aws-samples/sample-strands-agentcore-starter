@@ -20,8 +20,10 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as bedrock from 'aws-cdk-lib/aws-bedrock';
 import * as bedrockagentcore from 'aws-cdk-lib/aws-bedrockagentcore';
 import * as cr from 'aws-cdk-lib/custom-resources';
+import { NagSuppressions } from 'cdk-nag';
 import { Construct } from 'constructs';
 import { config, exportNames } from './config';
+import { applyCommonSuppressions } from './nag-suppressions';
 
 export class BedrockStack extends cdk.Stack {
   // Guardrail resources
@@ -139,11 +141,23 @@ export class BedrockStack extends cdk.Stack {
     }));
 
     // Create S3 source bucket for documents
+    // Import access logs bucket from Foundation stack
+    const accessLogsBucketName = cdk.Fn.importValue(`${config.appName}-AccessLogsBucketName`);
+    const accessLogsBucket = s3.Bucket.fromBucketName(this, 'ImportedAccessLogsBucket', accessLogsBucketName);
+
     this.sourceBucket = new s3.Bucket(this, 'SourceBucket', {
       bucketName: `${config.appName}-kb-${this.account}-${this.region}`,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
+      serverAccessLogsBucket: accessLogsBucket,
+      serverAccessLogsPrefix: 'kb-source-bucket/',
     });
+
+    // Acknowledge that logging permissions are handled in Foundation stack
+    cdk.Annotations.of(this.sourceBucket).acknowledgeWarning('@aws-cdk/aws-s3:accessLogsPolicyNotAdded', 'Logging permissions added to access logs bucket in Foundation stack');
 
     // Add S3 source bucket access to KB role
     this.kbRole.addToPolicy(new iam.PolicyStatement({
@@ -423,9 +437,14 @@ def handler(event, context):
       })
     );
 
+    const updateSecretProviderLogGroup = new logs.LogGroup(this, 'UpdateSecretProviderLogs', {
+      retention: logs.RetentionDays.ONE_DAY,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
     const updateSecretProvider = new cr.Provider(this, 'UpdateSecretProvider', {
       onEventHandler: updateSecretFunction,
-      logRetention: logs.RetentionDays.ONE_DAY,
+      logGroup: updateSecretProviderLogGroup,
     });
 
     const updateSecretWithBedrockValues = new cdk.CustomResource(this, 'UpdateSecretWithBedrockValues', {
@@ -517,5 +536,80 @@ def handler(event, context):
       value: this.dataSource.attrDataSourceId,
       description: 'Knowledge Base data source ID',
     });
+
+    // ========================================================================
+    // CDK-NAG SUPPRESSIONS
+    // ========================================================================
+    
+    applyCommonSuppressions(this);
+
+    // Suppress S3 vectors custom resource wildcards
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Bedrock/CreateVectorBucket/CustomResourcePolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'S3 Vectors CreateVectorBucket requires wildcard as bucket name is dynamic. This is a one-time setup operation.',
+          appliesTo: ['Resource::*'],
+        },
+      ]
+    );
+
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Bedrock/CreateVectorIndex/CustomResourcePolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'S3 Vectors index operations require wildcard for index name. Scoped to specific vector bucket.',
+          appliesTo: [`Resource::arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}/index/*`],
+        },
+      ]
+    );
+
+    // Suppress Knowledge Base role wildcards
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Bedrock/KnowledgeBaseRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'Knowledge Base needs access to all objects in source bucket for document ingestion.',
+          appliesTo: ['Resource::<SourceBucketDDD2130A.Arn>/*'],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'S3 Vectors index operations require wildcard for vector operations. Scoped to specific vector bucket.',
+          appliesTo: [`Resource::arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}/index/*`],
+        },
+      ]
+    );
+
+    // Suppress update secret function wildcards
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Bedrock/UpdateSecretFunction/ServiceRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'Secret ARN includes random suffix. Scoped to specific secret name prefix.',
+          appliesTo: [`Resource::arn:aws:secretsmanager:${this.region}:${this.account}:secret:${config.secretName}*`],
+        },
+      ]
+    );
+
+    // Suppress provider framework wildcards (CDK-managed)
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Bedrock/UpdateSecretProvider/framework-onEvent/ServiceRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'CDK Provider framework requires lambda:InvokeFunction with wildcard for versioned invocations.',
+          appliesTo: ['Resource::<UpdateSecretFunction83556651.Arn>:*'],
+        },
+      ]
+    );
   }
 }

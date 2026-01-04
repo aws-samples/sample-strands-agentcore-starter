@@ -1,55 +1,25 @@
-{# 
-Memory Viewer sidebar component.
-Collapsible sidebar with tabs for Events, Facts, Summaries, and Preferences.
-Supports light/dark theme toggle with localStorage persistence.
-#}
+{# Memory Viewer sidebar component #}
 
 <div id="memory-sidebar-inner" class="w-96 border-l flex flex-col h-full transition-colors duration-200"
      style="background: var(--sidebar-bg); border-color: var(--sidebar-border);">
-    <!-- Header -->
     <div class="flex items-center justify-between px-4 py-4 border-b transition-colors duration-200"
          style="background: var(--sidebar-header-bg); border-color: var(--sidebar-border);">
         <h2 class="text-lg font-semibold transition-colors duration-200" style="color: var(--sidebar-text);">Memory</h2>
         <div class="flex items-center gap-2">
-            <!-- Theme toggle button -->
-            <button 
-                id="sidebar-theme-toggle"
-                onclick="toggleSidebarTheme()"
-                class="p-1.5 rounded transition-colors hover:opacity-80"
-                style="color: var(--sidebar-text-muted);"
-                aria-label="Toggle theme"
-                title="Toggle light/dark theme"
-            >
-                <!-- Sun icon (shown in dark mode) -->
+            <button id="sidebar-theme-toggle" onclick="toggleSidebarTheme()" class="p-1.5 rounded transition-colors hover:opacity-80" style="color: var(--sidebar-text-muted);" aria-label="Toggle theme" title="Toggle light/dark theme">
                 <svg id="theme-icon-sun" class="w-4 h-4 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
                 </svg>
-                <!-- Moon icon (shown in light mode) -->
                 <svg id="theme-icon-moon" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
                 </svg>
             </button>
-            <!-- Refresh button (Requirement 4.4) -->
-            <button 
-                id="memory-refresh-btn"
-                onclick="refreshMemory()"
-                class="p-1.5 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-80"
-                style="color: var(--sidebar-text-muted);"
-                aria-label="Refresh memory"
-                title="Refresh memory"
-            >
+            <button id="memory-refresh-btn" onclick="refreshMemory(true)" class="p-1.5 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-80" style="color: var(--sidebar-text-muted);" aria-label="Refresh memory" title="Refresh memory">
                 <svg id="refresh-icon" class="w-4 h-4 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
             </button>
-            <!-- Collapse button (Requirement 4.6) -->
-            <button 
-                onclick="toggleMemorySidebar()"
-                class="p-1.5 rounded transition-colors hover:opacity-80"
-                style="color: var(--sidebar-text-muted);"
-                aria-label="Collapse memory viewer"
-                title="Collapse sidebar"
-            >
+            <button onclick="toggleMemorySidebar()" class="p-1.5 rounded transition-colors hover:opacity-80" style="color: var(--sidebar-text-muted);" aria-label="Collapse memory viewer" title="Collapse sidebar">
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
                 </svg>
@@ -57,572 +27,286 @@ Supports light/dark theme toggle with localStorage persistence.
         </div>
     </div>
     
-    <!-- Tabs -->
     <div class="flex border-b transition-colors duration-200" style="border-color: var(--sidebar-border);">
-        <button 
-            id="tab-events"
-            onclick="switchMemoryTab('events')"
-            class="sidebar-tab flex-1 px-3 py-2 text-sm font-medium border-b-2 transition-colors duration-200 active"
-            style="color: var(--sidebar-tab-active-text); background: var(--sidebar-tab-active-bg); border-color: var(--sidebar-tab-active-text);"
-        >
-            Events
-        </button>
-        <button 
-            id="tab-facts"
-            onclick="switchMemoryTab('facts')"
-            class="sidebar-tab flex-1 px-3 py-2 text-sm font-medium border-b-2 border-transparent transition-colors duration-200"
-            style="color: var(--sidebar-text-muted);"
-        >
-            Facts
-        </button>
-        <button 
-            id="tab-summaries"
-            onclick="switchMemoryTab('summaries')"
-            class="sidebar-tab flex-1 px-3 py-2 text-sm font-medium border-b-2 border-transparent transition-colors duration-200"
-            style="color: var(--sidebar-text-muted);"
-        >
-            Summaries
-        </button>
-        <button 
-            id="tab-preferences"
-            onclick="switchMemoryTab('preferences')"
-            class="sidebar-tab flex-1 px-3 py-2 text-sm font-medium border-b-2 border-transparent transition-colors duration-200"
-            style="color: var(--sidebar-text-muted);"
-        >
-            Prefs
-        </button>
+        <button id="tab-events" onclick="switchMemoryTab('events')" class="sidebar-tab flex-1 px-3 py-2 text-sm font-medium border-b-2 transition-colors duration-200 active" style="color: var(--sidebar-tab-active-text); background: var(--sidebar-tab-active-bg); border-color: var(--sidebar-tab-active-text);">Events</button>
+        <button id="tab-facts" onclick="switchMemoryTab('facts')" class="sidebar-tab flex-1 px-3 py-2 text-sm font-medium border-b-2 border-transparent transition-colors duration-200" style="color: var(--sidebar-text-muted);">Facts</button>
+        <button id="tab-summaries" onclick="switchMemoryTab('summaries')" class="sidebar-tab flex-1 px-3 py-2 text-sm font-medium border-b-2 border-transparent transition-colors duration-200" style="color: var(--sidebar-text-muted);">Summaries</button>
+        <button id="tab-preferences" onclick="switchMemoryTab('preferences')" class="sidebar-tab flex-1 px-3 py-2 text-sm font-medium border-b-2 border-transparent transition-colors duration-200" style="color: var(--sidebar-text-muted);">Prefs</button>
     </div>
     
-    <!-- Content area -->
     <div class="flex-1 overflow-y-auto p-4 transition-colors duration-200" style="background: var(--sidebar-bg);">
-        <!-- Events tab content -->
         <div id="memory-tab-events" class="memory-tab-content">
             <div id="event-memory-content">
-                <p class="text-sm text-center py-4 transition-colors duration-200" style="color: var(--sidebar-text-muted);">Loading events...</p>
+                <p class="text-sm text-center py-4" style="color: var(--sidebar-text-muted);">Loading events...</p>
             </div>
         </div>
-        
-        <!-- Facts tab content -->
         <div id="memory-tab-facts" class="memory-tab-content hidden">
             <div id="semantic-memory-content">
-                <p class="text-sm text-center py-4 transition-colors duration-200" style="color: var(--sidebar-text-muted);">Loading facts...</p>
+                <p class="text-sm text-center py-4" style="color: var(--sidebar-text-muted);">Loading facts...</p>
             </div>
         </div>
-        
-        <!-- Summaries tab content -->
         <div id="memory-tab-summaries" class="memory-tab-content hidden">
             <div id="summaries-memory-content">
-                <p class="text-sm text-center py-4 transition-colors duration-200" style="color: var(--sidebar-text-muted);">Loading summaries...</p>
+                <p class="text-sm text-center py-4" style="color: var(--sidebar-text-muted);">Loading summaries...</p>
             </div>
         </div>
-        
-        <!-- Preferences tab content -->
         <div id="memory-tab-preferences" class="memory-tab-content hidden">
             <div id="preferences-memory-content">
-                <p class="text-sm text-center py-4 transition-colors duration-200" style="color: var(--sidebar-text-muted);">Loading preferences...</p>
+                <p class="text-sm text-center py-4" style="color: var(--sidebar-text-muted);">Loading preferences...</p>
             </div>
         </div>
     </div>
 </div>
 
 <script>
-    /**
-     * Current active memory tab.
-     */
-    let currentMemoryTab = 'events';
+let currentMemoryTab = 'events';
+const SIDEBAR_THEME_KEY = 'agentcore-sidebar-theme';
+
+function initSidebarTheme() {
+    const savedTheme = localStorage.getItem(SIDEBAR_THEME_KEY);
+    applySidebarTheme(savedTheme || 'dark');
+}
+
+function toggleSidebarTheme() {
+    const sidebar = document.getElementById('memory-sidebar');
+    const currentTheme = sidebar?.dataset.sidebarTheme || 'light';
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    applySidebarTheme(newTheme);
+    localStorage.setItem(SIDEBAR_THEME_KEY, newTheme);
+}
+
+function applySidebarTheme(theme) {
+    const sidebar = document.getElementById('memory-sidebar');
+    const sidebarInner = document.getElementById('memory-sidebar-inner');
+    const collapsedToggle = document.getElementById('memory-toggle-collapsed');
+    const sunIcon = document.getElementById('theme-icon-sun');
+    const moonIcon = document.getElementById('theme-icon-moon');
     
-    /**
-     * LocalStorage key for sidebar theme preference.
-     */
-    const SIDEBAR_THEME_KEY = 'agentcore-sidebar-theme';
+    if (sidebar) sidebar.dataset.sidebarTheme = theme;
+    if (sidebarInner) sidebarInner.dataset.sidebarTheme = theme;
+    if (collapsedToggle) collapsedToggle.dataset.sidebarTheme = theme;
     
-    /**
-     * Initialize sidebar theme from localStorage.
-     * Defaults to dark theme for better visual separation.
-     */
-    function initSidebarTheme() {
-        const savedTheme = localStorage.getItem(SIDEBAR_THEME_KEY);
-        // Default to dark theme if no preference saved
-        const theme = savedTheme || 'dark';
-        applySidebarTheme(theme);
-    }
-    
-    /**
-     * Toggle between light and dark sidebar themes.
-     * Persists preference to localStorage.
-     * CSS variables update automatically - no need to refresh memory.
-     */
-    function toggleSidebarTheme() {
-        const sidebar = document.getElementById('memory-sidebar');
-        const currentTheme = sidebar?.dataset.sidebarTheme || 'light';
-        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-        applySidebarTheme(newTheme);
-        localStorage.setItem(SIDEBAR_THEME_KEY, newTheme);
-    }
-    
-    /**
-     * Apply a theme to the sidebar.
-     * 
-     * @param {string} theme - Theme to apply ('light' or 'dark')
-     */
-    function applySidebarTheme(theme) {
-        const sidebar = document.getElementById('memory-sidebar');
-        const sidebarInner = document.getElementById('memory-sidebar-inner');
-        const collapsedToggle = document.getElementById('memory-toggle-collapsed');
-        const sunIcon = document.getElementById('theme-icon-sun');
-        const moonIcon = document.getElementById('theme-icon-moon');
-        
-        // Set theme attribute on sidebar, inner sidebar, and collapsed toggle for CSS variable inheritance
-        if (sidebar) {
-            sidebar.dataset.sidebarTheme = theme;
-        }
-        if (sidebarInner) {
-            sidebarInner.dataset.sidebarTheme = theme;
-        }
-        if (collapsedToggle) {
-            collapsedToggle.dataset.sidebarTheme = theme;
-        }
-        
-        // Toggle icon visibility
-        if (sunIcon && moonIcon) {
-            if (theme === 'dark') {
-                sunIcon.classList.remove('hidden');
-                moonIcon.classList.add('hidden');
-            } else {
-                sunIcon.classList.add('hidden');
-                moonIcon.classList.remove('hidden');
-            }
-        }
-        
-        // Re-apply tab styling for current tab
-        if (currentMemoryTab) {
-            updateTabStyling(currentMemoryTab);
-        }
-    }
-    
-    /**
-     * Update tab button styling based on active state.
-     * Uses CSS variables for theme-aware colors.
-     * 
-     * @param {string} activeTab - Currently active tab
-     */
-    function updateTabStyling(activeTab) {
-        const tabs = ['events', 'facts', 'summaries', 'preferences'];
-        tabs.forEach(t => {
-            const btn = document.getElementById(`tab-${t}`);
-            if (!btn) return;
-            
-            if (t === activeTab) {
-                btn.style.color = 'var(--sidebar-tab-active-text)';
-                btn.style.background = 'var(--sidebar-tab-active-bg)';
-                btn.style.borderColor = 'var(--sidebar-tab-active-text)';
-                btn.classList.add('border-b-2');
-            } else {
-                btn.style.color = 'var(--sidebar-text-muted)';
-                btn.style.background = 'transparent';
-                btn.style.borderColor = 'transparent';
-                btn.classList.remove('border-b-2');
-            }
-        });
-    }
-    
-    /**
-     * Switch between memory tabs (Events, Facts, Summaries, Preferences).
-     * Updates tab styling and loads content for the selected tab.
-     * 
-     * @param {string} tab - Tab to switch to ('events', 'facts', 'summaries', 'preferences')
-     */
-    function switchMemoryTab(tab) {
-        // Update tab buttons using CSS variables
-        const tabs = ['events', 'facts', 'summaries', 'preferences'];
-        tabs.forEach(t => {
-            const content = document.getElementById(`memory-tab-${t}`);
-            if (!content) return;
-            
-            if (t === tab) {
-                content.classList.remove('hidden');
-            } else {
-                content.classList.add('hidden');
-            }
-        });
-        
-        currentMemoryTab = tab;
-        updateTabStyling(tab);
-        
-        // Load content for the selected tab
-        if (tab === 'events') {
-            loadEventMemory();
+    if (sunIcon && moonIcon) {
+        if (theme === 'dark') {
+            sunIcon.classList.remove('hidden');
+            moonIcon.classList.add('hidden');
         } else {
-            loadSemanticMemoryByType(tab);
+            sunIcon.classList.add('hidden');
+            moonIcon.classList.remove('hidden');
         }
     }
+    if (currentMemoryTab) updateTabStyling(currentMemoryTab);
+}
+
+function updateTabStyling(activeTab) {
+    ['events', 'facts', 'summaries', 'preferences'].forEach(t => {
+        const btn = document.getElementById('tab-' + t);
+        if (!btn) return;
+        if (t === activeTab) {
+            btn.style.color = 'var(--sidebar-tab-active-text)';
+            btn.style.background = 'var(--sidebar-tab-active-bg)';
+            btn.style.borderColor = 'var(--sidebar-tab-active-text)';
+            btn.classList.add('border-b-2');
+        } else {
+            btn.style.color = 'var(--sidebar-text-muted)';
+            btn.style.background = 'transparent';
+            btn.style.borderColor = 'transparent';
+            btn.classList.remove('border-b-2');
+        }
+    });
+}
+
+function switchMemoryTab(tab) {
+    ['events', 'facts', 'summaries', 'preferences'].forEach(t => {
+        const content = document.getElementById('memory-tab-' + t);
+        if (content) {
+            if (t === tab) content.classList.remove('hidden');
+            else content.classList.add('hidden');
+        }
+    });
+    currentMemoryTab = tab;
+    updateTabStyling(tab);
+    if (tab === 'events') loadEventMemory();
+    else loadSemanticMemoryByType(tab);
+}
+
+function parseXMLTopics(xmlString) {
+    const topics = [];
+    const regex = /<topic name="([^"]+)">\s*([\s\S]*?)\s*<\/topic>/g;
+    let match;
+    while ((match = regex.exec(xmlString)) !== null) {
+        topics.push({
+            name: match[1].replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&'),
+            content: match[2].trim()
+        });
+    }
+    return topics;
+}
+
+function parsePreferenceJSON(jsonString) {
+    try {
+        const parsed = JSON.parse(jsonString);
+        return { preference: parsed.preference || '', context: parsed.context || '', categories: parsed.categories || [] };
+    } catch { return null; }
+}
+
+function formatFullDate(timestamp) {
+    if (!timestamp) return '';
+    const d = new Date(timestamp);
+    const month = (d.getMonth() + 1).toString().padStart(2, '0');
+    const day = d.getDate().toString().padStart(2, '0');
+    let hours = d.getHours();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12 || 12;
+    return month + '/' + day + '/' + d.getFullYear() + ' ' + hours + ':' + d.getMinutes().toString().padStart(2, '0') + ' ' + ampm;
+}
+
+document.addEventListener('DOMContentLoaded', initSidebarTheme);
+if (document.readyState !== 'loading') initSidebarTheme();
+</script>
+
+<script>
+async function loadSemanticMemoryByType(type, forceRefresh = false) {
+    const containerId = type === 'facts' ? 'semantic-memory-content' : type + '-memory-content';
+    const container = document.getElementById(containerId);
+    if (!container) return;
     
-    // Initialize theme on load
-    document.addEventListener('DOMContentLoaded', initSidebarTheme);
-    // Also try immediate init in case DOM is already ready
-    if (document.readyState !== 'loading') {
-        initSidebarTheme();
+    const currentSessionId = typeof getSessionId === 'function' ? getSessionId() : sessionId;
+    if (!forceRefresh && typeof memoryCache !== 'undefined' && memoryCache[type] && memoryCache.sessionId === currentSessionId) {
+        renderSemanticMemoryItems(type, memoryCache[type], container);
+        return;
     }
     
-    /**
-     * Parse XML topics from summary content.
-     * Summaries are stored as XML with <topic name="...">content</topic> format.
-     * 
-     * @param {string} xmlString - XML string containing topics
-     * @returns {Array} Array of {name, content} objects
-     */
-    function parseXMLTopics(xmlString) {
-        const topics = [];
-        const topicRegex = /<topic name="([^"]+)">\s*([\s\S]*?)\s*<\/topic>/g;
-        let match;
+    container.innerHTML = '<div class="flex items-center justify-center py-4"><svg class="w-5 h-5 animate-spin mr-2" style="color: var(--sidebar-badge-text);" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span class="text-sm" style="color: var(--sidebar-text-muted);">Loading ' + type + '...</span></div>';
+    
+    try {
+        const sid = typeof getSessionId === 'function' ? getSessionId() : sessionId;
+        const response = await fetch('/api/memory/semantic?session_id=' + sid + '&type=' + type);
+        if (response.status === 401) { window.location.href = '/auth/login?error=session_expired'; return; }
+        if (!response.ok) throw new Error('Failed to load ' + type);
+        const data = await response.json();
+        const items = data[type] || data.items || data.facts || [];
+        if (typeof memoryCache !== 'undefined') { memoryCache[type] = items; memoryCache.sessionId = sid; if (typeof saveMemoryCacheToStorage === 'function') saveMemoryCacheToStorage(); }
+        renderSemanticMemoryItems(type, items, container);
+    } catch (error) {
+        console.error('Failed to load ' + type + ':', error);
+        container.innerHTML = '<div class="text-center py-4"><svg class="w-8 h-8 text-red-400 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg><p class="text-red-500 text-sm">Failed to load ' + type + '</p><button onclick="loadSemanticMemoryByType(\'' + type + '\', true)" class="mt-2 text-xs hover:opacity-80 underline" style="color: var(--sidebar-badge-text);">Try again</button></div>';
+    }
+}
+
+function renderSemanticMemoryItems(type, items, container) {
+    if (items.length === 0) {
+        const msgs = { facts: 'No facts extracted yet', summaries: 'No summaries available yet', preferences: 'No preferences learned yet' };
+        const icons = { facts: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />', summaries: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />', preferences: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />' };
+        container.innerHTML = '<div class="text-center py-8"><svg class="w-12 h-12 mx-auto mb-3" style="color: var(--sidebar-empty-icon);" fill="none" viewBox="0 0 24 24" stroke="currentColor">' + (icons[type] || icons.facts) + '</svg><p class="text-sm" style="color: var(--sidebar-text-muted);">' + (msgs[type] || 'No data available') + '</p><p class="text-xs mt-1" style="color: var(--sidebar-text-muted); opacity: 0.7;">Data will appear as you chat</p></div>';
+        return;
+    }
+    
+    if (type === 'facts') {
+        container.innerHTML = items.map(function(item, idx) {
+            var ts = item.timestamp || item.createdAt;
+            return '<div class="p-3 rounded-lg mb-2" style="background: var(--sidebar-card-bg); border: 1px solid var(--sidebar-card-border);"><div class="flex items-center gap-2 mb-2"><span class="text-xs font-medium px-2 py-0.5 rounded" style="background: var(--sidebar-badge-bg); color: var(--sidebar-badge-text);">#' + (idx + 1) + '</span><span class="text-lg">💡</span><span class="text-xs ml-auto" style="color: var(--sidebar-text-muted);">' + formatFullDate(ts) + '</span></div><p class="text-sm" style="color: var(--sidebar-text);">' + escapeHtml(item.content) + '</p></div>';
+        }).join('');
+    } else if (type === 'summaries') {
+        var allTopics = [];
+        items.forEach(function(item) {
+            var topics = parseXMLTopics(item.content);
+            var ts = item.timestamp || item.createdAt;
+            topics.forEach(function(topic) { allTopics.push({ topic: topic, timestamp: ts, idx: allTopics.length }); });
+        });
+        if (allTopics.length === 0) {
+            container.innerHTML = '<div class="text-center py-8"><svg class="w-12 h-12 mx-auto mb-3" style="color: var(--sidebar-empty-icon);" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg><p class="text-sm" style="color: var(--sidebar-text-muted);">No summaries available yet</p></div>';
+            return;
+        }
+        container.innerHTML = allTopics.map(function(item) {
+            var topicName = item.topic.name.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+            return '<div class="p-3 rounded-lg mb-2" style="background: var(--sidebar-card-bg); border: 1px solid var(--sidebar-card-border);"><div class="flex items-center gap-2 mb-2"><span class="text-xs font-medium px-2 py-0.5 rounded" style="background: var(--sidebar-badge-bg); color: var(--sidebar-badge-text);">#' + (item.idx + 1) + '</span><span class="text-lg">📝</span><span class="text-xs ml-auto" style="color: var(--sidebar-text-muted);">' + formatFullDate(item.timestamp) + '</span></div><div class="mb-2"><span class="text-xs font-semibold" style="color: var(--sidebar-text-muted);">Topic:</span><span class="text-sm font-medium ml-1" style="color: var(--sidebar-text);">' + escapeHtml(topicName) + '</span></div><div><span class="text-xs font-semibold" style="color: var(--sidebar-text-muted);">Summary:</span><p class="text-sm mt-1" style="color: var(--sidebar-text);">' + escapeHtml(item.topic.content) + '</p></div></div>';
+        }).join('');
+    } else if (type === 'preferences') {
+        container.innerHTML = items.map(function(item, idx) {
+            var ts = item.timestamp || item.createdAt;
+            var parsed = parsePreferenceJSON(item.content);
+            if (parsed) {
+                var cats = parsed.categories && parsed.categories.length > 0 ? '<div class="flex flex-wrap gap-1 mt-2">' + parsed.categories.map(function(cat) { return '<span class="text-xs px-2 py-0.5 rounded-full" style="background: var(--sidebar-card-border); color: var(--sidebar-text-muted);">' + escapeHtml(cat) + '</span>'; }).join('') + '</div>' : '';
+                var ctx = parsed.context ? '<div class="mb-2"><span class="text-xs font-semibold" style="color: var(--sidebar-text-muted);">Context:</span><p class="text-sm mt-0.5" style="color: var(--sidebar-text); opacity: 0.85;">' + escapeHtml(parsed.context) + '</p></div>' : '';
+                return '<div class="p-3 rounded-lg mb-2" style="background: var(--sidebar-card-bg); border: 1px solid var(--sidebar-card-border);"><div class="flex items-center gap-2 mb-2"><span class="text-xs font-medium px-2 py-0.5 rounded" style="background: var(--sidebar-badge-bg); color: var(--sidebar-badge-text);">#' + (idx + 1) + '</span><span class="text-lg">⭐</span><span class="text-xs ml-auto" style="color: var(--sidebar-text-muted);">' + formatFullDate(ts) + '</span></div><div class="mb-2"><span class="text-xs font-semibold" style="color: var(--sidebar-text-muted);">Preference:</span><p class="text-sm font-medium mt-0.5" style="color: var(--sidebar-text);">' + escapeHtml(parsed.preference) + '</p></div>' + ctx + cats + '</div>';
+            }
+            return '<div class="p-3 rounded-lg mb-2" style="background: var(--sidebar-card-bg); border: 1px solid var(--sidebar-card-border);"><div class="flex items-center gap-2 mb-2"><span class="text-xs font-medium px-2 py-0.5 rounded" style="background: var(--sidebar-badge-bg); color: var(--sidebar-badge-text);">#' + (idx + 1) + '</span><span class="text-lg">⭐</span><span class="text-xs ml-auto" style="color: var(--sidebar-text-muted);">' + formatFullDate(ts) + '</span></div><p class="text-sm" style="color: var(--sidebar-text);">' + escapeHtml(item.content) + '</p></div>';
+        }).join('');
+    }
+}
+</script>
+
+<script>
+async function loadEventMemory(forceRefresh) {
+    var container = document.getElementById('event-memory-content');
+    if (!container) return;
+    
+    var currentSessionId = typeof getSessionId === 'function' ? getSessionId() : sessionId;
+    if (!forceRefresh && typeof memoryCache !== 'undefined' && memoryCache.events && memoryCache.sessionId === currentSessionId) {
+        renderEventMemoryItems(memoryCache.events.messages || [], container);
+        return;
+    }
+    
+    container.innerHTML = '<div class="flex items-center justify-center py-4"><svg class="w-5 h-5 animate-spin mr-2" style="color: var(--sidebar-badge-text);" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span class="text-sm" style="color: var(--sidebar-text-muted);">Loading events...</span></div>';
+    
+    try {
+        var sid = typeof getSessionId === 'function' ? getSessionId() : sessionId;
+        var response = await fetch('/api/memory/events?session_id=' + sid);
+        if (response.status === 401) { window.location.href = '/auth/login?error=session_expired'; return; }
+        if (!response.ok) throw new Error('Failed to load events');
+        var data = await response.json();
+        if (typeof memoryCache !== 'undefined') { memoryCache.events = data; memoryCache.sessionId = sid; if (typeof saveMemoryCacheToStorage === 'function') saveMemoryCacheToStorage(); }
+        renderEventMemoryItems(data.messages || [], container);
+    } catch (error) {
+        console.error('Failed to load events:', error);
+        container.innerHTML = '<div class="text-center py-4"><svg class="w-8 h-8 text-red-400 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg><p class="text-red-500 text-sm">Failed to load events</p><button onclick="loadEventMemory(true)" class="mt-2 text-xs hover:opacity-80 underline" style="color: var(--sidebar-badge-text);">Try again</button></div>';
+    }
+}
+
+function renderEventMemoryItems(messages, container) {
+    if (!messages || messages.length === 0) {
+        container.innerHTML = '<div class="text-center py-8"><svg class="w-12 h-12 mx-auto mb-3" style="color: var(--sidebar-empty-icon);" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg><p class="text-sm" style="color: var(--sidebar-text-muted);">No conversation history yet</p><p class="text-xs mt-1" style="color: var(--sidebar-text-muted); opacity: 0.7;">Start chatting to see events here</p></div>';
+        return;
+    }
+    
+    container.innerHTML = messages.map(function(event, idx) {
+        var role = (event.role || '').toLowerCase();
+        var isUser = role === 'user';
+        var roleLabel = isUser ? 'You' : 'Agent';
+        var roleEmoji = isUser ? '👤' : '🤖';
+        var timestamp = event.timestamp ? new Date(event.timestamp).toLocaleTimeString() : '';
+        var content = event.content || '';
+        if (content.length > 500) content = content.substring(0, 500) + '...';
         
-        while ((match = topicRegex.exec(xmlString)) !== null) {
-            topics.push({
-                name: match[1].replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&'),
-                content: match[2].trim()
-            });
+        var renderedContent, contentClass = 'text-sm';
+        if (isUser) {
+            renderedContent = escapeHtml(content);
+        } else {
+            if (typeof marked !== 'undefined') {
+                renderedContent = marked.parse(content);
+                contentClass = 'text-sm markdown-content memory-markdown';
+            } else {
+                renderedContent = escapeHtml(content);
+            }
         }
         
-        return topics;
+        return '<div class="p-3 rounded-lg mb-2" style="background: var(--sidebar-card-bg); border: 1px solid var(--sidebar-card-border);"><div class="flex items-center gap-2 mb-2"><span class="text-xs font-medium px-2 py-0.5 rounded" style="background: var(--sidebar-badge-bg); color: var(--sidebar-badge-text);">#' + (idx + 1) + '</span><span class="text-lg">' + roleEmoji + '</span><span class="text-xs font-medium" style="color: var(--sidebar-text);">' + roleLabel + '</span><span class="text-xs ml-auto" style="color: var(--sidebar-text-muted);">' + timestamp + '</span></div><div class="' + contentClass + ' line-clamp-4" style="color: var(--sidebar-text);">' + renderedContent + '</div></div>';
+    }).join('');
+}
+
+function addMessageToEventCache(role, content) {
+    if (typeof memoryCache === 'undefined') return;
+    var currentSessionId = typeof getSessionId === 'function' ? getSessionId() : sessionId;
+    if (!memoryCache.events || memoryCache.sessionId !== currentSessionId) {
+        memoryCache.events = { messages: [] };
+        memoryCache.sessionId = currentSessionId;
     }
-    
-    /**
-     * Parse preference JSON content.
-     * Preferences are stored as JSON with {preference, context, categories} format.
-     * 
-     * @param {string} jsonString - JSON string containing preference data
-     * @returns {Object|null} Parsed preference object or null if invalid
-     */
-    function parsePreferenceJSON(jsonString) {
-        try {
-            const parsed = JSON.parse(jsonString);
-            return {
-                preference: parsed.preference || '',
-                context: parsed.context || '',
-                categories: parsed.categories || []
-            };
-        } catch {
-            return null;
-        }
+    memoryCache.events.messages.unshift({ role: role, content: content, timestamp: new Date().toISOString() });
+    if (typeof saveMemoryCacheToStorage === 'function') saveMemoryCacheToStorage();
+    var container = document.getElementById('event-memory-content');
+    if (container && currentMemoryTab === 'events') {
+        renderEventMemoryItems(memoryCache.events.messages, container);
     }
-    
-    /**
-     * Format a full date/time string.
-     * 
-     * @param {string} timestamp - ISO timestamp string
-     * @returns {string} Formatted date string
-     */
-    function formatFullDate(timestamp) {
-        if (!timestamp) return '';
-        const date = new Date(timestamp);
-        const month = (date.getMonth() + 1).toString().padStart(2, '0');
-        const day = date.getDate().toString().padStart(2, '0');
-        const year = date.getFullYear();
-        let hours = date.getHours();
-        const minutes = date.getMinutes().toString().padStart(2, '0');
-        const ampm = hours >= 12 ? 'PM' : 'AM';
-        hours = hours % 12;
-        hours = hours ? hours : 12;
-        return `${month}/${day}/${year} ${hours}:${minutes} ${ampm}`;
-    }
-    
-    /**
-     * Load semantic memory by type (facts, summaries, preferences).
-     * Fetches data from the API and renders it in the appropriate container.
-     * 
-     * @param {string} type - Type of semantic memory to load
-     */
-    async function loadSemanticMemoryByType(type) {
-        const containerId = type === 'facts' ? 'semantic-memory-content' : `${type}-memory-content`;
-        const container = document.getElementById(containerId);
-        if (!container) return;
-        
-        // Show loading state
-        container.innerHTML = `
-            <div class="flex items-center justify-center py-4">
-                <svg class="w-5 h-5 animate-spin mr-2" style="color: var(--sidebar-badge-text);" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span class="text-sm" style="color: var(--sidebar-text-muted);">Loading ${type}...</span>
-            </div>
-        `;
-        
-        try {
-            // Use getSessionId() from chat.js
-            const sid = typeof getSessionId === 'function' ? getSessionId() : sessionId;
-            const response = await fetch(`/api/memory/semantic?session_id=${sid}&type=${type}`);
-            
-            // Handle 401 - session expired, redirect to login
-            if (response.status === 401) {
-                console.log('Session expired, redirecting to login');
-                window.location.href = '/auth/login?error=session_expired';
-                return;
-            }
-            
-            if (!response.ok) throw new Error(`Failed to load ${type}`);
-            
-            const data = await response.json();
-            // Use type-specific key first, then generic items key, then facts as fallback
-            const items = data[type] || data.items || data.facts || [];
-            
-            if (items.length === 0) {
-                const emptyMessages = {
-                    'facts': 'No facts extracted yet',
-                    'summaries': 'No summaries available yet',
-                    'preferences': 'No preferences learned yet'
-                };
-                const emptyIcons = {
-                    'facts': '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />',
-                    'summaries': '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />',
-                    'preferences': '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />'
-                };
-                container.innerHTML = `
-                    <div class="text-center py-8">
-                        <svg class="w-12 h-12 mx-auto mb-3" style="color: var(--sidebar-empty-icon);" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            ${emptyIcons[type] || emptyIcons['facts']}
-                        </svg>
-                        <p class="text-sm" style="color: var(--sidebar-text-muted);">${emptyMessages[type] || 'No data available'}</p>
-                        <p class="text-xs mt-1" style="color: var(--sidebar-text-muted); opacity: 0.7;">Data will appear as you chat</p>
-                    </div>
-                `;
-                return;
-            }
-            
-            // Render based on type
-            if (type === 'facts') {
-                // Facts: simple content display with numbering
-                container.innerHTML = items.map((item, idx) => {
-                    const timestamp = item.timestamp || item.createdAt;
-                    const timeStr = formatFullDate(timestamp);
-                    
-                    return `
-                        <div class="p-3 rounded-lg mb-2 transition-all duration-200" style="background: var(--sidebar-card-bg); border: 1px solid var(--sidebar-card-border);">
-                            <div class="flex items-center gap-2 mb-2">
-                                <span class="text-xs font-medium px-2 py-0.5 rounded" style="background: var(--sidebar-badge-bg); color: var(--sidebar-badge-text);">#${idx + 1}</span>
-                                <span class="text-lg">💡</span>
-                                <span class="text-xs ml-auto" style="color: var(--sidebar-text-muted);">${timeStr}</span>
-                            </div>
-                            <p class="text-sm" style="color: var(--sidebar-text);">${escapeHtml(item.content)}</p>
-                        </div>
-                    `;
-                }).join('');
-            } else if (type === 'summaries') {
-                // Summaries: parse XML topics and display each topic separately
-                const allTopics = [];
-                items.forEach((item) => {
-                    const topics = parseXMLTopics(item.content);
-                    const timestamp = item.timestamp || item.createdAt;
-                    topics.forEach((topic) => {
-                        allTopics.push({ topic, timestamp, idx: allTopics.length });
-                    });
-                });
-                
-                if (allTopics.length === 0) {
-                    container.innerHTML = `
-                        <div class="text-center py-8">
-                            <svg class="w-12 h-12 mx-auto mb-3" style="color: var(--sidebar-empty-icon);" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                            <p class="text-sm" style="color: var(--sidebar-text-muted);">No summaries available yet</p>
-                            <p class="text-xs mt-1" style="color: var(--sidebar-text-muted); opacity: 0.7;">Session summaries will appear as you chat</p>
-                        </div>
-                    `;
-                    return;
-                }
-                
-                container.innerHTML = allTopics.map((item) => {
-                    const timeStr = formatFullDate(item.timestamp);
-                    // Format topic name: replace underscores with spaces and title case
-                    const topicName = item.topic.name
-                        .replace(/_/g, ' ')
-                        .replace(/\b\w/g, c => c.toUpperCase());
-                    
-                    return `
-                        <div class="p-3 rounded-lg mb-2 transition-all duration-200" style="background: var(--sidebar-card-bg); border: 1px solid var(--sidebar-card-border);">
-                            <div class="flex items-center gap-2 mb-2">
-                                <span class="text-xs font-medium px-2 py-0.5 rounded" style="background: var(--sidebar-badge-bg); color: var(--sidebar-badge-text);">#${item.idx + 1}</span>
-                                <span class="text-lg">📝</span>
-                                <span class="text-xs ml-auto" style="color: var(--sidebar-text-muted);">${timeStr}</span>
-                            </div>
-                            <div class="mb-2">
-                                <span class="text-xs font-semibold" style="color: var(--sidebar-text-muted);">Topic:</span>
-                                <span class="text-sm font-medium ml-1" style="color: var(--sidebar-text);">${escapeHtml(topicName)}</span>
-                            </div>
-                            <div>
-                                <span class="text-xs font-semibold" style="color: var(--sidebar-text-muted);">Summary:</span>
-                                <p class="text-sm mt-1" style="color: var(--sidebar-text);">${escapeHtml(item.topic.content)}</p>
-                            </div>
-                        </div>
-                    `;
-                }).join('');
-            } else if (type === 'preferences') {
-                // Preferences: parse JSON and display structured content
-                container.innerHTML = items.map((item, idx) => {
-                    const timestamp = item.timestamp || item.createdAt;
-                    const timeStr = formatFullDate(timestamp);
-                    const parsed = parsePreferenceJSON(item.content);
-                    
-                    if (parsed) {
-                        return `
-                            <div class="p-3 rounded-lg mb-2 transition-all duration-200" style="background: var(--sidebar-card-bg); border: 1px solid var(--sidebar-card-border);">
-                                <div class="flex items-center gap-2 mb-2">
-                                    <span class="text-xs font-medium px-2 py-0.5 rounded" style="background: var(--sidebar-badge-bg); color: var(--sidebar-badge-text);">#${idx + 1}</span>
-                                    <span class="text-lg">⭐</span>
-                                    <span class="text-xs ml-auto" style="color: var(--sidebar-text-muted);">${timeStr}</span>
-                                </div>
-                                <div class="mb-2">
-                                    <span class="text-xs font-semibold" style="color: var(--sidebar-text-muted);">Preference:</span>
-                                    <p class="text-sm font-medium mt-0.5" style="color: var(--sidebar-text);">${escapeHtml(parsed.preference)}</p>
-                                </div>
-                                ${parsed.context ? `
-                                    <div class="mb-2">
-                                        <span class="text-xs font-semibold" style="color: var(--sidebar-text-muted);">Context:</span>
-                                        <p class="text-sm mt-0.5" style="color: var(--sidebar-text); opacity: 0.85;">${escapeHtml(parsed.context)}</p>
-                                    </div>
-                                ` : ''}
-                                ${parsed.categories && parsed.categories.length > 0 ? `
-                                    <div class="flex flex-wrap gap-1 mt-2">
-                                        ${parsed.categories.map(cat => `
-                                            <span class="text-xs px-2 py-0.5 rounded-full" style="background: var(--sidebar-card-border); color: var(--sidebar-text-muted);">${escapeHtml(cat)}</span>
-                                        `).join('')}
-                                    </div>
-                                ` : ''}
-                            </div>
-                        `;
-                    } else {
-                        // Fallback for non-JSON content
-                        return `
-                            <div class="p-3 rounded-lg mb-2 transition-all duration-200" style="background: var(--sidebar-card-bg); border: 1px solid var(--sidebar-card-border);">
-                                <div class="flex items-center gap-2 mb-2">
-                                    <span class="text-xs font-medium px-2 py-0.5 rounded" style="background: var(--sidebar-badge-bg); color: var(--sidebar-badge-text);">#${idx + 1}</span>
-                                    <span class="text-lg">⭐</span>
-                                    <span class="text-xs ml-auto" style="color: var(--sidebar-text-muted);">${timeStr}</span>
-                                </div>
-                                <p class="text-sm" style="color: var(--sidebar-text);">${escapeHtml(item.content)}</p>
-                            </div>
-                        `;
-                    }
-                }).join('');
-            }
-        } catch (error) {
-            console.error(`Failed to load ${type}:`, error);
-            container.innerHTML = `
-                <div class="text-center py-4">
-                    <svg class="w-8 h-8 text-red-400 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <p class="text-red-500 text-sm">Failed to load ${type}</p>
-                    <button onclick="loadSemanticMemoryByType('${type}')" class="mt-2 text-xs hover:opacity-80 underline" style="color: var(--sidebar-badge-text);">
-                        Try again
-                    </button>
-                </div>
-            `;
-        }
-    }
-    
-    /**
-     * Override loadEventMemory to use theme-aware styling.
-     * This function replaces the one in chat.js to ensure CSS variables work correctly.
-     */
-    async function loadEventMemory() {
-        const container = document.getElementById('event-memory-content');
-        if (!container) return;
-        
-        // Show loading state
-        container.innerHTML = `
-            <div class="flex items-center justify-center py-4">
-                <svg class="w-5 h-5 animate-spin mr-2" style="color: var(--sidebar-badge-text);" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span class="text-sm" style="color: var(--sidebar-text-muted);">Loading events...</span>
-            </div>
-        `;
-        
-        try {
-            const sid = typeof getSessionId === 'function' ? getSessionId() : sessionId;
-            const response = await fetch(`/api/memory/events?session_id=${sid}`);
-            
-            // Handle 401 - session expired, redirect to login
-            if (response.status === 401) {
-                console.log('Session expired, redirecting to login');
-                window.location.href = '/auth/login?error=session_expired';
-                return;
-            }
-            
-            if (!response.ok) throw new Error('Failed to load events');
-            
-            const data = await response.json();
-            
-            if (!data.messages || data.messages.length === 0) {
-                container.innerHTML = `
-                    <div class="text-center py-8">
-                        <svg class="w-12 h-12 mx-auto mb-3" style="color: var(--sidebar-empty-icon);" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                        </svg>
-                        <p class="text-sm" style="color: var(--sidebar-text-muted);">No conversation history yet</p>
-                        <p class="text-xs mt-1" style="color: var(--sidebar-text-muted); opacity: 0.7;">Start chatting to see events here</p>
-                    </div>
-                `;
-                return;
-            }
-            
-            // Render events with theme-aware styling and markdown for assistant messages
-            container.innerHTML = data.messages.map((event, idx) => {
-                const role = (event.role || '').toLowerCase();
-                const isUser = role === 'user';
-                const roleLabel = isUser ? 'You' : 'Assistant';
-                const roleEmoji = isUser ? '👤' : '🤖';
-                const timestamp = event.timestamp ? new Date(event.timestamp).toLocaleTimeString() : '';
-                
-                // Truncate content for display
-                let content = event.content || '';
-                if (content.length > 500) {
-                    content = content.substring(0, 500) + '...';
-                }
-                
-                // Render markdown for assistant messages, escape HTML for user messages
-                let renderedContent;
-                let contentClass = 'text-sm';
-                if (isUser) {
-                    renderedContent = escapeHtml(content);
-                } else {
-                    // Use marked.js for markdown rendering if available
-                    if (typeof marked !== 'undefined') {
-                        renderedContent = marked.parse(content);
-                        contentClass = 'text-sm markdown-content memory-markdown';
-                    } else {
-                        renderedContent = escapeHtml(content);
-                    }
-                }
-                
-                return `
-                    <div class="p-3 rounded-lg mb-2 transition-all duration-200" style="background: var(--sidebar-card-bg); border: 1px solid var(--sidebar-card-border);">
-                        <div class="flex items-center gap-2 mb-2">
-                            <span class="text-xs font-medium px-2 py-0.5 rounded" style="background: var(--sidebar-badge-bg); color: var(--sidebar-badge-text);">#${idx + 1}</span>
-                            <span class="text-lg">${roleEmoji}</span>
-                            <span class="text-xs font-medium" style="color: var(--sidebar-text);">${roleLabel}</span>
-                            <span class="text-xs ml-auto" style="color: var(--sidebar-text-muted);">${timestamp}</span>
-                        </div>
-                        <div class="${contentClass} line-clamp-4" style="color: var(--sidebar-text);">${renderedContent}</div>
-                    </div>
-                `;
-            }).join('');
-            
-        } catch (error) {
-            console.error('Failed to load events:', error);
-            container.innerHTML = `
-                <div class="text-center py-4">
-                    <svg class="w-8 h-8 text-red-400 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <p class="text-red-500 text-sm">Failed to load events</p>
-                    <button onclick="loadEventMemory()" class="mt-2 text-xs hover:opacity-80 underline" style="color: var(--sidebar-badge-text);">
-                        Try again
-                    </button>
-                </div>
-            `;
-        }
-    }
+}
 </script>

@@ -277,40 +277,26 @@ async def invoke(payload, context):
     )
     hooks.append(guardrails_hook)
     
-    # Build tools list - conditionally include KB search if configured
+    # Build tools list
     tools = [
+        search_knowledge_base,
         ddg_web_search,
         fetch_url_content,
         calculator, 
         get_current_weather,
         current_time
-    ]
+    ]    
+    log.info(f"Knowledge Base tool enabled: kb_id={config.kb_id}")
     
-    # Add Knowledge Base search tool if KB is configured
-    if config.kb_id:
-        tools.insert(0, search_knowledge_base)  # Insert at beginning for priority
-        log.info(f"Knowledge Base tool enabled: kb_id={config.kb_id}")
-    else:
-        log.warning("KB_ID not configured - agent will operate without Knowledge Base tool")
-    
-    # Build system prompt - include KB-first instruction if KB is configured
-    base_system_prompt = "You are a helpful AI assistant with memory. You can remember previous conversations within the same session."
-    
-    if config.kb_id:
-        system_prompt = (
-            f"{base_system_prompt} "
-            "You have access to a Knowledge Base containing curated domain-specific information. "
-            "IMPORTANT: When answering questions, ALWAYS check the Knowledge Base first using the search_knowledge_base tool "
-            "to find relevant context before using web search or other internet-based tools. "
-            "Only fall back to web search (ddg_web_search) or URL fetching if the Knowledge Base does not contain relevant information. "
-            "You also have access to: weather information for US locations, calculator for math, and current time/date."
-        )
-    else:
-        system_prompt = (
-            f"{base_system_prompt} "
-            "You have access to various tools: web search via DuckDuckGo, URL content fetching, "
-            "weather information for US locations, calculator for math, and current time/date."
-        )
+    # System prompt
+    system_prompt = (
+        "You are a helpful AI assistant with memory. You can remember previous conversations within the same session. "
+        "You have access to a Knowledge Base containing curated domain-specific information. "
+        "IMPORTANT: When answering questions, ALWAYS check the Knowledge Base first using the search_knowledge_base tool "
+        "to find relevant context before using web search or other internet-based tools. "
+        "Only fall back to web search (ddg_web_search) or URL fetching if the Knowledge Base does not contain relevant information. "
+        "You also have access to: weather information for US locations, calculator for math, and current time/date."
+    )
     
     agent = Agent(
         model=model_id,

@@ -1,15 +1,23 @@
 {% extends "base.html" %}
 
-{% block title %}Sign In - AgentCore Chat{% endblock %}
+{% block title %}Sign In - {{ app_title if app_title else 'AgentCore Chat' }}{% endblock %}
+
+{% block favicon %}
+<link rel="icon" type="image/svg+xml" href="{{ logo_url if logo_url else '/static/favicon.svg' }}">
+{% endblock %}
 
 {% block body %}
 <div class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
     <div class="max-w-md w-full space-y-8">
         <!-- Header -->
         <div class="text-center">
-            <h1 class="text-3xl font-bold text-gray-900">Chat Agent</h1>
+            <!-- Logo -->
+            <div class="mb-4 flex justify-center">
+                <img src="{{ logo_url if logo_url else '/static/favicon.svg' }}" alt="Logo" class="w-16 h-16 object-contain">
+            </div>
+            <h1 class="text-3xl font-bold text-gray-900">{{ app_title if app_title else 'Chat Agent' }}</h1>
             <p class="mt-2 text-sm text-gray-600">
-                Bedrock AgentCore + Strands Agents SDK
+                {{ app_subtitle if app_subtitle else 'Bedrock AgentCore + Strands Agents SDK' }}
             </p>
         </div>
 

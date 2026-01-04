@@ -2,13 +2,19 @@
 
 {% block title %}Feedback - Admin Dashboard{% endblock %}
 
+{% block favicon %}
+<link rel="icon" type="image/svg+xml" href="{{ logo_url if logo_url is defined else '/static/favicon.svg' }}">
+{% endblock %}
+
 {% block body %}
 <div class="min-h-screen bg-gray-50">
+    {% set show_admin_btn = false %}
+    {% set primary_action = {'type': 'back_to_chat'} %}
     {% set breadcrumbs = [
         {'label': 'Admin', 'url': '/admin'},
-        {'label': 'Feedback'}
+        {'label': 'User Feedback'}
     ] %}
-    {% include "components/admin_header.html" %}
+    {% include "components/header.html" %}
 
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <!-- Filters -->
@@ -133,8 +139,8 @@
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <div class="flex items-center">
                                     <button class="flex-shrink-0 h-8 w-8 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center transition-colors">
-                                        <svg id="expand-icon-{{ loop.index }}" class="w-4 h-4 text-gray-500 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                        <svg id="expand-icon-{{ loop.index }}" class="w-4 h-4 text-gray-500 transition-transform duration-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
                                         </svg>
                                     </button>
                                     <div class="ml-3">
@@ -256,10 +262,10 @@
         const icon = document.getElementById(`expand-icon-${index}`);
         if (detailsRow.classList.contains('hidden')) {
             detailsRow.classList.remove('hidden');
-            icon.classList.add('rotate-180');
+            icon.classList.add('rotate-90');
         } else {
             detailsRow.classList.add('hidden');
-            icon.classList.remove('rotate-180');
+            icon.classList.remove('rotate-90');
         }
     }
 

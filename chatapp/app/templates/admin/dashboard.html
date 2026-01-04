@@ -2,13 +2,19 @@
 
 {% block title %}Admin Dashboard{% endblock %}
 
+{% block favicon %}
+<link rel="icon" type="image/svg+xml" href="{{ logo_url if logo_url is defined else '/static/favicon.svg' }}">
+{% endblock %}
+
 {% block body %}
 <div class="min-h-screen bg-gray-50">
+    {% set show_admin_btn = false %}
+    {% set primary_action = {'type': 'back_to_chat'} %}
     {% set breadcrumbs = [
         {'label': 'Admin', 'url': '/admin'},
         {'label': 'Dashboard'}
     ] %}
-    {% include "components/admin_header.html" %}
+    {% include "components/header.html" %}
 
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <!-- Time Range Selector -->
@@ -35,8 +41,8 @@
             <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                 <div class="flex items-center justify-between">
                     <div>
-                        <p class="text-sm font-medium text-gray-500">Cost</p>
-                        <p class="text-2xl font-bold text-gray-900 mt-1">${{ "%.2f"|format(stats.total_cost) }}</p>
+                        <p class="text-sm font-medium text-gray-500">Total Cost</p>
+                        <p class="text-2xl font-bold text-gray-900 mt-1">${{ "%.4f"|format(total_cost) }}</p>
                     </div>
                     <div class="p-3 bg-green-100 rounded-full">
                         <svg class="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -44,7 +50,10 @@
                         </svg>
                     </div>
                 </div>
-                <p class="mt-3 text-xs text-gray-500">{{ days_in_period }} day{{ 's' if days_in_period != 1 else '' }} period</p>
+                <div class="mt-3 flex gap-4 text-xs text-gray-500">
+                    <span>Tokens: ${{ "%.4f"|format(stats.total_cost) }}</span>
+                    <span>Runtime: ${{ "%.4f"|format(runtime_stats.total_runtime_cost) }}</span>
+                </div>
             </div>
 
             <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -68,23 +77,26 @@
             <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                 <div class="flex items-center justify-between">
                     <div>
-                        <p class="text-sm font-medium text-gray-500">Users</p>
-                        <p class="text-2xl font-bold text-gray-900 mt-1">{{ stats.unique_users }}</p>
+                        <p class="text-sm font-medium text-gray-500">Runtime</p>
+                        <p class="text-2xl font-bold text-gray-900 mt-1">{{ "%.2f"|format(runtime_stats.total_time_seconds) }}s</p>
                     </div>
-                    <div class="p-3 bg-blue-100 rounded-full">
-                        <svg class="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                    <div class="p-3 bg-purple-100 rounded-full">
+                        <svg class="w-6 h-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
                         </svg>
                     </div>
                 </div>
-                <p class="mt-3 text-xs text-gray-500">{{ stats.unique_sessions }} session{{ 's' if stats.unique_sessions != 1 else '' }}</p>
+                <div class="mt-3 flex gap-4 text-xs text-gray-500">
+                    <span>vCPU: {{ "%.6f"|format(runtime_stats.total_vcpu_hours) }}h</span>
+                    <span>Mem: {{ "%.6f"|format(runtime_stats.total_memory_gb_hours) }}GB-h</span>
+                </div>
             </div>
 
             <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                 <div class="flex items-center justify-between">
                     <div>
                         <p class="text-sm font-medium text-gray-500">Projected Monthly</p>
-                        <p class="text-2xl font-bold text-gray-900 mt-1">${{ "%.2f"|format(stats.projected_monthly_cost) }}</p>
+                        <p class="text-2xl font-bold text-gray-900 mt-1">${{ "%.2f"|format(projected_monthly) }}</p>
                     </div>
                     <div class="p-3 bg-amber-100 rounded-full">
                         <svg class="w-6 h-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -92,12 +104,43 @@
                         </svg>
                     </div>
                 </div>
-                <p class="mt-3 text-xs text-gray-500">Based on {{ days_in_period }}-day average</p>
+                <p class="mt-3 text-xs text-gray-500">Based on {{ days_in_period }} day{{ 's' if days_in_period != 1 else '' }}</p>
             </div>
         </div>
 
-        <!-- Feedback & Guardrails Row -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <!-- User Sessions -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-semibold text-gray-900">User Sessions</h2>
+                    <a href="/admin/users?start_time={{ start_time }}&end_time={{ end_time }}" class="text-xs text-primary-600 hover:text-primary-800">View all →</a>
+                </div>
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-6">
+                        <div class="text-center">
+                            <p class="text-2xl font-bold text-blue-600">{{ stats.unique_users }}</p>
+                            <p class="text-xs text-gray-500">Users</p>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-2xl font-bold text-gray-900">{{ stats.unique_sessions }}</p>
+                            <p class="text-xs text-gray-500">Sessions</p>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-2xl font-bold text-gray-900">{{ stats.invocation_count }}</p>
+                            <p class="text-xs text-gray-500">Invocations</p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        {% if stats.unique_users > 0 %}
+                        <p class="text-lg font-bold text-gray-900">{{ "%.1f"|format(stats.unique_sessions / stats.unique_users) }}</p>
+                        <p class="text-xs text-gray-500">Avg sessions/user</p>
+                        {% else %}
+                        <span class="text-sm text-gray-400">No data</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
             <!-- User Feedback -->
             <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                 <div class="flex items-center justify-between mb-4">
@@ -132,6 +175,9 @@
                 </div>
             </div>
 
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
             <!-- Guardrails -->
             <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                 <div class="flex items-center justify-between mb-4">
@@ -163,6 +209,42 @@
                     {% endif %}
                 </div>
             </div>
+
+            <!-- Tool Use -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-semibold text-gray-900">Tool Use</h2>
+                    <a href="/admin/tools?start_time={{ start_time }}&end_time={{ end_time }}" class="text-xs text-primary-600 hover:text-primary-800">View all →</a>
+                </div>
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-6">
+                        <div class="text-center">
+                            <p class="text-2xl font-bold text-gray-900">{{ "{:,}".format(total_tool_calls) }}</p>
+                            <p class="text-xs text-gray-500">Total Calls</p>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-2xl font-bold text-green-600">{{ "{:,}".format(total_tool_success) }}</p>
+                            <p class="text-xs text-gray-500">Success</p>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-2xl font-bold text-red-600">{{ "{:,}".format(total_tool_errors) }}</p>
+                            <p class="text-xs text-gray-500">Failed</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        {% if total_tool_calls > 0 %}
+                        <div class="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
+                            <div class="h-full bg-green-500 rounded-full" style="width: {{ (tool_success_rate * 100)|int }}%"></div>
+                        </div>
+                        <span class="text-sm font-medium text-green-600">{{ "%.0f"|format(tool_success_rate * 100) }}%</span>
+                        {% else %}
+                        <span class="text-sm text-gray-400">No data</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+
         </div>
 
         <!-- Three Column Layout for Highlights -->

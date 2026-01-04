@@ -1,7 +1,8 @@
 # HTMX ChatApp Dockerfile
 # Python 3.11 base image for FastAPI application
+# Using ECR Public to avoid Docker Hub rate limits
 
-FROM python:3.11-slim
+FROM public.ecr.aws/docker/library/python:3.11-slim
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \

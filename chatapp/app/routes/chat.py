@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from app.auth.cognito import extract_user_id, TokenValidationError
 from app.auth.middleware import SESSION_COOKIE_NAME
 from app.agentcore.client import AgentCoreClient
-from app.models.events import MetadataEvent, ToolUseEvent, GuardrailEvent
+from app.models.events import MetadataEvent, ToolUseEvent, ToolResultEvent, GuardrailEvent
 from app.models.guardrail import GuardrailRecord
 from app.models.usage import UsageRecord, ToolUsageRecord
 from app.storage.guardrail import GuardrailStorageService
@@ -84,6 +84,37 @@ def _get_user_info_from_session(request: Request) -> tuple[str, str | None]:
         raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
 
 
+def _is_error_result(result: Any, status: Optional[str] = None) -> bool:
+    """Check if a tool result indicates an error.
+    
+    Args:
+        result: The tool result (string, dict, or other)
+        status: Optional status field from the event
+        
+    Returns:
+        True if the result indicates an error, False otherwise
+    """
+    # Check status field first
+    if status and status.lower() in ("error", "failed"):
+        return True
+    
+    # Check string results for error indicators
+    if isinstance(result, str):
+        result_lower = result.lower()
+        error_indicators = [
+            "error", "failed", "exception", "not found", 
+            "invalid", "unable to", "could not", "cannot",
+            "traceback", "404", "403", "500", "timeout"
+        ]
+        return any(indicator in result_lower for indicator in error_indicators)
+    
+    # Check dict results for error fields
+    if isinstance(result, dict):
+        return result.get("error") or result.get("status") == "error"
+    
+    return False
+
+
 async def _stream_chat_response(
     prompt: str,
     session_id: str,
@@ -112,6 +143,8 @@ async def _stream_chat_response(
     accumulated_metrics: Dict[str, Any] = {}
     # Track tool usage from ToolUseEvents in the stream
     tool_usage_counts: Dict[str, Dict[str, int]] = {}
+    # Track pending tool uses by ID to correlate with results
+    pending_tool_uses: Dict[str, Dict[str, Any]] = {}
     
     async for event in client.invoke_stream(
         prompt=prompt,
@@ -122,15 +155,39 @@ async def _stream_chat_response(
         # Track tool usage from ToolUseEvent
         if isinstance(event, ToolUseEvent):
             tool_name = event.tool_name or "unknown"
+            tool_use_id = event.tool_use_id
+            
+            # Initialize tool in counts if needed
             if tool_name not in tool_usage_counts:
                 tool_usage_counts[tool_name] = {
                     "call_count": 0,
                     "success_count": 0,
                     "error_count": 0,
-                    "average_time": 0.0,
                 }
+            
+            # Track this tool use as pending (will be resolved when result arrives)
+            pending_tool_uses[tool_use_id] = {
+                "tool_name": tool_name,
+                "status": "pending"
+            }
             tool_usage_counts[tool_name]["call_count"] += 1
-            tool_usage_counts[tool_name]["success_count"] += 1  # Assume success
+        
+        # Track tool results and update success/error counts
+        elif isinstance(event, ToolResultEvent):
+            tool_use_id = event.tool_use_id
+            
+            # Find the corresponding tool use
+            if tool_use_id in pending_tool_uses:
+                tool_info = pending_tool_uses.pop(tool_use_id)
+                tool_name = tool_info["tool_name"]
+                
+                # Determine if result indicates success or error
+                is_error = _is_error_result(event.tool_result, event.status)
+                
+                if is_error:
+                    tool_usage_counts[tool_name]["error_count"] += 1
+                else:
+                    tool_usage_counts[tool_name]["success_count"] += 1
         
         # Capture metrics from MetadataEvent
         if isinstance(event, MetadataEvent) and event.data:
@@ -144,6 +201,12 @@ async def _stream_chat_response(
             )
         
         yield event.to_sse_format()
+    
+    # Handle any remaining pending tool uses (tools that started but never completed)
+    # Mark them as errors since they didn't produce a result
+    for tool_use_id, tool_info in pending_tool_uses.items():
+        tool_name = tool_info["tool_name"]
+        tool_usage_counts[tool_name]["error_count"] += 1
     
     # Merge tool usage into accumulated metrics
     if tool_usage_counts:

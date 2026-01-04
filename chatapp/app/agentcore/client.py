@@ -352,6 +352,7 @@ class AgentCoreClient:
             payload_dict = {
                 'prompt': prompt,
                 'userId': user_id,
+                'sessionId': session_id,  # Include session ID in payload for usage logs
                 'modelId': model_id,
                 'guardrailId': config.guardrail_id,
                 'guardrailVersion': config.guardrail_version,

@@ -22,6 +22,7 @@ from app.models.feedback import (
     FeedbackSubmission,
     FeedbackStats,
 )
+from app.models.app_settings import AppSetting
 
 __all__ = [
     # SSE Events
@@ -43,4 +44,6 @@ __all__ = [
     "FeedbackRecord",
     "FeedbackSubmission",
     "FeedbackStats",
+    # App Settings
+    "AppSetting",
 ]

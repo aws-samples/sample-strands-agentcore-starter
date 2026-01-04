@@ -13,13 +13,9 @@ from fastapi.templating import Jinja2Templates
 from pathlib import Path
 
 from app.storage.prompt_template import PromptTemplateStorageService
+from app.templates_config import templates
 
 logger = logging.getLogger(__name__)
-
-# Set up templates
-BASE_DIR = Path(__file__).resolve().parent.parent
-TEMPLATES_DIR = BASE_DIR / "templates"
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 # API router for chat UI
 router = APIRouter(prefix="/api", tags=["templates"])

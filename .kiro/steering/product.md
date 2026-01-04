@@ -11,10 +11,12 @@ AgentCore Chat Application - A full-stack conversational AI starter kit with bui
 - Session management with conversation history
 - Memory viewer with event and semantic memory tabs (Events, Facts, Summaries, Preferences)
 - Light/dark theme toggle for memory sidebar
-- Admin dashboard with usage analytics and cost tracking
+- Admin dashboard with usage analytics and cost tracking (token + runtime costs)
 - User feedback capture (thumbs up/down with comments)
 - Guardrails analytics with violation tracking
 - Prompt templates for quick access to pre-defined prompts (admin-managed, stored in DynamoDB)
+- Application settings for branding customization (title, subtitle, logos, theme colors)
+- Tool detail views with per-tool invocation analytics
 - Knowledge Base integration for semantic search over curated documents
 - Containerized deployment on AWS ECS Express Mode
 
@@ -25,7 +27,8 @@ AgentCore Chat Application - A full-stack conversational AI starter kit with bui
 **Agent Backend**: Python agent using Strands framework deployed to AgentCore Runtime
 **Integration**: FastAPI routes invoke AgentCore Runtime (preserves streaming)
 **Memory**: AgentCore Memory provides event and semantic memory for conversation persistence
-**Storage**: DynamoDB for usage records, feedback, guardrail violations, and prompt templates
+**Storage**: DynamoDB for usage records, feedback, guardrail violations, prompt templates, app settings, and runtime usage
+**Runtime Tracking**: Firehose pipeline streaming AgentCore Runtime usage logs to DynamoDB for vCPU/memory cost tracking
 **Streaming**: Server-Sent Events (SSE) for real-time token-by-token response display
 
 ## Key Technologies
@@ -33,7 +36,8 @@ AgentCore Chat Application - A full-stack conversational AI starter kit with bui
 - Amazon Bedrock AgentCore (agent runtime and memory)
 - Amazon Bedrock Knowledge Bases (semantic search with S3 Vectors)
 - Amazon Bedrock Guardrails (content filtering)
-- Amazon DynamoDB (usage analytics, feedback, guardrail storage)
+- Amazon DynamoDB (usage analytics, feedback, guardrail storage, runtime usage)
+- Amazon Kinesis Data Firehose (runtime usage log streaming)
 - FastAPI (Python web framework)
 - Jinja2 (server-side templating)
 - HTMX (included but SSE streaming uses vanilla JS for complex state management)

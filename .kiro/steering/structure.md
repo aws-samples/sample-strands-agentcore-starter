@@ -49,23 +49,29 @@ chatapp/
 │   │   ├── repository.py        # Usage analytics DynamoDB queries
 │   │   ├── feedback_repository.py # Feedback queries
 │   │   ├── guardrail_repository.py # Guardrail violation queries
+│   │   ├── runtime_usage_repository.py # AgentCore Runtime usage queries
 │   │   └── cost_calculator.py   # Cost calculations
 │   ├── storage/                  # Data storage services
 │   │   ├── usage.py             # Usage record storage
 │   │   ├── feedback.py          # Feedback storage
 │   │   ├── guardrail.py         # Guardrail violation storage
-│   │   └── prompt_template.py   # Prompt template storage
+│   │   ├── prompt_template.py   # Prompt template storage
+│   │   └── app_settings.py      # Application settings storage
+│   ├── helpers/                  # Shared utilities
+│   │   └── settings.py          # App settings helper (color presets, defaults)
 │   ├── routes/
 │   │   ├── auth.py              # Auth routes (/auth/login, /auth/logout)
 │   │   ├── chat.py              # Chat API routes (/api/chat)
 │   │   ├── memory.py            # Memory API routes (/api/memory/*)
 │   │   ├── admin.py             # Admin dashboard routes (/admin/*)
 │   │   ├── feedback.py          # Feedback API routes
-│   │   └── prompt_templates.py  # Prompt templates routes (/api/templates, /admin/templates)
+│   │   ├── prompt_templates.py  # Prompt templates routes (/api/templates, /admin/templates)
+│   │   └── app_settings.py      # App settings routes (/admin/settings)
 │   ├── models/
 │   │   ├── feedback.py          # Feedback data models
 │   │   ├── guardrail.py         # Guardrail data models
-│   │   └── prompt_template.py   # Prompt template data model
+│   │   ├── prompt_template.py   # Prompt template data model
+│   │   └── app_settings.py      # App settings data model
 │   ├── session/
 │   │   └── manager.py           # Session management
 │   ├── static/
@@ -79,7 +85,7 @@ chatapp/
 │       ├── login.html           # Login form
 │       ├── components/
 │       │   ├── sidebar.html     # Memory viewer with theme toggle
-│       │   └── admin_header.html # Admin navigation header
+│       │   └── header.html      # Shared header component (replaces admin_header.html)
 │       └── admin/               # Admin dashboard templates
 │           ├── dashboard.html   # Main dashboard
 │           ├── tokens.html      # Token analytics
@@ -87,11 +93,14 @@ chatapp/
 │           ├── user_detail.html # User detail view
 │           ├── session_detail.html # Session detail view
 │           ├── tools.html       # Tool analytics
+│           ├── tool_detail.html # Tool detail view
 │           ├── feedback.html    # Feedback analytics
 │           ├── guardrails.html  # Guardrail violations
-│           └── templates.html   # Prompt templates management
-├── deploy/
-│   └── create-user.sh           # Test user creation
+│           ├── templates.html   # Prompt templates management
+│           └── settings.html    # Application settings (branding, colors)
+├── scripts/
+│   ├── create-user.sh           # Test user creation
+│   └── generate_test_data.py    # Generate test data for admin dashboard
 ├── sync-env.sh                   # Sync .env from AWS Secrets Manager
 ├── Dockerfile                    # Container build
 ├── docker-compose.yml            # Local development
@@ -108,6 +117,7 @@ chatapp/
 - `app/routes/chat.py`: SSE streaming endpoint proxying to AgentCore
 - `app/routes/admin.py`: Admin dashboard with usage analytics
 - `app/admin/repository.py`: DynamoDB queries for usage data
+- `app/admin/runtime_usage_repository.py`: DynamoDB queries for AgentCore Runtime metrics
 
 ## Configuration Files
 

@@ -30,8 +30,10 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as cr from 'aws-cdk-lib/custom-resources';
+import { NagSuppressions } from 'cdk-nag';
 import { Construct } from 'constructs';
 import { config, exportNames } from './config';
+import { applyCommonSuppressions, applyBucketDeploymentSuppressions, applyCodeBuildSuppressions } from './nag-suppressions';
 import * as path from 'path';
 
 export class ChatAppStack extends cdk.Stack {
@@ -76,12 +78,19 @@ export class ChatAppStack extends cdk.Stack {
     // S3 Bucket for CodeBuild source
     // ========================================================================
     
+    // Import access logs bucket from Foundation stack
+    const accessLogsBucketName = cdk.Fn.importValue(`${config.appName}-AccessLogsBucketName`);
+    const accessLogsBucket = s3.Bucket.fromBucketName(this, 'ImportedAccessLogsBucket', accessLogsBucketName);
+
     this.sourceBucket = new s3.Bucket(this, 'ChatAppSourceBucket', {
       bucketName: `${config.appName}-chatapp-source-${this.account}-${this.region}`,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
+      serverAccessLogsBucket: accessLogsBucket,
+      serverAccessLogsPrefix: 'chatapp-source/',
       lifecycleRules: [
         {
           id: 'ExpireOldObjects',
@@ -90,6 +99,9 @@ export class ChatAppStack extends cdk.Stack {
         },
       ],
     });
+
+    // Acknowledge that logging permissions are handled in Foundation stack
+    cdk.Annotations.of(this.sourceBucket).acknowledgeWarning('@aws-cdk/aws-s3:accessLogsPolicyNotAdded', 'Logging permissions added to access logs bucket in Foundation stack');
 
     // ========================================================================
     // CodeBuild Role and Project
@@ -159,7 +171,10 @@ export class ChatAppStack extends cdk.Stack {
           build: {
             commands: [
               'echo Build started on `date`',
-              'echo Building the Docker image...',
+              'echo Running unit tests...',
+              'pip install -r requirements.txt -q',
+              'python -m pytest tests/ -v --tb=short',
+              'echo Tests passed, building Docker image...',
               'docker build --platform linux/amd64 -t $ECR_REPO_URI:latest .',
               'docker tag $ECR_REPO_URI:latest $ECR_REPO_URI:$CODEBUILD_BUILD_NUMBER',
             ],
@@ -200,7 +215,6 @@ export class ChatAppStack extends cdk.Stack {
             'deploy/**',
             '*.log',
             '.DS_Store',
-            'tests/**',
           ],
         }),
       ],
@@ -214,6 +228,9 @@ export class ChatAppStack extends cdk.Stack {
     // ========================================================================
     // Trigger CodeBuild
     // ========================================================================
+    
+    // Use build timestamp to force CodeBuild trigger on every deploy
+    const buildTimestamp = new Date().toISOString();
     
     const triggerBuild = new cr.AwsCustomResource(this, 'TriggerChatAppBuild', {
       onCreate: {
@@ -233,6 +250,8 @@ export class ChatAppStack extends cdk.Stack {
           projectName: this.buildProject.projectName,
           sourceTypeOverride: 'S3',
           sourceLocationOverride: `${this.sourceBucket.bucketName}/chatapp-source/`,
+          // Timestamp forces CloudFormation to see a change and trigger the build
+          idempotencyToken: buildTimestamp.replace(/[^a-zA-Z0-9]/g, '').substring(0, 64),
         },
         physicalResourceId: cr.PhysicalResourceId.fromResponse('build.id'),
       },
@@ -244,6 +263,9 @@ export class ChatAppStack extends cdk.Stack {
         }),
       ]),
     });
+    
+    // Tag the custom resource with build timestamp for visibility
+    cdk.Tags.of(triggerBuild).add('BuildTimestamp', buildTimestamp);
 
     triggerBuild.node.addDependency(chatappSourceDeployment);
 
@@ -318,9 +340,14 @@ def handler(event, context):
       })
     );
 
+    const buildWaiterProviderLogGroup = new logs.LogGroup(this, 'ChatAppBuildWaiterProviderLogs', {
+      retention: logs.RetentionDays.ONE_DAY,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
     const buildWaiterProvider = new cr.Provider(this, 'ChatAppBuildWaiterProvider', {
       onEventHandler: buildWaiterFunction,
-      logRetention: logs.RetentionDays.ONE_DAY,
+      logGroup: buildWaiterProviderLogGroup,
     });
 
     const buildWaiter = new cdk.CustomResource(this, 'ChatAppBuildWaiter', {
@@ -556,5 +583,70 @@ def handler(event, context):
       value: this.logGroup.logGroupName,
       description: 'CloudWatch log group name for container logs',
     });
+
+    // ========================================================================
+    // CDK-NAG SUPPRESSIONS
+    // ========================================================================
+    
+    applyCommonSuppressions(this);
+    applyBucketDeploymentSuppressions(this);
+    applyCodeBuildSuppressions(this);
+
+    // Suppress CodeBuild role wildcards
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-ChatApp/ChatAppCodeBuildRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'CodeBuild log groups include build number. Scoped to specific project prefix.',
+          appliesTo: [
+            `Resource::arn:aws:logs:${this.region}:${this.account}:log-group:/aws/codebuild/${config.appName}-chatapp-build*`,
+            `Resource::arn:aws:logs:${this.region}:${this.account}:log-group:/aws/codebuild/<ChatAppBuildProjectCED7EC7C>:*`,
+          ],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'CodeBuild report groups include dynamic names. Scoped to specific project.',
+          appliesTo: [`Resource::arn:aws:codebuild:${this.region}:${this.account}:report-group/<ChatAppBuildProjectCED7EC7C>-*`],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'CodeBuild needs access to all objects in source bucket.',
+          appliesTo: ['Resource::<ChatAppSourceBucket82B12907.Arn>/*'],
+        },
+      ]
+    );
+
+    // Suppress BucketDeployment wildcards
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-ChatApp/Custom::CDKBucketDeployment8693BB64968944B69AAFB0CC9EB8756C512MiB/ServiceRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'BucketDeployment needs access to CDK assets bucket for deployment.',
+          appliesTo: [`Resource::arn:aws:s3:::cdk-hnb659fds-assets-${this.account}-${this.region}/*`],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'BucketDeployment needs access to all objects in destination bucket.',
+          appliesTo: ['Resource::<ChatAppSourceBucket82B12907.Arn>/*'],
+        },
+      ]
+    );
+
+    // Suppress build waiter provider wildcards
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-ChatApp/ChatAppBuildWaiterProvider/framework-onEvent/ServiceRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'CDK Provider framework requires lambda:InvokeFunction with wildcard for versioned invocations.',
+          appliesTo: ['Resource::<ChatAppBuildWaiterFunction8502DDEE.Arn>:*'],
+        },
+      ]
+    );
   }
 }

@@ -24,7 +24,7 @@ function calculateStartTime(days) {
  * @param {boolean} options.includeDate - Include date portion (default: true)
  * @param {boolean} options.includeTime - Include time portion (default: true)
  * @param {boolean} options.includeSeconds - Include seconds (default: false)
- * @returns {string} Formatted local time string
+ * @returns {string} Formatted local time string (MM/DD/YYYY HH:MM:SS AM/PM)
  */
 function formatLocalTime(utcTimestamp, options = {}) {
     if (!utcTimestamp) return '';
@@ -38,22 +38,28 @@ function formatLocalTime(utcTimestamp, options = {}) {
     const parts = [];
     
     if (includeDate) {
-        // Format: YYYY-MM-DD
-        const year = date.getFullYear();
+        // Format: MM/DD/YYYY
         const month = String(date.getMonth() + 1).padStart(2, '0');
         const day = String(date.getDate()).padStart(2, '0');
-        parts.push(`${year}-${month}-${day}`);
+        const year = date.getFullYear();
+        parts.push(`${month}/${day}/${year}`);
     }
     
     if (includeTime) {
-        // Format: HH:MM or HH:MM:SS
-        const hours = String(date.getHours()).padStart(2, '0');
+        // Format: HH:MM:SS AM/PM
+        let hours = date.getHours();
         const minutes = String(date.getMinutes()).padStart(2, '0');
-        let timeStr = `${hours}:${minutes}`;
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12;
+        hours = hours ? hours : 12; // 0 should be 12
+        const hoursStr = String(hours).padStart(2, '0');
+        
+        let timeStr = `${hoursStr}:${minutes}`;
         if (includeSeconds) {
             const seconds = String(date.getSeconds()).padStart(2, '0');
             timeStr += `:${seconds}`;
         }
+        timeStr += ` ${ampm}`;
         parts.push(timeStr);
     }
     
