@@ -299,7 +299,9 @@ async def update_settings(
     logger.info("Refreshed template globals after settings update")
     
     # Preserve active tab in redirect
-    redirect_url = f"/admin/settings?tab={active_tab}"
+    allowed_tabs = {"branding", "icons", "colors"}
+    safe_active_tab = active_tab if active_tab in allowed_tabs else "branding"
+    redirect_url = f"/admin/settings?tab={safe_active_tab}"
     return RedirectResponse(url=redirect_url, status_code=303)
 
 
