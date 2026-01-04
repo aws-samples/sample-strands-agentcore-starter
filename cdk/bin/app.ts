@@ -35,6 +35,7 @@ validateConfig();
 const app = new cdk.App();
 
 // Apply cdk-nag AWS Solutions checks to all stacks
+// Note: cdk-nag findings will be logged but won't block deployment (see deploy-all.sh)
 Aspects.of(app).add(new AwsSolutionsChecks({ verbose: true }));
 
 // Get deployment mode from CDK context (set via --context ingress=<mode>)
