@@ -49,7 +49,7 @@ import * as cr from 'aws-cdk-lib/custom-resources';
 import { NagSuppressions } from 'cdk-nag';
 import { Construct } from 'constructs';
 import { config, exportNames } from './config';
-import { applyCommonSuppressions, applyBucketDeploymentSuppressions, applyCodeBuildSuppressions } from './nag-suppressions';
+import { applyCommonSuppressions, applyBucketDeploymentSuppressions, applyCodeBuildSuppressions, applyCustomResourceSuppressions } from './nag-suppressions';
 import * as path from 'path';
 
 export class ChatAppStack extends cdk.Stack {
@@ -120,6 +120,14 @@ export class ChatAppStack extends cdk.Stack {
     // Create Stack Outputs
     // ========================================================================
     this.createOutputs();
+
+    // ========================================================================
+    // Apply CDK-Nag Suppressions
+    // ========================================================================
+    applyCommonSuppressions(this);
+    applyBucketDeploymentSuppressions(this);
+    applyCodeBuildSuppressions(this);
+    applyCustomResourceSuppressions(this);
   }
 
   /**
