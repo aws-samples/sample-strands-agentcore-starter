@@ -431,9 +431,16 @@ def handler(event, context):
       })
     );
 
+    // Log group for ECS build waiter provider
+    const ecsBuildWaiterLogGroup = new logs.LogGroup(this, 'EcsBuildWaiterLogGroup', {
+      logGroupName: `/aws/lambda/${config.appName}-ecs-build-waiter-provider`,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      retention: logs.RetentionDays.ONE_DAY,
+    });
+
     const ecsBuildWaiterProvider = new cr.Provider(this, 'EcsBuildWaiterProvider', {
       onEventHandler: ecsBuildWaiterFunction,
-      logRetention: logs.RetentionDays.ONE_DAY,
+      logGroup: ecsBuildWaiterLogGroup,
     });
 
     const ecsBuildWaiter = new cdk.CustomResource(this, 'EcsBuildWaiter', {
@@ -839,9 +846,16 @@ def handler(event, context):
       })
     );
 
+    // Log group for Lambda build waiter provider
+    const lambdaBuildWaiterLogGroup = new logs.LogGroup(this, 'LambdaBuildWaiterLogGroup', {
+      logGroupName: `/aws/lambda/${config.appName}-lambda-build-waiter-provider`,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      retention: logs.RetentionDays.ONE_DAY,
+    });
+
     const lambdaBuildWaiterProvider = new cr.Provider(this, 'LambdaBuildWaiterProvider', {
       onEventHandler: lambdaBuildWaiterFunction,
-      logRetention: logs.RetentionDays.ONE_DAY,
+      logGroup: lambdaBuildWaiterLogGroup,
     });
 
     const lambdaBuildWaiter = new cdk.CustomResource(this, 'LambdaBuildWaiter', {
@@ -899,6 +913,9 @@ def handler(event, context):
     // Grant secret read permissions
     secret.grantRead(this.lambdaFunction);
     
+    // Grant CloudWatch Logs write permissions
+    // Required because the Lambda uses an imported role from Foundation stack
+    this.lambdaLogGroup.grantWrite(this.lambdaFunction);
     // Lambda function depends on build completion
     this.lambdaFunction.node.addDependency(lambdaBuildWaiter);
     
@@ -931,7 +948,7 @@ def handler(event, context):
     // ========================================================================
     
     this.functionUrl = this.lambdaFunction.addFunctionUrl({
-      authType: lambda.FunctionUrlAuthType.NONE,  // Public access
+      authType: lambda.FunctionUrlAuthType.NONE,  // Public access - app-level auth via Cognito
       invokeMode: lambda.InvokeMode.RESPONSE_STREAM,  // Enable SSE streaming
       cors: {
         allowedOrigins: ['*'],  // In production, restrict to specific domains
@@ -939,6 +956,16 @@ def handler(event, context):
         allowedHeaders: ['*'],
         maxAge: cdk.Duration.hours(1),
       },
+    });
+
+    // Explicitly grant public invoke permissions for Function URL
+    // Required because the Lambda uses an imported role from Foundation stack
+    // Use CfnPermission for '*' principal since addPermission doesn't support it
+    new lambda.CfnPermission(this, 'AllowPublicAccess', {
+      functionName: this.lambdaFunction.functionName,
+      action: 'lambda:InvokeFunctionUrl',
+      principal: '*',
+      functionUrlAuthType: 'NONE',
     });
   }
 

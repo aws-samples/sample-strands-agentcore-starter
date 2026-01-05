@@ -125,6 +125,59 @@ cd "$SCRIPT_DIR"
 APP_NAME="htmx-chatapp"
 
 # ============================================================================
+# STEP 0: Clean up CloudWatch Logs Deliveries (must be deleted before sources)
+# ============================================================================
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}Step 0: Clean up CloudWatch Logs Deliveries${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${YELLOW}Deleting deliveries before sources to avoid dependency errors...${NC}"
+
+if [ "$DRY_RUN" = true ]; then
+    echo -e "${CYAN}[DRY RUN] Would delete CloudWatch Logs deliveries${NC}"
+else
+    # Get all deliveries and delete them
+    DELIVERY_IDS=$(aws logs describe-deliveries --region "$AWS_REGION" --query 'deliveries[*].id' --output text 2>/dev/null || echo "")
+    
+    if [ -n "$DELIVERY_IDS" ] && [ "$DELIVERY_IDS" != "None" ]; then
+        for DELIVERY_ID in $DELIVERY_IDS; do
+            echo -e "${YELLOW}Deleting delivery: $DELIVERY_ID${NC}"
+            aws logs delete-delivery --id "$DELIVERY_ID" --region "$AWS_REGION" 2>/dev/null || true
+        done
+        echo -e "${GREEN}Deliveries deleted${NC}"
+    else
+        echo -e "${GREEN}No deliveries found to delete${NC}"
+    fi
+    
+    # Also delete delivery sources (they may block deletion too)
+    DELIVERY_SOURCES=$(aws logs describe-delivery-sources --region "$AWS_REGION" --query 'deliverySources[*].name' --output text 2>/dev/null || echo "")
+    
+    if [ -n "$DELIVERY_SOURCES" ] && [ "$DELIVERY_SOURCES" != "None" ]; then
+        for SOURCE_NAME in $DELIVERY_SOURCES; do
+            echo -e "${YELLOW}Deleting delivery source: $SOURCE_NAME${NC}"
+            aws logs delete-delivery-source --name "$SOURCE_NAME" --region "$AWS_REGION" 2>/dev/null || true
+        done
+        echo -e "${GREEN}Delivery sources deleted${NC}"
+    else
+        echo -e "${GREEN}No delivery sources found to delete${NC}"
+    fi
+    
+    # Delete delivery destinations too
+    DELIVERY_DESTS=$(aws logs describe-delivery-destinations --region "$AWS_REGION" --query 'deliveryDestinations[*].name' --output text 2>/dev/null || echo "")
+    
+    if [ -n "$DELIVERY_DESTS" ] && [ "$DELIVERY_DESTS" != "None" ]; then
+        for DEST_NAME in $DELIVERY_DESTS; do
+            echo -e "${YELLOW}Deleting delivery destination: $DEST_NAME${NC}"
+            aws logs delete-delivery-destination --name "$DEST_NAME" --region "$AWS_REGION" 2>/dev/null || true
+        done
+        echo -e "${GREEN}Delivery destinations deleted${NC}"
+    else
+        echo -e "${GREEN}No delivery destinations found to delete${NC}"
+    fi
+fi
+
+echo ""
+
+# ============================================================================
 # STEP 1: Destroy all CDK stacks
 # ============================================================================
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

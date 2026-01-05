@@ -218,7 +218,8 @@ else
     npx cdk deploy \
         "${APP_NAME}-ChatApp" \
         --context ingress="$INGRESS_MODE" \
-        --require-approval never 
+        --require-approval never \
+        --outputs-file cdk-outputs.json 
     
     echo -e "${GREEN}All stacks deployed${NC}"
 fi
@@ -231,7 +232,9 @@ echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━�
 echo -e "${BLUE}Step 5: Check ECS deployment${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
-if [ "$DRY_RUN" != true ]; then
+if [ "$INGRESS_MODE" = "furl" ]; then
+    echo -e "${GREEN}Skipping ECS deployment check (ingress mode: furl)${NC}"
+elif [ "$DRY_RUN" != true ]; then
     # Force ECS to pull the new image (if not already deploying)
     echo ""
     echo -e "${YELLOW}Checking ECS deployment status...${NC}"
@@ -256,7 +259,9 @@ if [ "$DRY_RUN" != true ]; then
         echo -e "${GREEN}ECS deployment already in progress (${DEPLOYMENT_COUNT} deployments)${NC}"
     fi
 else
-    echo -e "${CYAN}[DRY RUN] Would check ECS deployment status${NC}"
+    if [ "$INGRESS_MODE" != "furl" ]; then
+        echo -e "${CYAN}[DRY RUN] Would check ECS deployment status${NC}"
+    fi
 fi
 
 # ============================================================================
@@ -324,7 +329,7 @@ if [ "$DRY_RUN" != true ]; then
         
         # Display URL or fallback message
         if [ -n "$SERVICE_URL" ]; then
-            echo -e "${GREEN}  ECS Express Mode:${NC} https://$SERVICE_URL"
+            echo -e "${GREEN}  Application URL:${NC} https://$SERVICE_URL"
         else
             echo -e "${YELLOW}  ECS Express Mode: URL not yet available (service may still be initializing)${NC}"
             if [ -n "$SERVICE_ARN" ]; then
@@ -339,10 +344,11 @@ if [ "$DRY_RUN" != true ]; then
         echo -e "${YELLOW}Fetching Lambda Function URL...${NC}"
         
         # Get Lambda Function URL from CDK outputs
-        LAMBDA_URL=$(jq -r '.["'"${APP_NAME}-chatapp"'"].LambdaFunctionUrl // empty' cdk-outputs.json 2>/dev/null || echo "")
+        STACK_KEY="${APP_NAME}-chatapp"
+        LAMBDA_URL=$(jq -r --arg key "$STACK_KEY" '.[$key].LambdaFunctionUrl // ""' cdk-outputs.json 2>/dev/null)
         
-        if [ -n "$LAMBDA_URL" ]; then
-            echo -e "${GREEN}  Lambda Function URL:${NC} $LAMBDA_URL"
+        if [ -n "$LAMBDA_URL" ] && [ "$LAMBDA_URL" != "null" ]; then
+            echo -e "${GREEN}Application URL:${NC} $LAMBDA_URL"
         else
             echo -e "${YELLOW}  Lambda Function URL: Unable to retrieve from outputs${NC}"
             echo -e "${YELLOW}  Check cdk-outputs.json or AWS Console for the Function URL${NC}"
