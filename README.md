@@ -10,7 +10,7 @@ Skip weeks of infrastructure setup and go straight to validating your agentic AI
 
 - **Production-grade infrastructure in minutes** — Deploy a complete agentic AI stack (auth, memory, guardrails, knowledge base, analytics) with a single CDK command, eliminating weeks of boilerplate development
 - **Built-in cost intelligence** — Track token usage, runtime costs, and tool invocations with projections to forecast production spending before you scale
-- **Flexible deployment options** — Choose between always-on ECS (\~$42/mo) or serverless [Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter) (\~$22/mo) based on your traffic patterns and budget
+- **Flexible deployment options** — Choose between always-on ECS (\~$46/mo) or serverless [Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter) (\~$12/mo) based on your traffic patterns and budget
 - **Extensible agent framework** — Add custom tools, swap models, integrate your own knowledge base, and customize the UI without rebuilding core infrastructure
 
 ## Key Features
@@ -228,9 +228,9 @@ The application supports three ingress modes for different use cases and cost pr
 
 | Mode | Description | Monthly Cost | Use Case |
 |------|-------------|--------------|----------|
-| **ecs** | ECS Express Gateway - Always-on container service | ~$42 | Production workloads, consistent traffic, no cold starts |
-| **furl** (default) | CloudFront + Lambda Web Adapter - Serverless pay-per-use with edge distribution | ~$22 | Development, PoC, sporadic usage, cost optimization |
-| **both** | Deploy both simultaneously | ~$64 | A/B testing, migration, redundancy |
+| **ecs** | ECS Express Gateway - Always-on container service | ~$46 | Production workloads, consistent traffic, no cold starts |
+| **furl** (default) | CloudFront + Lambda Web Adapter - Serverless pay-per-use with edge distribution | ~$12 | Development, PoC, sporadic usage, cost optimization |
+| **both** | Deploy both simultaneously | ~$58 | A/B testing, migration, redundancy |
 
 ### Deployment Command
 
@@ -265,9 +265,9 @@ Options:
 - IPv4 addresses: ~$10.95/mo (3 ALB IPs across AZs + 1 task ENI)
 - Data transfer: ~$0.50/mo
 
-**Lambda Web Adapter Mode** (~$22/month typical):
+**Lambda Web Adapter Mode** (~$12/month typical):
 - CloudFront distribution: ~$1.00/mo (1M requests)
-- Lambda compute: ~$20/mo (10,000 requests/day @ 2GB/2s avg)
+- Lambda compute: ~$10/mo (10,000 requests/day @ 1GB/2s avg)
 - Lambda@Edge: ~$0.50/mo (payload hash computation)
 - Data transfer: ~$0.60/mo
 - No charges for: IPv4, ALB, or idle time

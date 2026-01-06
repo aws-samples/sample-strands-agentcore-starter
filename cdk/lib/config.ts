@@ -164,7 +164,7 @@ export const config: AppConfig = {
 
   // Lambda configuration (used when deploymentMode = 'furl' or 'both')
   lambdaFunctionName: getEnvOrDefault('LAMBDA_FUNCTION_NAME', 'htmx-chatapp-lambda'),
-  lambdaMemory: getEnvNumberOrDefault('LAMBDA_MEMORY', 2048),
+  lambdaMemory: getEnvNumberOrDefault('LAMBDA_MEMORY', 1024),
   lambdaTimeout: getEnvNumberOrDefault('LAMBDA_TIMEOUT', 900),
   lambdaReservedConcurrency: getEnvNumberOrDefault('LAMBDA_RESERVED_CONCURRENCY', 10),
 

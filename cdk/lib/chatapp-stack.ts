@@ -2,8 +2,8 @@
  * ChatApp Stack - Multi-Ingress support for chat application.
  * 
  * This stack supports three deployment modes:
- * 1. ECS Express Gateway Mode ('ecs') - Always-on container service (~$42/mo)
- * 2. Lambda Function URL Mode ('furl') - Serverless pay-per-use (~$22/mo)
+ * 1. ECS Express Gateway Mode ('ecs') - Always-on container service (~$46/mo)
+ * 2. Lambda Function URL Mode ('furl') - Serverless pay-per-use (~$12/mo)
  * 3. Both Modes ('both') - Deploy both simultaneously for A/B testing or migration
  * 
  * Deployment mode is configured via --ingress flag in deploy-all.sh which sets
