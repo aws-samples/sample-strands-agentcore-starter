@@ -323,7 +323,10 @@ export class ChatAppStack extends cdk.Stack {
           build: {
             commands: [
               'echo Build started on `date`',
-              'echo Building ECS Docker image...',
+              'echo Running unit tests...',
+              'pip install -r requirements.txt -q',
+              'python -m pytest tests/ -v --tb=short',
+              'echo Tests passed, building Docker image...',
               'docker build --platform linux/amd64 -t $ECR_REPO_URI:$IMAGE_TAG .',
               'docker tag $ECR_REPO_URI:$IMAGE_TAG $ECR_REPO_URI:ecs-$CODEBUILD_BUILD_NUMBER',
             ],
@@ -746,7 +749,10 @@ def handler(event, context):
           build: {
             commands: [
               'echo Build started on `date`',
-              'echo Building Lambda container image with Web Adapter...',
+              'echo Running unit tests...',
+              'pip install -r requirements.txt -q',
+              'python -m pytest tests/ -v --tb=short',
+              'echo Tests passed, building Docker image...',
               'docker build -f Dockerfile.lambda --platform linux/amd64 -t $ECR_REPO_URI:$IMAGE_TAG .',
               'docker tag $ECR_REPO_URI:$IMAGE_TAG $ECR_REPO_URI:lambda-$CODEBUILD_BUILD_NUMBER',
             ],

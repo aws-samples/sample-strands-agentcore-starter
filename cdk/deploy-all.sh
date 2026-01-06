@@ -344,16 +344,15 @@ if [ "$DRY_RUN" != true ]; then
                 echo -n "."
                 sleep 5
             done
-            echo ""
         fi
         
         # Display URL or fallback message
         if [ -n "$SERVICE_URL" ]; then
-            echo -e "${GREEN}  Application URL:${NC} https://$SERVICE_URL"
+            echo -e "${GREEN}Application URL:${NC} https://$SERVICE_URL"
         else
-            echo -e "${YELLOW}  ECS Express Mode: URL not yet available (service may still be initializing)${NC}"
+            echo -e "${YELLOW}ECS Express Mode: URL not yet available (service may still be initializing)${NC}"
             if [ -n "$SERVICE_ARN" ]; then
-                echo -e "${YELLOW}  Get URL with:${NC} aws ecs describe-express-gateway-service --service-arn \"$SERVICE_ARN\" --region $AWS_REGION --query 'service.activeConfigurations[0].ingressPaths[0].endpoint' --output text"
+                echo -e "${YELLOW}Get URL with:${NC} aws ecs describe-express-gateway-service --service-arn \"$SERVICE_ARN\" --region $AWS_REGION --query 'service.activeConfigurations[0].ingressPaths[0].endpoint' --output text"
             fi
         fi
         echo ""
