@@ -10,7 +10,7 @@ Skip weeks of infrastructure setup and go straight to validating your agentic AI
 
 - **Production-grade infrastructure in minutes** — Deploy a complete agentic AI stack (auth, memory, guardrails, knowledge base, analytics) with a single CDK command, eliminating weeks of boilerplate development
 - **Built-in cost intelligence** — Track token usage, runtime costs, and tool invocations with projections to forecast production spending before you scale
-- **Flexible deployment options** — Choose between always-on ECS (\~$60/mo) or serverless [Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter) (\~$5/mo) based on your traffic patterns and budget
+- **Flexible deployment options** — Choose between always-on ECS (\~$42/mo) or serverless [Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter) (\~$22/mo) based on your traffic patterns and budget
 - **Extensible agent framework** — Add custom tools, swap models, integrate your own knowledge base, and customize the UI without rebuilding core infrastructure
 
 ## Key Features
@@ -228,9 +228,9 @@ The application supports three ingress modes for different use cases and cost pr
 
 | Mode | Description | Monthly Cost | Use Case |
 |------|-------------|--------------|----------|
-| **ecs** | ECS Express Gateway - Always-on container service | ~$59.70 | Production workloads, consistent traffic, no cold starts |
-| **furl** (default) | CloudFront + Lambda Web Adapter - Serverless pay-per-use with edge distribution | ~$4.60 | Development, PoC, sporadic usage, cost optimization |
-| **both** | Deploy both simultaneously | ~$64.30 | A/B testing, migration, redundancy |
+| **ecs** | ECS Express Gateway - Always-on container service | ~$42 | Production workloads, consistent traffic, no cold starts |
+| **furl** (default) | CloudFront + Lambda Web Adapter - Serverless pay-per-use with edge distribution | ~$22 | Development, PoC, sporadic usage, cost optimization |
+| **both** | Deploy both simultaneously | ~$64 | A/B testing, migration, redundancy |
 
 ### Deployment Command
 
@@ -259,15 +259,15 @@ Options:
 
 ### Cost Breakdown
 
-**ECS Mode** (~$59.70/month):
-- ECS Fargate: $17.73/mo (0.5 vCPU, 1GB RAM, always-on)
-- IPv4 addresses: $25.20/mo (2 public IPs)
-- Application Load Balancer: $16.20/mo
-- Data transfer: ~$0.57/mo
+**ECS Mode** (~$44/month):
+- ECS Fargate: ~$18/mo (0.5 vCPU, 1GB RAM, always-on)
+- Application Load Balancer: ~$16.20/mo (managed by Express Gateway)
+- IPv4 addresses: ~$10.95/mo (3 ALB IPs across AZs + 1 task ENI)
+- Data transfer: ~$0.50/mo
 
-**Lambda Function URL Mode** (~$4.60/month typical):
+**Lambda Web Adapter Mode** (~$22/month typical):
 - CloudFront distribution: ~$1.00/mo (1M requests)
-- Lambda compute: $2.50/mo (10,000 requests/day @ 2GB/5s avg)
+- Lambda compute: ~$20/mo (10,000 requests/day @ 2GB/2s avg)
 - Lambda@Edge: ~$0.50/mo (payload hash computation)
 - Data transfer: ~$0.60/mo
 - No charges for: IPv4, ALB, or idle time
@@ -284,7 +284,7 @@ The CDK deployment creates 4 consolidated CloudFormation stacks:
 | **Foundation** | Auth, Storage, IAM, Secrets | Cognito, DynamoDB tables, ECS roles, Secrets Manager |
 | **Bedrock** | AI/ML Resources | Guardrail, Knowledge Base (S3 Vectors), AgentCore Memory |
 | **Agent** | Agent Infrastructure | ECR, CodeBuild, AgentCore Runtime, Observability |
-| **ChatApp** | Application | ECR, CodeBuild, S3 source, ECS Express Mode and/or CloudFront + Lambda |
+| **ChatApp** | Application | ECR, CodeBuild, S3 source, ECS Express Mode and/or CloudFront + Lambda Web Adapter |
 
 Deployment order: Foundation → Bedrock → Agent → ChatApp
 
