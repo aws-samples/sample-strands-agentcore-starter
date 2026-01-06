@@ -80,6 +80,7 @@ def _parse_time_range(
     return _get_default_time_range()
 
 
+@router.get("", response_class=HTMLResponse)
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(
     request: Request,

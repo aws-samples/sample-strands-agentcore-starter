@@ -769,6 +769,9 @@ def handler(event, context):
     // Trigger Lambda CodeBuild
     // ========================================================================
     
+    // Use build timestamp to force CodeBuild trigger on every deploy
+    const lambdaBuildTimestamp = new Date().toISOString();
+    
     const triggerLambdaBuild = new cr.AwsCustomResource(this, 'TriggerLambdaBuild', {
       onCreate: {
         service: 'CodeBuild',
@@ -787,6 +790,8 @@ def handler(event, context):
           projectName: this.lambdaBuildProject.projectName,
           sourceTypeOverride: 'S3',
           sourceLocationOverride: `${this.sourceBucket.bucketName}/chatapp-source/`,
+          // Timestamp forces CloudFormation to see a change and trigger the build
+          idempotencyToken: lambdaBuildTimestamp.replace(/[^a-zA-Z0-9]/g, '').substring(0, 64),
         },
         physicalResourceId: cr.PhysicalResourceId.fromResponse('build.id'),
       },
@@ -798,6 +803,9 @@ def handler(event, context):
         }),
       ]),
     });
+
+    // Tag the custom resource with build timestamp for visibility
+    cdk.Tags.of(triggerLambdaBuild).add('BuildTimestamp', lambdaBuildTimestamp);
 
     // Ensure build trigger waits for source deployment
     triggerLambdaBuild.node.addDependency(this.sourceDeployment);
@@ -969,6 +977,43 @@ def handler(event, context):
         secret.secretValueFromJson(secretField).unsafeUnwrap()
       );
     }
+
+    // ========================================================================
+    // Force Lambda to use latest container image after build
+    // ========================================================================
+    
+    // Custom resource to update Lambda function code after CodeBuild completes
+    // This ensures the Lambda uses the newly built container image
+    const updateLambdaCode = new cr.AwsCustomResource(this, 'UpdateLambdaCode', {
+      onCreate: {
+        service: 'Lambda',
+        action: 'updateFunctionCode',
+        parameters: {
+          FunctionName: this.lambdaFunction.functionName,
+          ImageUri: `${this.chatappRepository.repositoryUri}:${imageTag}`,
+        },
+        physicalResourceId: cr.PhysicalResourceId.of(`${this.lambdaFunction.functionName}-code-update`),
+      },
+      onUpdate: {
+        service: 'Lambda',
+        action: 'updateFunctionCode',
+        parameters: {
+          FunctionName: this.lambdaFunction.functionName,
+          ImageUri: `${this.chatappRepository.repositoryUri}:${imageTag}`,
+        },
+        physicalResourceId: cr.PhysicalResourceId.of(`${this.lambdaFunction.functionName}-code-update-${lambdaBuildTimestamp.replace(/[^a-zA-Z0-9]/g, '')}`),
+      },
+      policy: cr.AwsCustomResourcePolicy.fromStatements([
+        new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: ['lambda:UpdateFunctionCode'],
+          resources: [this.lambdaFunction.functionArn],
+        }),
+      ]),
+    });
+
+    // Ensure Lambda code update happens after build completes
+    updateLambdaCode.node.addDependency(lambdaBuildWaiter);
 
     // ========================================================================
     // Lambda Function URL with IAM Auth + CloudFront OAC
