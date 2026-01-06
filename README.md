@@ -11,7 +11,7 @@ Skip weeks of infrastructure setup and go straight to validating your agentic AI
 - **Production-grade infrastructure in minutes** — Deploy a complete agentic AI stack (auth, memory, guardrails, knowledge base, analytics) with a single CDK command, eliminating weeks of boilerplate development
 - **Built-in cost intelligence** — Track token usage, runtime costs, and tool invocations with projections to forecast production spending before you scale
 - **Enterprise-ready from day one** — Cognito authentication, Bedrock Guardrails for content filtering, and comprehensive audit trails for compliance requirements
-- **Flexible deployment options** — Choose between always-on ECS (~$60/mo) or serverless Lambda (~$5/mo) based on your traffic patterns and budget
+- **Flexible deployment options** — Choose between always-on ECS (\~$60/mo) or serverless Lambda (\~$5/mo) based on your traffic patterns and budget
 - **Extensible agent framework** — Add custom tools, swap models, integrate your own knowledge base, and customize the UI without rebuilding core infrastructure
 
 ## Key Features
