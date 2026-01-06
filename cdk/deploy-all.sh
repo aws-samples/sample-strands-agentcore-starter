@@ -180,6 +180,7 @@ if [ "$AWS_REGION" != "us-east-1" ]; then
     else
         echo -e "${GREEN}CDK already bootstrapped in us-east-1 (for Lambda@Edge)${NC}"
     fi
+fi
 
 # ============================================================================
 # STEP 2b: Ensure ECS service-linked role exists
