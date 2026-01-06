@@ -6,30 +6,39 @@ A full-stack conversational AI starter kit built with Amazon Bedrock AgentCore, 
 
 ## Why This Starter?
 
-Building AI agents is exciting, but understanding their usage, results, and cost profile is critical before scaling. This starter provides:
+Skip weeks of infrastructure setup and go straight to validating your agentic AI use case. This starter provides everything you need to move from idea to production-ready POC:
 
-- **Ready-to-deploy agent** with memory persistence, guardrails, and tool support
-- **Built-in usage analytics** tracking every token, runtime second, and tool call
-- **User feedback capture** for each response to understand usefulness 
-- **Cost projections** to forecast production spending from PoC usage patterns
-- **Real-time streaming** for responsive user experience
-- **Customizable foundation** to change models, add tools, and extend functionality
+- **Production-grade infrastructure in minutes** — Deploy a complete agentic AI stack (auth, memory, guardrails, knowledge base, analytics) with a single CDK command, eliminating weeks of boilerplate development
+- **Built-in cost intelligence** — Track token usage, runtime costs, and tool invocations with projections to forecast production spending before you scale
+- **Enterprise-ready from day one** — Cognito authentication, Bedrock Guardrails for content filtering, and comprehensive audit trails for compliance requirements
+- **Flexible deployment options** — Choose between always-on ECS (~$60/mo) or serverless Lambda (~$5/mo) based on your traffic patterns and budget
+- **Extensible agent framework** — Add custom tools, swap models, integrate your own knowledge base, and customize the UI without rebuilding core infrastructure
 
 ## Key Features
 
+**Chat Experience**
 - 🤖 **AI-powered conversational agent** with short-term (STM) and long-term memory (LTM)
-- ⚡ **Streaming chat** with embedded memory viewer
+- ⚡ **Real-time streaming** with token-by-token SSE responses and embedded memory viewer
+- 📝 **Prompt templates** for quick access to pre-defined prompts
+- 🎨 **Customizable branding** - title, logos, and theme colors
+
+**POC Analytics & Insights**
 - 📊 **Admin dashboard** with usage analytics and cost tracking
 - 💰 **Cost projections** based on actual usage patterns (token + runtime costs)
-- 👍 **User feedback** with sentiment ratings and comments
+- 👍 **User feedback capture** with sentiment ratings and comments
 - 🛡️ **Guardrails analytics** with violation tracking and content filtering
-- 🔧 **Tool usage details** with per-tool invocation analytics
-- 📝 **Prompt templates** for quick access to pre-defined prompts
-- 🎨 **Application settings** for branding customization (title, logos, theme colors)
-- ☁️ **Flexible deployment** - Choose ECS Express Mode or CloudFront + Lambda Web Adapter
-- 💸 **Cost-optimized** - Fully serverless deployment without idle costs - pay only for what you use
-- 🧠 AI Agents powered by **Amazon Bedrock AgentCore** using the **Strands Agents SDK**
-- 🔐 Secure authentication via **Amazon Cognito**
+- 🔧 **Tool usage analytics** with per-tool invocation metrics and success rates
+
+**Agent Capabilities**
+- 🧠 **Amazon Bedrock AgentCore** with Strands Agents SDK
+- 📚 **Knowledge Base integration** for semantic search over your documents (S3 Vectors)
+- 🛠️ **Pre-built tools** - web search, URL fetcher, weather, calculator, current time
+
+**Infrastructure**
+- ☁️ **Flexible deployment options** - ECS Express Mode or CloudFront + Lambda Web Adapter
+- 💸 **Cost-optimized** - Serverless options with pay-per-use pricing
+- 🔐 **Cognito authentication** with secure token management
+- 📡 **OpenTelemetry and Bedrock AgentCore Observability** with logs, traces, and metrics
 
 ## Admin Dashboard
 
@@ -201,7 +210,7 @@ Note: Docker is not required locally - all container builds are handled by AWS C
    ./create-user.sh your-email@example.com YourPassword123@ --admin
    ```
 
-5. **Wait for deployment** (4-6 minutes for ECS, 3-4 minutes for Lambda), then access the URL shown in the deployment output.
+5. **Wait for deployment** (5-10 minutes for ECS, 3-4 minutes for Lambda), then access the URL shown in the deployment output.
 
 The deployment creates:
 - Cognito User Pool for authentication
