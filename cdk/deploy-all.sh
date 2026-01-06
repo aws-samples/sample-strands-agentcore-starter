@@ -29,7 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Default configuration
 AWS_REGION="${AWS_REGION:-us-east-1}"
 AWS_PROFILE=""
-INGRESS_MODE="both"
+INGRESS_MODE="furl"
 DRY_RUN=false
 
 # Parse arguments
@@ -67,8 +67,8 @@ while [[ $# -gt 0 ]]; do
             echo "  -h, --help           Show this help message"
             echo ""
             echo "Ingress Modes:"
-            echo "  ecs    - Deploy with ECS Express Gateway (default, ~\$59.70/mo)"
-            echo "  furl   - Deploy with Lambda Function URL (~\$4.60/mo)"
+            echo "  ecs    - Deploy with ECS Express Gateway (~\$59.70/mo)"
+            echo "  furl   - Deploy with CloudFront + Lambda Web Adapter (default, ~\$4.60/mo)"
             echo "  both   - Deploy both ECS and Lambda simultaneously"
             exit 0
             ;;
@@ -152,15 +152,34 @@ BOOTSTRAP_STACK=$(aws cloudformation describe-stacks \
     --output text 2>/dev/null || echo "NOT_FOUND")
 
 if [ "$BOOTSTRAP_STACK" = "NOT_FOUND" ]; then
-    echo -e "${YELLOW}CDK not bootstrapped. Running cdk bootstrap...${NC}"
+    echo -e "${YELLOW}CDK not bootstrapped in $AWS_REGION. Running cdk bootstrap...${NC}"
     if [ "$DRY_RUN" != true ]; then
         npx cdk bootstrap "aws://$AWS_ACCOUNT_ID/$AWS_REGION"
     else
         echo -e "${CYAN}[DRY RUN] Would run: cdk bootstrap aws://$AWS_ACCOUNT_ID/$AWS_REGION${NC}"
     fi
 else
-    echo -e "${GREEN}CDK already bootstrapped${NC}"
+    echo -e "${GREEN}CDK already bootstrapped in $AWS_REGION${NC}"
 fi
+
+# Bootstrap us-east-1 for Lambda@Edge (required for CloudFront)
+if [ "$AWS_REGION" != "us-east-1" ]; then
+    BOOTSTRAP_USEAST1=$(aws cloudformation describe-stacks \
+        --stack-name CDKToolkit \
+        --region "us-east-1" \
+        --query 'Stacks[0].StackStatus' \
+        --output text 2>/dev/null || echo "NOT_FOUND")
+    
+    if [ "$BOOTSTRAP_USEAST1" = "NOT_FOUND" ]; then
+        echo -e "${YELLOW}CDK not bootstrapped in us-east-1 (required for Lambda@Edge). Running cdk bootstrap...${NC}"
+        if [ "$DRY_RUN" != true ]; then
+            npx cdk bootstrap "aws://$AWS_ACCOUNT_ID/us-east-1"
+        else
+            echo -e "${CYAN}[DRY RUN] Would run: cdk bootstrap aws://$AWS_ACCOUNT_ID/us-east-1${NC}"
+        fi
+    else
+        echo -e "${GREEN}CDK already bootstrapped in us-east-1 (for Lambda@Edge)${NC}"
+    fi
 
 # ============================================================================
 # STEP 2b: Ensure ECS service-linked role exists
@@ -341,7 +360,7 @@ if [ "$DRY_RUN" != true ]; then
     
     # Handle Lambda Function URL (for 'furl' or 'both' modes)
     if [ "$INGRESS_MODE" = "furl" ] || [ "$INGRESS_MODE" = "both" ]; then
-        echo -e "${YELLOW}Fetching Lambda Function URL...${NC}"
+        echo -e "${YELLOW}Fetching CloudFront URL...${NC}"
         
         # Get Lambda Function URL from CDK outputs
         STACK_KEY="${APP_NAME}-chatapp"

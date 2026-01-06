@@ -18,7 +18,7 @@ AgentCore Chat Application - A full-stack conversational AI starter kit with bui
 - Application settings for branding customization (title, subtitle, logos, theme colors)
 - Tool detail views with per-tool invocation analytics
 - Knowledge Base integration for semantic search over curated documents
-- Containerized deployment on AWS ECS Express Mode
+- Containerized deployment on AWS ECS Express Mode or CloudFront + Lambda Web Adapter
 
 ## Architecture
 
@@ -42,6 +42,7 @@ AgentCore Chat Application - A full-stack conversational AI starter kit with bui
 - Jinja2 (server-side templating)
 - HTMX (included but SSE streaming uses vanilla JS for complex state management)
 - AWS ECS Express Mode (container hosting)
+- Amazon CloudFront + Lambda Web Adapter (serverless hosting with edge distribution)
 - AWS Cognito (authentication via direct InitiateAuth API)
 - Strands Agents framework (Python)
 - Tailwind CSS via CDN (styling)

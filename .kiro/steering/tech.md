@@ -65,7 +65,7 @@ uvicorn app.main:app --reload --port 8080
 
 ## Infrastructure
 
-**Hosting**: AWS ECS Express Mode (Fargate)
+**Hosting**: AWS ECS Express Mode (Fargate) or CloudFront + Lambda Web Adapter
 **Auth**: AWS Cognito User Pool (direct InitiateAuth API)
 **Container**: Docker with uvicorn
 **Agent Backend**: AgentCore Runtime
@@ -97,7 +97,7 @@ npm install
 - **Foundation**: Cognito, DynamoDB, IAM roles, Secrets Manager
 - **Bedrock**: Guardrail, Knowledge Base, AgentCore Memory
 - **Agent**: ECR, CodeBuild, AgentCore Runtime, Observability, Compute Usage Pipeline (Firehose + Lambda)
-- **ChatApp**: ECS Express Mode service
+- **ChatApp**: ECS Express Mode service or CloudFront + Lambda Web Adapter
 
 Supports multi-region deployment in the same AWS account.
 

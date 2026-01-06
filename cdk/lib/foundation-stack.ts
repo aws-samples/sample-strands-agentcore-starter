@@ -181,6 +181,8 @@ export class FoundationStack extends cdk.Stack {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
       enforceSSL: true,
+      // Enable ACLs for CloudFront logging (requires BUCKET_OWNER_PREFERRED)
+      objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_PREFERRED,
       lifecycleRules: [
         {
           id: 'ExpireOldLogs',

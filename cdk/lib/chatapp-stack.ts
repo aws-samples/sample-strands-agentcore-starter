@@ -46,6 +46,8 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as cr from 'aws-cdk-lib/custom-resources';
+import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
+import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import { NagSuppressions } from 'cdk-nag';
 import { Construct } from 'constructs';
 import { config, exportNames } from './config';
@@ -92,8 +94,11 @@ export class ChatAppStack extends cdk.Stack {
   /** Lambda Function with Web Adapter */
   public lambdaFunction?: lambda.DockerImageFunction;
   
-  /** Lambda Function URL */
+  /** Lambda Function URL (internal, IAM-protected) */
   public functionUrl?: lambda.FunctionUrl;
+  
+  /** CloudFront distribution for Lambda Function URL */
+  public distribution?: cloudfront.Distribution;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -128,6 +133,28 @@ export class ChatAppStack extends cdk.Stack {
     applyBucketDeploymentSuppressions(this);
     applyCodeBuildSuppressions(this);
     applyCustomResourceSuppressions(this);
+
+    // CloudFront suppressions (only when Lambda mode is enabled)
+    if (config.deploymentMode === 'furl' || config.deploymentMode === 'both') {
+      NagSuppressions.addResourceSuppressionsByPath(
+        this,
+        `/${config.appName}-ChatApp/Distribution/Resource`,
+        [
+          {
+            id: 'AwsSolutions-CFR1',
+            reason: 'Geo restrictions not required for this starter kit. Can be enabled for production deployments with specific regional requirements.',
+          },
+          {
+            id: 'AwsSolutions-CFR2',
+            reason: 'WAF integration not required for this starter kit. Application-level auth is handled by Cognito. WAF can be added for production deployments.',
+          },
+          {
+            id: 'AwsSolutions-CFR4',
+            reason: 'TLS 1.2 enforcement requires a custom domain with ACM certificate. Default CloudFront domain (*.cloudfront.net) uses AWS-managed certificate with TLSv1 minimum. For production, add a custom domain with ACM certificate.',
+          },
+        ]
+      );
+    }
   }
 
   /**
@@ -944,28 +971,111 @@ def handler(event, context):
     }
 
     // ========================================================================
-    // Lambda Function URL (with response streaming)
+    // Lambda Function URL with IAM Auth + CloudFront OAC
     // ========================================================================
     
+    // Create Function URL with IAM authentication (not publicly accessible)
     this.functionUrl = this.lambdaFunction.addFunctionUrl({
-      authType: lambda.FunctionUrlAuthType.NONE,  // Public access - app-level auth via Cognito
+      authType: lambda.FunctionUrlAuthType.AWS_IAM,  // IAM auth - CloudFront will sign requests
       invokeMode: lambda.InvokeMode.RESPONSE_STREAM,  // Enable SSE streaming
-      cors: {
-        allowedOrigins: ['*'],  // In production, restrict to specific domains
-        allowedMethods: [lambda.HttpMethod.ALL],
-        allowedHeaders: ['*'],
-        maxAge: cdk.Duration.hours(1),
-      },
     });
 
-    // Explicitly grant public invoke permissions for Function URL
-    // Required because the Lambda uses an imported role from Foundation stack
-    // Use CfnPermission for '*' principal since addPermission doesn't support it
-    new lambda.CfnPermission(this, 'AllowPublicAccess', {
-      functionName: this.lambdaFunction.functionName,
+    // Import access logs bucket for CloudFront logging
+    const accessLogsBucketName = cdk.Fn.importValue(`${config.appName}-AccessLogsBucketName`);
+    const accessLogsBucket = s3.Bucket.fromBucketName(this, 'CloudFrontAccessLogsBucket', accessLogsBucketName);
+
+    // ========================================================================
+    // Lambda@Edge for SHA256 payload signing (required for POST/PUT with OAC)
+    // ========================================================================
+    
+    // Lambda@Edge function to compute SHA256 hash of request body
+    // Required because CloudFront OAC with Lambda Function URLs needs
+    // x-amz-content-sha256 header for POST/PUT requests
+    const edgeFunction = new cloudfront.experimental.EdgeFunction(this, 'PayloadHashFunction', {
+      runtime: lambda.Runtime.NODEJS_22_X,
+      handler: 'index.handler',
+      code: lambda.Code.fromInline(`
+const crypto = require('crypto');
+
+exports.handler = async (event) => {
+  const request = event.Records[0].cf.request;
+  
+  // Only process requests with a body (POST, PUT, PATCH)
+  if (request.body && request.body.data) {
+    // Decode the body (base64 if binary, otherwise plain text)
+    const body = request.body.encoding === 'base64' 
+      ? Buffer.from(request.body.data, 'base64')
+      : request.body.data;
+    
+    // Compute SHA256 hash
+    const hash = crypto.createHash('sha256').update(body).digest('hex');
+    
+    // Add the x-amz-content-sha256 header
+    request.headers['x-amz-content-sha256'] = [{
+      key: 'x-amz-content-sha256',
+      value: hash
+    }];
+  } else if (['POST', 'PUT', 'PATCH'].includes(request.method)) {
+    // Empty body - use hash of empty string
+    const emptyHash = crypto.createHash('sha256').update('').digest('hex');
+    request.headers['x-amz-content-sha256'] = [{
+      key: 'x-amz-content-sha256',
+      value: emptyHash
+    }];
+  }
+  
+  return request;
+};
+      `),
+      description: 'Computes SHA256 hash for request body to support CloudFront OAC with Lambda Function URL',
+    });
+
+    // Suppress CDK-Nag findings for Lambda@Edge function (deployed in separate us-east-1 stack)
+    // The EdgeFunction creates a cross-region stack, so we need to suppress on the stack level
+    const edgeStack = cdk.Stack.of(edgeFunction.node.defaultChild as cdk.CfnResource);
+    NagSuppressions.addStackSuppressions(edgeStack, [
+      {
+        id: 'AwsSolutions-IAM4',
+        reason: 'Lambda@Edge requires AWSLambdaBasicExecutionRole for CloudWatch Logs. This is the standard pattern for Lambda functions.',
+        appliesTo: ['Policy::arn:<AWS::Partition>:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'],
+      },
+      {
+        id: 'AwsSolutions-L1',
+        reason: 'Using Node.js 22.x which is the latest supported runtime for Lambda@Edge.',
+      },
+    ]);
+
+    // Create CloudFront distribution with Lambda Function URL origin and OAC
+    this.distribution = new cloudfront.Distribution(this, 'Distribution', {
+      comment: `${config.appName} - CloudFront distribution for Lambda Function URL`,
+      defaultBehavior: {
+        // Use FunctionUrlOrigin.withOriginAccessControl for proper SigV4 signing
+        origin: origins.FunctionUrlOrigin.withOriginAccessControl(this.functionUrl),
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+        cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+        originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+        // Add Lambda@Edge to compute payload hash for POST/PUT requests
+        edgeLambdas: [
+          {
+            functionVersion: edgeFunction.currentVersion,
+            eventType: cloudfront.LambdaEdgeEventType.ORIGIN_REQUEST,
+            includeBody: true,  // Required to access request body
+          },
+        ],
+      },
+      // CFR3: Enable access logging
+      logBucket: accessLogsBucket,
+      logFilePrefix: 'cloudfront/',
+      // CFR4: Enforce TLSv1.2 minimum
+      minimumProtocolVersion: cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
+    });
+
+    // Grant CloudFront permission to invoke the Lambda Function URL
+    this.lambdaFunction.addPermission('CloudFrontInvoke', {
+      principal: new iam.ServicePrincipal('cloudfront.amazonaws.com'),
       action: 'lambda:InvokeFunctionUrl',
-      principal: '*',
-      functionUrlAuthType: 'NONE',
+      sourceArn: `arn:aws:cloudfront::${this.account}:distribution/${this.distribution.distributionId}`,
     });
   }
 
@@ -1019,9 +1129,14 @@ def handler(event, context):
     
     if (mode === 'furl' || mode === 'both') {
       new cdk.CfnOutput(this, 'LambdaFunctionUrl', {
-        value: this.functionUrl!.url,
-        description: 'Lambda Function URL with streaming - direct access endpoint',
+        value: `https://${this.distribution!.distributionDomainName}`,
+        description: 'CloudFront URL for Lambda Function (use this for access)',
         exportName: exportNames.lambdaFunctionUrl,
+      });
+
+      new cdk.CfnOutput(this, 'CloudFrontDistributionId', {
+        value: this.distribution!.distributionId,
+        description: 'CloudFront distribution ID',
       });
 
       new cdk.CfnOutput(this, 'LambdaFunctionArn', {
