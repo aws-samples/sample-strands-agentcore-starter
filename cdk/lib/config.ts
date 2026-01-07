@@ -20,6 +20,9 @@ export interface AppConfig {
   /** AWS account ID */
   account: string;
 
+  /** Deployment mode: 'ecs' (ECS Express Gateway), 'furl' (Lambda Function URL), or 'both' */
+  deploymentMode: 'ecs' | 'furl' | 'both';
+
   // Cognito configuration
   /** Cognito User Pool name */
   cognitoPoolName: string;
@@ -64,6 +67,16 @@ export interface AppConfig {
   /** Container port */
   containerPort: number;
 
+  // Lambda configuration (used when deploymentMode = 'furl' or 'both')
+  /** Lambda function name */
+  lambdaFunctionName: string;
+  /** Memory in MB for Lambda function */
+  lambdaMemory: number;
+  /** Timeout in seconds for Lambda function (max 900 = 15 minutes) */
+  lambdaTimeout: number;
+  /** Reserved concurrent executions to prevent runaway costs */
+  lambdaReservedConcurrency: number;
+
   // ECR configuration
   /** Agent ECR repository name */
   agentRepoName: string;
@@ -106,15 +119,21 @@ function getEnvNumberOrDefault(envVar: string, defaultValue: number): number {
   return defaultValue;
 }
 
+
+
 /**
  * Default application configuration.
  * Values can be overridden via environment variables.
+ * Note: deploymentMode is set dynamically from CDK context in bin/app.ts
  */
 export const config: AppConfig = {
   // Base configuration
   appName: getEnvOrDefault('APP_NAME', 'htmx-chatapp'),
   region: getEnvOrDefault('AWS_REGION', getEnvOrDefault('CDK_DEFAULT_REGION', 'us-east-1')),
   account: getEnvOrDefault('AWS_ACCOUNT_ID', getEnvOrDefault('CDK_DEFAULT_ACCOUNT', '')),
+  
+  // Deployment mode (set from CDK context via setDeploymentMode function)
+  deploymentMode: 'ecs',
 
   // Cognito configuration
   cognitoPoolName: getEnvOrDefault('COGNITO_POOL_NAME', 'htmx-chatapp-users'),
@@ -135,13 +154,19 @@ export const config: AppConfig = {
   // Secrets configuration
   secretName: getEnvOrDefault('SECRET_NAME', 'htmx-chatapp/config'),
 
-  // ECS configuration
+  // ECS configuration (used when deploymentMode = 'ecs' or 'both')
   ecsServiceName: getEnvOrDefault('ECS_SERVICE_NAME', 'htmx-chatapp-express'),
   cpu: getEnvNumberOrDefault('ECS_CPU', 512),
   memory: getEnvNumberOrDefault('ECS_MEMORY', 1024),
   minTasks: getEnvNumberOrDefault('ECS_MIN_TASKS', 1),
   maxTasks: getEnvNumberOrDefault('ECS_MAX_TASKS', 10),
   containerPort: getEnvNumberOrDefault('CONTAINER_PORT', 8080),
+
+  // Lambda configuration (used when deploymentMode = 'furl' or 'both')
+  lambdaFunctionName: getEnvOrDefault('LAMBDA_FUNCTION_NAME', 'htmx-chatapp-lambda'),
+  lambdaMemory: getEnvNumberOrDefault('LAMBDA_MEMORY', 1024),
+  lambdaTimeout: getEnvNumberOrDefault('LAMBDA_TIMEOUT', 900),
+  lambdaReservedConcurrency: getEnvNumberOrDefault('LAMBDA_RESERVED_CONCURRENCY', 10),
 
   // ECR configuration
   agentRepoName: getEnvOrDefault('AGENT_REPO_NAME', 'htmx-chatapp-agent'),
@@ -211,13 +236,33 @@ export const exportNames = {
   // ChatApp Stack exports (terminal outputs, not used by other stacks)
   // ========================================================================
   
-  /** ECS service URL placeholder - actual URL fetched by deploy script */
-  serviceUrl: `${config.appName}-ServiceUrl`,
-  /** ECS Express Gateway Service ARN */
-  serviceArn: `${config.appName}-ServiceArn`,
-  /** ECR repository URI for chat application images */
+  /** ECS service URL placeholder - actual URL fetched by deploy script (used when mode = 'ecs' or 'both') */
+  ecsServiceUrl: `${config.appName}-EcsServiceUrl`,
+  /** ECS Express Gateway Service ARN (used when mode = 'ecs' or 'both') */
+  ecsServiceArn: `${config.appName}-EcsServiceArn`,
+  
+  /** Lambda Function URL (used when mode = 'furl' or 'both') */
+  lambdaFunctionUrl: `${config.appName}-LambdaFunctionUrl`,
+  /** Lambda Function ARN (used when mode = 'furl' or 'both') */
+  lambdaFunctionArn: `${config.appName}-LambdaFunctionArn`,
+  
+  /** ECR repository URI for chat application images (always exported) */
   chatappRepositoryUri: `${config.appName}-ChatAppRepositoryUri`,
 };
+
+/**
+ * Set the deployment mode from CDK context.
+ * This should be called from bin/app.ts after the CDK app is created.
+ * @param mode - The deployment mode from CDK context
+ */
+export function setDeploymentMode(mode: string): void {
+  if (mode === 'ecs' || mode === 'furl' || mode === 'both') {
+    (config as any).deploymentMode = mode;
+  } else {
+    console.warn(`Invalid deployment mode '${mode}', using default 'ecs'`);
+    (config as any).deploymentMode = 'ecs';
+  }
+}
 
 /**
  * Validate that required configuration is present.

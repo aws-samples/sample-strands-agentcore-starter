@@ -6,29 +6,38 @@ A full-stack conversational AI starter kit built with Amazon Bedrock AgentCore, 
 
 ## Why This Starter?
 
-Building AI agents is exciting, but understanding their usage, results, and cost profile is critical before scaling. This starter provides:
+Skip weeks of infrastructure setup and go straight to validating your agentic AI use case. This starter provides everything you need to move from idea to production-ready POC:
 
-- **Ready-to-deploy agent** with memory persistence, guardrails, and tool support
-- **Built-in usage analytics** tracking every token, tool call, and model invocation
-- **User feedback capture** for each response to understand usefulness 
-- **Cost projections** to forecast production spending from PoC usage patterns
-- **Real-time streaming** for responsive user experience
-- **Customizable foundation** to change models, add tools, and extend functionality
+- **Production-grade infrastructure in minutes** — Deploy a complete agentic AI stack (auth, memory, guardrails, knowledge base, analytics) with a single CDK command, eliminating weeks of boilerplate development
+- **Built-in cost intelligence** — Track token usage, runtime costs, and tool invocations with projections to forecast production spending before you scale
+- **Flexible deployment options** — Choose between always-on ECS (\~$46/mo) or serverless [Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter) (\~$12/mo) based on your traffic patterns and budget
+- **Extensible agent framework** — Add custom tools, swap models, integrate your own knowledge base, and customize the UI without rebuilding core infrastructure
 
 ## Key Features
 
+**Chat Experience**
 - 🤖 **AI-powered conversational agent** with short-term (STM) and long-term memory (LTM)
-- ⚡ **Streaming chat** with embedded memory viewer
+- ⚡ **Real-time streaming** with token-by-token SSE responses and embedded memory viewer
+- 📝 **Prompt templates** for quick access to pre-defined prompts
+- 🎨 **Customizable branding** - title, logos, and theme colors
+
+**POC Analytics & Insights**
 - 📊 **Admin dashboard** with usage analytics and cost tracking
 - 💰 **Cost projections** based on actual usage patterns (token + runtime costs)
-- 👍 **User feedback** with sentiment ratings and comments
+- 👍 **User feedback capture** with sentiment ratings and comments
 - 🛡️ **Guardrails analytics** with violation tracking and content filtering
-- 🔧 **Tool usage details** with per-tool invocation analytics
-- 📝 **Prompt templates** for quick access to pre-defined prompts
-- 🎨 **Application settings** for branding customization (title, logos, theme colors)
-- ☁️ Containerized deployment using **Amazon ECS Express Mode**
-- 🧠 AI Agents powered by **Amazon Bedrock AgentCore** using the **Strands Agents SDK**
-- 🔐 Secure authentication via **Amazon Cognito**
+- 🔧 **Tool usage analytics** with per-tool invocation metrics and success rates
+
+**Agent Capabilities**
+- 🧠 **Amazon Bedrock AgentCore** with Strands Agents SDK
+- 📚 **Knowledge Base integration** for semantic search over your documents (S3 Vectors)
+- 🛠️ **Pre-built tools** - web search, URL fetcher, weather, calculator, current time
+
+**Infrastructure**
+- ☁️ **Flexible deployment options** - ECS Express Mode or CloudFront + Lambda Web Adapter
+- 💸 **Cost-optimized** - Serverless options with pay-per-use pricing
+- 🔐 **Cognito authentication** with secure token management
+- 📡 **OpenTelemetry and Bedrock AgentCore Observability** with logs, traces, and metrics
 
 ## Admin Dashboard
 
@@ -122,28 +131,37 @@ The built-in admin dashboard (`/admin`) provides comprehensive usage analytics:
 
 ## Architecture
 
+The application supports two ingress modes for the FastAPI application: ECS Express Gateway (serverless container) or CloudFront + Lambda Web Adapter (serverless function with edge distribution).
+
 ```
-┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
-│     Browser     │      │   ECS Express   │      │   Guardrails    │      │    AgentCore    │
-│  Chat + Admin   │◀────▶│    (Fargate)    │◀────▶│   (Bedrock)     │◀────▶│     Runtime     │
-│                 │ SSE  │    FastAPI      │      │                 │      │  Strands Agent  │
-└─────────────────┘      └─────────────────┘      └─────────────────┘      └─────────────────┘
-        │                       │                                           │           │
-        │                       ▼                                           │           ▼
-        │                ┌─────────────────┐                                │   ┌───────────────┐
-        │                │    DynamoDB     │◀───────────────────────────────┤   │    Bedrock    │
-        │                │  Usage/Feedback │      Runtime Usage             │   │ Choice of LLM │
-        │                │  Runtime Usage  │◀──┐                            │   └───────────────┘
-        │                └─────────────────┘   │  │                         │
-        │                                      │  │                         │
-        ▼                                ┌─────┴──┴──┐                      ▼
-┌─────────────────┐                      │  Lambda   │              ┌─────────────────┐
-│     Cognito     │                      │ Transform │              │    AgentCore    │
-│      Auth       │                      └─────┬─────┘              │     Memory      │──┐
-└─────────────────┘                            │                    └─────────────────┘  │
-                                         ┌─────┴─────┐                                   │
-                                         │ Firehose  │◀─── USAGE_LOGS (Runtime) │
-                                         └───────────┘◀──────────────────────────────────┘
+┌─────────────────┐      ┌─────────────────────────────────┐      ┌─────────────────┐
+│                 │      │     ECS Express (Fargate)       │      │                 │
+│     Browser     │      │            - or -               │      │   Guardrails    │
+│  Chat + Admin   │◀────▶│  CloudFront + Lambda Web Adapter│◀────▶│   (Bedrock)     │
+│                 │ SSE  │                                 │      │                 │
+└─────────────────┘      │           FastAPI               │      └─────────────────┘
+        │                └─────────────────────────────────┘               │
+        │                               │                                  │
+        │                               ▼                                  ▼
+        │                        ┌─────────────────┐              ┌─────────────────┐
+        │                        │    DynamoDB     │              │    AgentCore    │
+        │                        │  Usage/Feedback │              │     Runtime     │
+        │                        │  Runtime Usage  │              │  Strands Agent  │
+        │                        └─────────────────┘              └─────────────────┘
+        │                               ▲                          │      │      │
+        │                               │                          │      │      │
+        │                        ┌──────┴──────┐                   │      │      │
+        │                        │   Lambda    │                   │      │      │
+        │                        │  Transform  │                   ▼      │      ▼
+        │                        └─────────────┘           ┌───────────┐  │  ┌───────────┐
+        │                               ▲                  │  Bedrock  │  │  │ AgentCore │
+        │                        ┌──────┴──────┐           │   LLM     │  │  │  Memory   │
+        │                        │  Firehose   │           └───────────┘  │  └───────────┘
+        ▼                        └─────────────┘                          │
+┌─────────────────┐                     ▲                                 │
+│     Cognito     │                     │                                 │
+│      Auth       │                     └─────────────────────────────────┘
+└─────────────────┘                              USAGE_LOGS
 ```
 
 ## Prerequisites
@@ -191,7 +209,7 @@ Note: Docker is not required locally - all container builds are handled by AWS C
    ./create-user.sh your-email@example.com YourPassword123@ --admin
    ```
 
-5. **Wait for ECS deployment** (4-6 minutes), then access the URL shown in the deployment output.
+5. **Wait for deployment** (5-10 minutes for ECS, 3-4 minutes for Lambda), then access the URL shown in the deployment output.
 
 The deployment creates:
 - Cognito User Pool for authentication
@@ -200,9 +218,21 @@ The deployment creates:
 - Bedrock Knowledge Base with S3 Vectors
 - AgentCore Memory with LTM strategies
 - AgentCore Runtime with the deployed agent
-- ECS Express Mode service for the ChatApp
+- ChatApp ingress (ECS Express Mode and/or CloudFront + Lambda Web Adapter based on --ingress flag)
 
-### Deployment Options
+## Deployment Options
+
+The application supports three ingress modes for different use cases and cost profiles:
+
+### Ingress Modes
+
+| Mode | Description | Monthly Cost | Use Case |
+|------|-------------|--------------|----------|
+| **ecs** | ECS Express Gateway - Always-on container service | ~$46 | Production workloads, consistent traffic, no cold starts |
+| **furl** (default) | CloudFront + Lambda Web Adapter - Serverless pay-per-use with edge distribution | ~$12 | Development, PoC, sporadic usage, cost optimization |
+| **both** | Deploy both simultaneously | ~$58 | A/B testing, migration, redundancy |
+
+### Deployment Command
 
 ```bash
 ./deploy-all.sh [options]
@@ -210,10 +240,42 @@ The deployment creates:
 Options:
   --region <region>    AWS region (default: us-east-1)
   --profile <profile>  AWS CLI profile to use
+  --ingress <mode>     Ingress mode: ecs, furl, or both (default: ecs)
   --dry-run            Show what would be deployed without deploying
 ```
 
-### Stack Architecture
+### Examples
+
+```bash
+# Deploy with ECS Express Gateway
+./deploy-all.sh --region us-east-1 --ingress ecs
+
+# Deploy with CloudFront + Lambda Web Adapter (default)
+./deploy-all.sh --region us-east-1 --ingress furl
+
+# Deploy both ECS and Lambda simultaneously
+./deploy-all.sh --region us-east-1 --ingress both
+```
+
+### Cost Breakdown
+
+**ECS Mode** (~$44/month):
+- ECS Fargate: ~$18/mo (0.5 vCPU, 1GB RAM, always-on)
+- Application Load Balancer: ~$16.20/mo (managed by Express Gateway)
+- IPv4 addresses: ~$10.95/mo (3 ALB IPs across AZs + 1 task ENI)
+- Data transfer: ~$0.50/mo
+
+**Lambda Web Adapter Mode** (~$12/month typical):
+- CloudFront distribution: ~$1.00/mo (1M requests)
+- Lambda compute: ~$10/mo (10,000 requests/day @ 1GB/2s avg)
+- Lambda@Edge: ~$0.50/mo (payload hash computation)
+- Data transfer: ~$0.60/mo
+- No charges for: IPv4, ALB, or idle time
+- Cold starts: First request after idle may take 3-5 seconds
+
+**Both Mode**: Combines costs of both deployment modes
+
+## Stack Architecture
 
 The CDK deployment creates 4 consolidated CloudFormation stacks:
 
@@ -222,11 +284,11 @@ The CDK deployment creates 4 consolidated CloudFormation stacks:
 | **Foundation** | Auth, Storage, IAM, Secrets | Cognito, DynamoDB tables, ECS roles, Secrets Manager |
 | **Bedrock** | AI/ML Resources | Guardrail, Knowledge Base (S3 Vectors), AgentCore Memory |
 | **Agent** | Agent Infrastructure | ECR, CodeBuild, AgentCore Runtime, Observability |
-| **ChatApp** | Application | ECR, CodeBuild, S3 source, ECS Express Mode service |
+| **ChatApp** | Application | ECR, CodeBuild, S3 source, ECS Express Mode and/or CloudFront + Lambda Web Adapter |
 
 Deployment order: Foundation → Bedrock → Agent → ChatApp
 
-### Multi-Region Deployment
+## Multi-Region Deployment
 
 The CDK stacks support deploying to multiple regions in the same AWS account. IAM roles are automatically suffixed with the region name to avoid conflicts.
 
@@ -238,7 +300,7 @@ The CDK stacks support deploying to multiple regions in the same AWS account. IA
 ./deploy-all.sh --region eu-west-1
 ```
 
-### Useful Commands
+## Useful Commands
 
 ```bash
 # List all stacks
@@ -257,7 +319,7 @@ npx cdk synth
 cat cdk-outputs.json
 ```
 
-### Updating Deployments
+## Updating Deployments
 
 To update the application after code changes:
 
@@ -273,7 +335,7 @@ cd cdk
 npx cdk deploy htmx-chatapp-ChatApp --require-approval never
 ```
 
-### Local Development
+## Local Development
 
 For local development, you need to sync environment variables from your deployed CDK stacks.
 
@@ -302,7 +364,7 @@ uvicorn app.main:app --reload --port 8080
 
 **Manual .env setup**: If you prefer manual configuration, copy `.env.example` to `.env` and fill in values. The secret `htmx-chatapp/config` in AWS Secrets Manager contains all required values.
 
-### Cleanup
+## Cleanup
 
 To destroy all CDK-managed resources:
 
@@ -324,15 +386,15 @@ Options:
 
 
 
-## Environment Variables
+# Environment Variables
 
-### Agent
+## Agent
 | Variable | Description |
 |----------|-------------|
 | `BEDROCK_AGENTCORE_MEMORY_ID` | AgentCore Memory ID |
 | `AWS_REGION` | AWS region |
 
-### ChatApp
+## ChatApp
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `COGNITO_USER_POOL_ID` | Yes | Cognito User Pool ID |
@@ -352,7 +414,7 @@ Options:
 | `APP_URL` | No | Application URL for callbacks |
 | `AWS_REGION` | Yes | AWS region |
 
-## Project Structure
+# Project Structure
 
 ```
 sample-strands-agentcore-starter/
@@ -389,20 +451,20 @@ sample-strands-agentcore-starter/
 └── README.md
 ```
 
-## Cost Tracking
+# Cost Tracking
 
 The system tracks usage metrics for cost analysis.
 
 _**Note:** Telemetry data is provided for monitoring purposes. Actual billing is calculated based on metered usage data and may differ from telemetry values due to aggregation timing, reconciliation processes, and measurement precision. Refer to your AWS billing statement for authoritative charges._
 
-### Captured Metrics
+## Captured Metrics
 - **Input/Output Tokens**: Per invocation token counts
 - **Model ID**: Which model was used
 - **Latency**: Response time in milliseconds
 - **Tool Usage**: Call counts, success/error rates per tool
 - **Guardrails Violations**: Per filter type, user, and session
 
-### Default Models and Costs
+## Default Models and Costs
 | Model | Input Tokens (per 1M) | Output Tokens (per 1M) |
 |-------|---------------|-----------------|
 | Amazon Nova 2 Lite | $0.30 | $2.50 |
@@ -411,14 +473,14 @@ _**Note:** Telemetry data is provided for monitoring purposes. Actual billing is
 | Anthropic Claude Sonnet 4.5 | $3.00 | $15.00 |
 | Anthropic Claude Opus 4.5 | $5.00 | $25.00 |
 
-### Monthly Projections
+## Monthly Projections
 The dashboard calculates projected monthly costs using:
 ```
 projected_monthly = (total_cost / days_in_period) * 30
 ```
 Uses 30 calendar days for monthly estimates.
 
-### AgentCore Runtime Usage Costs
+## AgentCore Runtime Usage Costs
 
 In addition to token costs, the system tracks AgentCore Runtime usage:
 
@@ -444,22 +506,22 @@ The dashboard shows:
 - Per-session breakdown of token vs runtime costs
 - Runtime metrics (duration, vCPU hours, memory GB-hours)
 
-## Customization
+# Customization
 
-### Adding New Tools
+## Adding New Tools
 Add tools in `agent/tools/` and register them in `my_agent.py`.
 
-### Changing Models
+## Changing Models
 Update the model ID in `chatapp/app/static/js/chat.js` and add pricing to `chatapp/app/admin/cost_calculator.py`.
 
-### Extending Analytics
+## Extending Analytics
 The `UsageRepository` class in `chatapp/app/admin/repository.py` provides query methods that can be extended for custom analytics.
 
-## Knowledge Base Integration
+# Knowledge Base Integration
 
 The agent includes a Bedrock Knowledge Base for semantic search over curated documents. When configured, the agent prioritizes Knowledge Base results before falling back to web search.
 
-### Setup
+## Setup
 
 The Knowledge Base is automatically created during CDK deployment. It creates:
 - S3 bucket for source documents
@@ -467,7 +529,7 @@ The Knowledge Base is automatically created during CDK deployment. It creates:
 - Bedrock Knowledge Base with Titan Embed Text v2
 - Data source connecting the KB to the S3 bucket
 
-### Adding Documents to the Knowledge Base
+## Adding Documents to the Knowledge Base
 
 1. **Upload documents to S3**:
    ```bash
@@ -496,7 +558,7 @@ The Knowledge Base is automatically created during CDK deployment. It creates:
      --data-source-id $DS_ID
    ```
 
-### Supported Document Formats
+## Supported Document Formats
 
 The Knowledge Base supports:
 - PDF (.pdf)
@@ -506,7 +568,7 @@ The Knowledge Base supports:
 - Microsoft Word (.doc, .docx)
 - CSV (.csv)
 
-### How the Agent Uses the Knowledge Base
+## How the Agent Uses the Knowledge Base
 
 When the agent receives a query:
 1. The agent first searches the Knowledge Base for relevant context
@@ -515,10 +577,10 @@ When the agent receives a query:
 
 This prioritization ensures domain-specific knowledge takes precedence over general web content.
 
-## Security
+# Security
 
 See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
 
-## License
+# License
 
 This library is licensed under the MIT-0 License. See the [LICENSE](LICENSE) file.

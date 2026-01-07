@@ -21,7 +21,7 @@ import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
 import { Aspects } from 'aws-cdk-lib';
 import { AwsSolutionsChecks } from 'cdk-nag';
-import { config, validateConfig } from '../lib/config';
+import { config, validateConfig, setDeploymentMode } from '../lib/config';
 
 // Import consolidated stack classes
 import { FoundationStack } from '../lib/foundation-stack';
@@ -35,7 +35,12 @@ validateConfig();
 const app = new cdk.App();
 
 // Apply cdk-nag AWS Solutions checks to all stacks
+// Note: cdk-nag findings will be logged but won't block deployment (see deploy-all.sh)
 Aspects.of(app).add(new AwsSolutionsChecks({ verbose: true }));
+
+// Get deployment mode from CDK context (set via --context ingress=<mode>)
+const ingressMode = app.node.tryGetContext('ingress') || 'ecs';
+setDeploymentMode(ingressMode);
 
 // Environment configuration from CDK context or environment variables
 const env: cdk.Environment = {

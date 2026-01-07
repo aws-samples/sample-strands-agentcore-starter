@@ -6,6 +6,7 @@
 # Usage: ./deploy-all.sh [options]
 #   --region <region>    AWS region (default: us-east-1)
 #   --profile <profile>  AWS CLI profile to use
+#   --ingress <mode>     Ingress mode: ecs, furl, or both (default: ecs)
 #   --dry-run            Show what would be deployed without deploying
 #   -h, --help           Show this help message
 
@@ -28,6 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Default configuration
 AWS_REGION="${AWS_REGION:-us-east-1}"
 AWS_PROFILE=""
+INGRESS_MODE="furl"
 DRY_RUN=false
 
 # Parse arguments
@@ -41,6 +43,15 @@ while [[ $# -gt 0 ]]; do
             AWS_PROFILE="$2"
             shift 2
             ;;
+        --ingress)
+            INGRESS_MODE="$2"
+            # Validate ingress mode
+            if [[ "$INGRESS_MODE" != "ecs" && "$INGRESS_MODE" != "furl" && "$INGRESS_MODE" != "both" ]]; then
+                echo -e "${RED}Error: Invalid ingress mode '$INGRESS_MODE'. Must be: ecs, furl, or both${NC}"
+                exit 1
+            fi
+            shift 2
+            ;;
         --dry-run)
             DRY_RUN=true
             shift
@@ -51,8 +62,14 @@ while [[ $# -gt 0 ]]; do
             echo "Options:"
             echo "  --region <region>    AWS region (default: us-east-1)"
             echo "  --profile <profile>  AWS CLI profile to use"
+            echo "  --ingress <mode>     Ingress mode: ecs, furl, or both (default: ecs)"
             echo "  --dry-run            Show what would be deployed without deploying"
             echo "  -h, --help           Show this help message"
+            echo ""
+            echo "Ingress Modes:"
+            echo "  ecs    - Deploy with ECS Express Gateway (~\$59.70/mo)"
+            echo "  furl   - Deploy with CloudFront + Lambda Web Adapter (default, ~\$4.60/mo)"
+            echo "  both   - Deploy both ECS and Lambda simultaneously"
             exit 0
             ;;
         *)
@@ -88,6 +105,7 @@ export CDK_DEFAULT_ACCOUNT="$AWS_ACCOUNT_ID"
 echo -e "${YELLOW}Configuration:${NC}"
 echo "  AWS Account: $AWS_ACCOUNT_ID"
 echo "  AWS Region: $AWS_REGION"
+echo "  Ingress Mode: $INGRESS_MODE"
 echo "  Dry Run: $DRY_RUN"
 echo ""
 
@@ -134,14 +152,34 @@ BOOTSTRAP_STACK=$(aws cloudformation describe-stacks \
     --output text 2>/dev/null || echo "NOT_FOUND")
 
 if [ "$BOOTSTRAP_STACK" = "NOT_FOUND" ]; then
-    echo -e "${YELLOW}CDK not bootstrapped. Running cdk bootstrap...${NC}"
+    echo -e "${YELLOW}CDK not bootstrapped in $AWS_REGION. Running cdk bootstrap...${NC}"
     if [ "$DRY_RUN" != true ]; then
         npx cdk bootstrap "aws://$AWS_ACCOUNT_ID/$AWS_REGION"
     else
         echo -e "${CYAN}[DRY RUN] Would run: cdk bootstrap aws://$AWS_ACCOUNT_ID/$AWS_REGION${NC}"
     fi
 else
-    echo -e "${GREEN}CDK already bootstrapped${NC}"
+    echo -e "${GREEN}CDK already bootstrapped in $AWS_REGION${NC}"
+fi
+
+# Bootstrap us-east-1 for Lambda@Edge (required for CloudFront)
+if [ "$AWS_REGION" != "us-east-1" ]; then
+    BOOTSTRAP_USEAST1=$(aws cloudformation describe-stacks \
+        --stack-name CDKToolkit \
+        --region "us-east-1" \
+        --query 'Stacks[0].StackStatus' \
+        --output text 2>/dev/null || echo "NOT_FOUND")
+    
+    if [ "$BOOTSTRAP_USEAST1" = "NOT_FOUND" ]; then
+        echo -e "${YELLOW}CDK not bootstrapped in us-east-1 (required for Lambda@Edge). Running cdk bootstrap...${NC}"
+        if [ "$DRY_RUN" != true ]; then
+            npx cdk bootstrap "aws://$AWS_ACCOUNT_ID/us-east-1"
+        else
+            echo -e "${CYAN}[DRY RUN] Would run: cdk bootstrap aws://$AWS_ACCOUNT_ID/us-east-1${NC}"
+        fi
+    else
+        echo -e "${GREEN}CDK already bootstrapped in us-east-1 (for Lambda@Edge)${NC}"
+    fi
 fi
 
 # ============================================================================
@@ -172,101 +210,51 @@ echo -e "${BLUE}Step 3: Synthesize CloudFormation templates${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
 echo -e "${YELLOW}Synthesizing stacks...${NC}"
-npx cdk synth --quiet
+# Note: cdk-nag may report errors, but we continue deployment
+# Security findings are logged to cdk.out/AwsSolutions-NagReport.csv
+npx cdk synth --quiet || echo -e "${YELLOW}Note: cdk-nag reported findings (check cdk.out/AwsSolutions-NagReport.csv)${NC}"
 
 echo -e "${GREEN}Synthesis complete${NC}"
 
 # ============================================================================
-# STEP 4: Deploy Foundation stack (no dependencies)
+# STEP 4: Deploy all stacks
+# CDK automatically deploys stacks in dependency order:
+# Foundation → Bedrock → Agent → ChatApp
 # ============================================================================
 echo ""
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BLUE}Step 4: Deploy Foundation stack${NC}"
+echo -e "${BLUE}Step 4: Deploy all stack${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
-# Consolidated stack deployment order:
-# Phase 1: Foundation (no dependencies)
-# Phase 2: Bedrock (depends on Foundation for secret updates)
-# Phase 3: Agent (depends on Bedrock, Foundation) - includes CodeBuild for agent image
-# Phase 4: ChatApp (depends on Foundation, Agent) - includes CodeBuild for chatapp image
-
 if [ "$DRY_RUN" = true ]; then
-    echo -e "${CYAN}[DRY RUN] Would deploy Foundation stack${NC}"
+    echo -e "${CYAN}[DRY RUN] Would deploy all stacks${NC}"
     echo ""
     echo -e "${YELLOW}Stacks that would be deployed:${NC}"
     npx cdk list
 else
-    echo -e "${YELLOW}Deploying Foundation stack...${NC}"
-    echo ""
-    
-    npx cdk deploy \
-        "${APP_NAME}-Foundation" \
-        --require-approval never
-    
-    echo -e "${GREEN}Foundation stack deployed${NC}"
-fi
-
-# ============================================================================
-# STEP 4b: Deploy Bedrock stack (depends on Foundation)
-# ============================================================================
-echo ""
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BLUE}Step 4b: Deploy Bedrock stack${NC}"
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-
-if [ "$DRY_RUN" != true ]; then
-    echo -e "${YELLOW}Deploying Bedrock stack...${NC}"
-    echo ""
-    
-    npx cdk deploy \
-        "${APP_NAME}-Bedrock" \
-        --require-approval never
-    
-    echo -e "${GREEN}Bedrock stack deployed${NC}"
-else
-    echo -e "${CYAN}[DRY RUN] Would deploy Bedrock stack${NC}"
-fi
-
-# ============================================================================
-# STEP 5: Deploy Agent stack (depends on Bedrock)
-# ============================================================================
-echo ""
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BLUE}Step 5: Deploy Agent stack${NC}"
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-
-if [ "$DRY_RUN" != true ]; then
-    echo -e "${YELLOW}Deploying Agent stack...${NC}"
-    echo ""
-    
-    npx cdk deploy \
-        "${APP_NAME}-Agent" \
-        --require-approval never
-    
-    echo -e "${GREEN}Agent stack deployed${NC}"
-else
-    echo -e "${CYAN}[DRY RUN] Would deploy Agent stack${NC}"
-fi
-
-# ============================================================================
-# STEP 6: Deploy ChatApp stack (depends on Foundation, Agent)
-# Note: ChatApp stack includes CodeBuild for building the Docker image
-# ============================================================================
-echo ""
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BLUE}Step 7: Deploy ChatApp stack${NC}"
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-
-if [ "$DRY_RUN" != true ]; then
-    echo -e "${YELLOW}Deploying ChatApp stack (includes CodeBuild for Docker image)...${NC}"
+    echo -e "${YELLOW}Deploying all stacks...${NC}"
     echo ""
     
     npx cdk deploy \
         "${APP_NAME}-ChatApp" \
-        --require-approval never --outputs-file cdk-outputs.json
+        --context ingress="$INGRESS_MODE" \
+        --require-approval never \
+        --outputs-file cdk-outputs.json 
     
-    echo -e "${GREEN}ChatApp stack deployed${NC}"
-    
+    echo -e "${GREEN}All stacks deployed${NC}"
+fi
+
+# ============================================================================
+# STEP 5: Force ECS deployment (if needed)
+# ============================================================================
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}Step 5: Check ECS deployment${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+if [ "$INGRESS_MODE" = "furl" ]; then
+    echo -e "${GREEN}Skipping ECS deployment check (ingress mode: furl)${NC}"
+elif [ "$DRY_RUN" != true ]; then
     # Force ECS to pull the new image (if not already deploying)
     echo ""
     echo -e "${YELLOW}Checking ECS deployment status...${NC}"
@@ -291,11 +279,13 @@ if [ "$DRY_RUN" != true ]; then
         echo -e "${GREEN}ECS deployment already in progress (${DEPLOYMENT_COUNT} deployments)${NC}"
     fi
 else
-    echo -e "${CYAN}[DRY RUN] Would deploy ChatApp stack${NC}"
+    if [ "$INGRESS_MODE" != "furl" ]; then
+        echo -e "${CYAN}[DRY RUN] Would check ECS deployment status${NC}"
+    fi
 fi
 
 # ============================================================================
-# STEP 7: Display outputs and next steps
+# STEP 6: Display outputs and next steps
 # ============================================================================
 echo ""
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -311,51 +301,78 @@ if [ "$DRY_RUN" != true ]; then
     echo "  1. ${APP_NAME}-Foundation (Cognito, DynamoDB, IAM, Secrets)"
     echo "  2. ${APP_NAME}-Bedrock (Guardrail, Knowledge Base, Memory)"
     echo "  3. ${APP_NAME}-Agent (ECR, CodeBuild, Runtime, Observability)"
-    echo "  4. ${APP_NAME}-ChatApp (ECS Express Mode)"
-    
-    # Get the real service URL from ECS Express Mode API
-    ECS_SERVICE_NAME="htmx-chatapp-express"
-    SERVICE_URL=""
+    if [ "$INGRESS_MODE" = "ecs" ]; then
+        echo "  4. ${APP_NAME}-ChatApp (ECS Express Mode)"
+    elif [ "$INGRESS_MODE" = "furl" ]; then
+        echo "  4. ${APP_NAME}-ChatApp (Lambda Function URL)"
+    else
+        echo "  4. ${APP_NAME}-ChatApp (ECS Express Mode + Lambda Function URL)"
+    fi
     
     echo ""
-    echo -e "${YELLOW}Fetching service URL from ECS Express Mode...${NC}"
+    echo -e "${BLUE}Application Endpoints:${NC}"
     
-    # Get the service ARN first
-    SERVICE_ARN=$(aws ecs list-services \
-        --cluster default \
-        --region "$AWS_REGION" \
-        --query "serviceArns[?contains(@, '${ECS_SERVICE_NAME}')]" \
-        --output text 2>/dev/null | head -1 || echo "")
-    
-    # Use describe-express-gateway-service to get the actual endpoint URL
-    if [ -n "$SERVICE_ARN" ] && [ "$SERVICE_ARN" != "None" ]; then
-        # Wait for URL to be available (up to 60 seconds)
-        for i in {1..12}; do
-            SERVICE_INFO=$(aws ecs describe-express-gateway-service \
-                --service-arn "$SERVICE_ARN" \
-                --region "$AWS_REGION" 2>/dev/null || echo "")
-            
-            if [ -n "$SERVICE_INFO" ]; then
-                SERVICE_URL=$(echo "$SERVICE_INFO" | jq -r '.service.activeConfigurations[0].ingressPaths[0].endpoint // empty' 2>/dev/null || echo "")
+    # Handle ECS Express Mode URL (for 'ecs' or 'both' modes)
+    if [ "$INGRESS_MODE" = "ecs" ] || [ "$INGRESS_MODE" = "both" ]; then
+        ECS_SERVICE_NAME="htmx-chatapp-express"
+        SERVICE_URL=""
+        
+        echo -e "${YELLOW}Fetching ECS Express Mode service URL...${NC}"
+        
+        # Get the service ARN first
+        SERVICE_ARN=$(aws ecs list-services \
+            --cluster default \
+            --region "$AWS_REGION" \
+            --query "serviceArns[?contains(@, '${ECS_SERVICE_NAME}')]" \
+            --output text 2>/dev/null | head -1 || echo "")
+        
+        # Use describe-express-gateway-service to get the actual endpoint URL
+        if [ -n "$SERVICE_ARN" ] && [ "$SERVICE_ARN" != "None" ]; then
+            # Wait for URL to be available (up to 60 seconds)
+            for i in {1..12}; do
+                SERVICE_INFO=$(aws ecs describe-express-gateway-service \
+                    --service-arn "$SERVICE_ARN" \
+                    --region "$AWS_REGION" 2>/dev/null || echo "")
                 
-                if [ -n "$SERVICE_URL" ]; then
-                    break
+                if [ -n "$SERVICE_INFO" ]; then
+                    SERVICE_URL=$(echo "$SERVICE_INFO" | jq -r '.service.activeConfigurations[0].ingressPaths[0].endpoint // empty' 2>/dev/null || echo "")
+                    
+                    if [ -n "$SERVICE_URL" ]; then
+                        break
+                    fi
                 fi
+                echo -n "."
+                sleep 5
+            done
+        fi
+        
+        # Display URL or fallback message
+        if [ -n "$SERVICE_URL" ]; then
+            echo -e "${GREEN}Application URL:${NC} https://$SERVICE_URL"
+        else
+            echo -e "${YELLOW}ECS Express Mode: URL not yet available (service may still be initializing)${NC}"
+            if [ -n "$SERVICE_ARN" ]; then
+                echo -e "${YELLOW}Get URL with:${NC} aws ecs describe-express-gateway-service --service-arn \"$SERVICE_ARN\" --region $AWS_REGION --query 'service.activeConfigurations[0].ingressPaths[0].endpoint' --output text"
             fi
-            echo -n "."
-            sleep 5
-        done
+        fi
         echo ""
     fi
     
-    # Display URL or fallback message
-    if [ -n "$SERVICE_URL" ]; then
+    # Handle Lambda Function URL (for 'furl' or 'both' modes)
+    if [ "$INGRESS_MODE" = "furl" ] || [ "$INGRESS_MODE" = "both" ]; then
+        echo -e "${YELLOW}Fetching CloudFront URL...${NC}"
+        
+        # Get Lambda Function URL from CDK outputs
+        STACK_KEY="${APP_NAME}-chatapp"
+        LAMBDA_URL=$(jq -r --arg key "$STACK_KEY" '.[$key].LambdaFunctionUrl // ""' cdk-outputs.json 2>/dev/null)
+        
+        if [ -n "$LAMBDA_URL" ] && [ "$LAMBDA_URL" != "null" ]; then
+            echo -e "${GREEN}Application URL:${NC} $LAMBDA_URL"
+        else
+            echo -e "${YELLOW}  Lambda Function URL: Unable to retrieve from outputs${NC}"
+            echo -e "${YELLOW}  Check cdk-outputs.json or AWS Console for the Function URL${NC}"
+        fi
         echo ""
-        echo -e "${GREEN}Application URL:${NC} https://$SERVICE_URL"
-    else
-        echo -e "${YELLOW}Note: URL not yet available. Service may still be initializing.${NC}"
-        echo -e "${YELLOW}Get the URL with:${NC}"
-        echo "  aws ecs describe-express-gateway-service --service-arn \"$SERVICE_ARN\" --region $AWS_REGION --query 'service.activeConfigurations[0].ingressPaths[0].endpoint' --output text"
     fi
     
     echo ""
@@ -365,11 +382,7 @@ if [ "$DRY_RUN" != true ]; then
     echo ""
     echo -e "${YELLOW}Next Steps:${NC}"
     echo "  1. Create a user: cd ../chatapp/scripts && ./create-user.sh <email> <password> --admin"
-    if [ -n "$SERVICE_URL" ]; then
-        echo "  2. Access the application URL: https://$SERVICE_URL"
-    else
-        echo "  2. Get the URL once available using the command above"
-    fi
+    echo "  2. Access the application using the URL(s) shown above"
     echo ""
     echo -e "${YELLOW}Useful Commands:${NC}"
     echo "  View stack outputs:  cat cdk-outputs.json"

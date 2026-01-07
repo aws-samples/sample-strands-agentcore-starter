@@ -75,11 +75,14 @@ async def lifespan(app: FastAPI):
 
 
 # Initialize FastAPI app
+# Note: redirect_slashes=False prevents FastAPI from generating 307 redirects
+# that use the origin hostname (Lambda Function URL) instead of CloudFront URL
 app = FastAPI(
     title="Agentic Chat App",
     description="HTMX-based chat application with AgentCore backend",
     version="0.1.0",
     lifespan=lifespan,
+    redirect_slashes=False,
 )
 
 # Import shared templates instance

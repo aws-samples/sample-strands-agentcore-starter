@@ -181,6 +181,8 @@ export class FoundationStack extends cdk.Stack {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
       enforceSSL: true,
+      // Enable ACLs for CloudFront logging (requires BUCKET_OWNER_PREFERRED)
+      objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_PREFERRED,
       lifecycleRules: [
         {
           id: 'ExpireOldLogs',
@@ -476,11 +478,14 @@ export class FoundationStack extends cdk.Stack {
       })
     );
 
-    // ECS task role
+    // Task role (used by both ECS tasks and Lambda functions)
     this.taskRole = new iam.Role(this, 'TaskRole', {
-      roleName: `${config.appName}-ecs-task-role-${this.region}`,
-      assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
-      description: 'ECS task role with permissions for AgentCore, Cognito, DynamoDB, Bedrock',
+      roleName: `${config.appName}-task-role-${this.region}`,
+      assumedBy: new iam.CompositePrincipal(
+        new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
+        new iam.ServicePrincipal('lambda.amazonaws.com')
+      ),
+      description: 'Task role for ECS and Lambda with permissions for AgentCore, Cognito, DynamoDB, Bedrock',
     });
 
     // AgentCore Runtime permissions

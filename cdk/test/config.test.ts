@@ -21,12 +21,25 @@ describe('Config Module', () => {
       expect(config.promptTemplatesTableName).toBeDefined();
     });
 
+    test('has deployment mode', () => {
+      expect(config.deploymentMode).toBeDefined();
+      expect(['ecs', 'furl', 'both']).toContain(config.deploymentMode);
+    });
+
     test('has ECS configuration', () => {
       expect(config.cpu).toBeGreaterThan(0);
       expect(config.memory).toBeGreaterThan(0);
       expect(config.minTasks).toBeGreaterThanOrEqual(1);
       expect(config.maxTasks).toBeGreaterThanOrEqual(config.minTasks);
       expect(config.containerPort).toBeGreaterThan(0);
+    });
+
+    test('has Lambda configuration', () => {
+      expect(config.lambdaFunctionName).toBeDefined();
+      expect(config.lambdaMemory).toBeGreaterThan(0);
+      expect(config.lambdaTimeout).toBeGreaterThan(0);
+      expect(config.lambdaTimeout).toBeLessThanOrEqual(900); // Max Lambda timeout
+      expect(config.lambdaReservedConcurrency).toBeGreaterThan(0);
     });
   });
 
@@ -51,8 +64,10 @@ describe('Config Module', () => {
     });
 
     test('has ChatApp stack exports (terminal outputs)', () => {
-      expect(exportNames.serviceUrl).toContain(config.appName);
-      expect(exportNames.serviceArn).toContain(config.appName);
+      expect(exportNames.ecsServiceUrl).toContain(config.appName);
+      expect(exportNames.ecsServiceArn).toContain(config.appName);
+      expect(exportNames.lambdaFunctionUrl).toContain(config.appName);
+      expect(exportNames.lambdaFunctionArn).toContain(config.appName);
       expect(exportNames.chatappRepositoryUri).toContain(config.appName);
     });
   });

@@ -65,6 +65,18 @@ export function applyBucketDeploymentSuppressions(stack: cdk.Stack): void {
       ],
     },
   ]);
+
+  // Suppress wildcards for bucket resource ARNs (objects within buckets)
+  NagSuppressions.addStackSuppressions(stack, [
+    {
+      id: 'AwsSolutions-IAM5',
+      reason: 'BucketDeployment requires access to all objects within source and destination buckets. Bucket ARN/* pattern is required for object-level operations.',
+      appliesTo: [
+        { regex: '/^Resource::arn:aws:s3:::cdk-.*-assets-.*\\/\\*$/g' },
+        { regex: '/^Resource::<.*Bucket.*\\.Arn>\\/\\*$/g' },
+      ],
+    },
+  ]);
 }
 
 /**
@@ -89,6 +101,19 @@ export function applyCodeBuildSuppressions(stack: cdk.Stack): void {
     {
       id: 'AwsSolutions-CB4',
       reason: 'CodeBuild uses AWS-managed encryption by default. KMS CMK encryption is optional for a starter kit / PoC.',
+    },
+  ]);
+
+  // CodeBuild log group wildcards - required for log stream naming
+  NagSuppressions.addStackSuppressions(stack, [
+    {
+      id: 'AwsSolutions-IAM5',
+      reason: 'CodeBuild log groups require wildcard suffix for log stream names which include build IDs.',
+      appliesTo: [
+        { regex: '/^Resource::arn:aws:logs:.*:log-group:/aws/codebuild/.*\\*$/g' },
+        { regex: '/^Resource::arn:aws:logs:.*:log-group:<.*>:\\*$/g' },
+        { regex: '/^Resource::arn:aws:codebuild:.*:report-group/<.*>-\\*$/g' },
+      ],
     },
   ]);
 }
@@ -138,6 +163,23 @@ export function applyBedrockSuppressions(stack: cdk.Stack): void {
       appliesTo: [
         'Resource::arn:aws:bedrock:*::foundation-model/*',
         'Resource::arn:aws:bedrock:*:*:inference-profile/*',
+      ],
+    },
+  ]);
+}
+
+/**
+ * Apply suppressions for CDK custom resource providers.
+ * These are CDK-managed Lambda functions for custom resources.
+ */
+export function applyCustomResourceSuppressions(stack: cdk.Stack): void {
+  // Provider framework Lambda invoke permissions
+  NagSuppressions.addStackSuppressions(stack, [
+    {
+      id: 'AwsSolutions-IAM5',
+      reason: 'CDK Provider framework requires lambda:InvokeFunction with :* suffix for version/alias invocations. This is CDK-managed.',
+      appliesTo: [
+        { regex: '/^Resource::<.*Function.*\\.Arn>:\\*$/g' },
       ],
     },
   ]);
