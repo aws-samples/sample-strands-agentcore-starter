@@ -459,18 +459,22 @@ class AgentCoreClient:
                 message='Invalid request to AgentCore',
                 details=str(e),
             )
+            yield DoneEvent()
         except self._client.exceptions.ThrottlingException as e:
             yield ErrorEvent(
                 message='Request throttled by AgentCore',
                 details=str(e),
             )
+            yield DoneEvent()
         except self._client.exceptions.InternalServerException as e:
             yield ErrorEvent(
                 message='AgentCore internal error',
                 details=str(e),
             )
+            yield DoneEvent()
         except Exception as e:
             yield ErrorEvent(
                 message='Failed to invoke AgentCore',
                 details=str(e),
             )
+            yield DoneEvent()

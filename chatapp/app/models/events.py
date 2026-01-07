@@ -135,6 +135,18 @@ class DoneEvent(SSEEvent):
     
     def __post_init__(self):
         self.type = "done"
+    
+    def to_sse_format(self) -> str:
+        """Convert done event to SSE wire format.
+        
+        Returns:
+            SSE formatted string: "data: [DONE]\n\n"
+            
+        Note:
+            Uses [DONE] marker instead of JSON for compatibility with
+            frontend SSE parsing that expects this specific format.
+        """
+        return "data: [DONE]\n\n"
 
 
 @dataclass
