@@ -298,10 +298,13 @@ async def update_settings(
     await init_template_globals()
     logger.info("Refreshed template globals after settings update")
     
-    # Preserve active tab in redirect
-    allowed_tabs = {"branding", "icons", "colors"}
-    safe_active_tab = active_tab if active_tab in allowed_tabs else "branding"
-    redirect_url = f"/admin/settings?tab={safe_active_tab}"
+    # Preserve active tab in redirect - use explicit URL mapping to satisfy security scanners
+    tab_redirects = {
+        "branding": "/admin/settings?tab=branding",
+        "icons": "/admin/settings?tab=icons",
+        "colors": "/admin/settings?tab=colors",
+    }
+    redirect_url = tab_redirects.get(active_tab, "/admin/settings?tab=branding")
     return RedirectResponse(url=redirect_url, status_code=303)
 
 
