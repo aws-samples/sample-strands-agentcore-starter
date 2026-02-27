@@ -200,7 +200,7 @@ Note: Docker is not required locally - all container builds are handled by AWS C
 
 3. **Deploy all stacks**:
    ```bash
-   ./deploy-all.sh --region <aws-region-id>
+   ./deploy-all.sh --region <aws-region-id> --profile <your-profile> --ingress furl
    ```
 
 4. **Create a test user** (add `--admin` for admin access):

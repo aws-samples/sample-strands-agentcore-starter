@@ -51,7 +51,9 @@ MODELS = [
     "us.amazon.nova-pro-v1:0",
     "global.anthropic.claude-haiku-4-5-20251001-v1:0",
     "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "global.anthropic.claude-sonnet-4-6",
     "global.anthropic.claude-opus-4-5-20251101-v1:0",
+    "global.anthropic.claude-opus-4-6-v1",
 ]
 
 # Available tools (from agent/tools/)

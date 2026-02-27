@@ -208,6 +208,7 @@
 <script>
     window.userEmail = {{ user_email|tojson if user_email else 'null' }};
     window.welcomeMessage = {{ (welcome_message if welcome_message is defined else 'Start a conversation by typing a message below')|tojson }};
+    window.chatLogoUrl = {{ (chat_logo_url if chat_logo_url is defined else '/static/chat-placeholder.svg')|tojson }};
 </script>
 <!-- Chat application JavaScript -->
 <script src="/static/js/chat.js"></script>

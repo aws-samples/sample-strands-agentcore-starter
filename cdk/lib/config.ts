@@ -152,7 +152,7 @@ export const config: AppConfig = {
   kbSourceBucketName: getEnvOrDefault('KB_SOURCE_BUCKET_NAME', 'htmx-chatapp-kb-source'),
 
   // Secrets configuration
-  secretName: getEnvOrDefault('SECRET_NAME', 'htmx-chatapp/config'),
+  secretName: getEnvOrDefault('SECRET_NAME', 'htmx-chatapp/appconfig'),
 
   // ECS configuration (used when deploymentMode = 'ecs' or 'both')
   ecsServiceName: getEnvOrDefault('ECS_SERVICE_NAME', 'htmx-chatapp-express'),

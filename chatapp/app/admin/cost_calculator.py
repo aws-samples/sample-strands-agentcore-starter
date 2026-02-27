@@ -14,7 +14,9 @@ MODEL_PRICING: Dict[str, Dict[str, float]] = {
     "us.amazon.nova-pro-v1:0": {"input": 0.80, "output": 3.20},
     "global.anthropic.claude-haiku-4-5-20251001-v1:0": {"input": 1.00, "output": 5.00},
     "global.anthropic.claude-sonnet-4-5-20250929-v1:0": {"input": 3.00, "output": 15.00},
+    "global.anthropic.claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
     "global.anthropic.claude-opus-4-5-20251101-v1:0": {"input": 5.00, "output": 25.00},
+    "global.anthropic.claude-opus-4-6-v1": {"input": 5.00, "output": 25.00},
 }
 
 # Default pricing for unknown models

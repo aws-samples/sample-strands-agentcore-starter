@@ -108,19 +108,19 @@ loadMemoryCacheFromStorage();
  */
 const AVAILABLE_MODELS = [
     {
-        id: "global.amazon.nova-2-lite-v1:0",
-        name: "Nova 2 Lite",
-        description: "IN [$0.30] - OUT [$2.50]"
+        id: "global.anthropic.claude-opus-4-6-v1",
+        name: "Claude Opus 4.6",
+        description: "IN [$5.00] - OUT [$25.00]"
     },
     {
-        id: "us.amazon.nova-pro-v1:0",
-        name: "Nova Pro",
-        description: "IN [$0.80] - OUT [$3.20]"
+        id: "global.anthropic.claude-sonnet-4-6",
+        name: "Claude Sonnet 4.6",
+        description: "IN [$3.00] - OUT [$15.00]"
     },
     {
-        id: "global.anthropic.claude-haiku-4-5-20251001-v1:0",
-        name: "Claude Haiku 4.5",
-        description: "IN [$1.00] - OUT [$5.00]"
+        id: "global.anthropic.claude-opus-4-5-20251101-v1:0",
+        name: "Claude Opus 4.5",
+        description: "IN [$5.00] - OUT [$25.00]"
     },
     {
         id: "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
@@ -128,9 +128,19 @@ const AVAILABLE_MODELS = [
         description: "IN [$3.00] - OUT [$15.00]"
     },
     {
-        id: "global.anthropic.claude-opus-4-5-20251101-v1:0",
-        name: "Claude Opus 4.5",
-        description: "IN [$5.00] - OUT [$25.00]"
+        id: "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+        name: "Claude Haiku 4.5",
+        description: "IN [$1.00] - OUT [$5.00]"
+    },
+    {
+        id: "us.amazon.nova-pro-v1:0",
+        name: "Nova Pro",
+        description: "IN [$0.80] - OUT [$3.20]"
+    },
+    {
+        id: "global.amazon.nova-2-lite-v1:0",
+        name: "Nova 2 Lite",
+        description: "IN [$0.30] - OUT [$2.50]"
     }
 ];
 
@@ -649,6 +659,16 @@ function startNewChat() {
         
         const textCenter = document.createElement('div');
         textCenter.className = 'text-center';
+        
+        // Add chat placeholder logo
+        const logoContainer = document.createElement('div');
+        logoContainer.className = 'mb-6 flex justify-center';
+        const logoImg = document.createElement('img');
+        logoImg.src = window.chatLogoUrl || '/static/chat-placeholder.svg';
+        logoImg.alt = 'Chat Logo';
+        logoImg.className = 'w-24 h-24 opacity-80 rounded-2xl';
+        logoContainer.appendChild(logoImg);
+        textCenter.appendChild(logoContainer);
         
         // Add welcome message if user email is available
         if (window.userEmail) {

@@ -5,6 +5,7 @@ InitiateAuth API (no hosted UI required). Login only - no signup or password res
 """
 
 import json
+import logging
 from typing import Optional
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import RedirectResponse, HTMLResponse
@@ -12,6 +13,8 @@ from fastapi.responses import RedirectResponse, HTMLResponse
 from app.auth.cognito import CognitoAuth, AuthenticationError
 from app.auth.middleware import SESSION_COOKIE_NAME
 from app.templates_config import templates
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -112,7 +115,8 @@ async def login(
         
         return response
         
-    except AuthenticationError:
+    except AuthenticationError as e:
+        logger.error(f"Login failed for {email}: {e}")
         return RedirectResponse(
             url="/auth/login?error=invalid_credentials",
             status_code=302,

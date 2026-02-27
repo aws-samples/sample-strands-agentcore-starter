@@ -330,7 +330,58 @@
             margin-left: 0;
             color: #6b7280;
         }
+
         
+        /* Table styling for markdown responses */
+        .markdown-content table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin: 0.75em 0;
+            font-size: 0.9em;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid rgba(var(--primary-rgb), 0.2);
+        }
+        
+        /* Wrap tables in a scrollable container via JS or allow overflow */
+        .markdown-content .table-wrapper {
+            overflow-x: auto;
+            margin: 0.75em 0;
+            border-radius: 8px;
+        }
+        
+        .markdown-content .table-wrapper table {
+            margin: 0;
+        }
+        
+        .markdown-content thead {
+            background: rgba(var(--primary-rgb), 0.08);
+        }
+        
+        .markdown-content th {
+            padding: 0.625em 1em;
+            text-align: left;
+            font-weight: 600;
+            color: #374151;
+            border-bottom: 2px solid rgba(var(--primary-rgb), 0.2);
+            white-space: nowrap;
+        }
+        
+        .markdown-content td {
+            padding: 0.5em 1em;
+            border-bottom: 1px solid #f3f4f6;
+            color: #4b5563;
+        }
+        
+        .markdown-content tbody tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .markdown-content tbody tr:hover {
+            background: rgba(var(--primary-rgb), 0.04);
+        }
+
         /* Compact markdown for memory sidebar */
         .memory-markdown {
             font-size: 0.875rem;

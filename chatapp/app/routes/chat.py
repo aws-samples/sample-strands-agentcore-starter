@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from app.auth.cognito import extract_user_id, TokenValidationError
 from app.auth.middleware import SESSION_COOKIE_NAME
 from app.agentcore.client import AgentCoreClient
-from app.models.events import MetadataEvent, ToolUseEvent, ToolResultEvent, GuardrailEvent
+from app.models.events import MessageEvent, MetadataEvent, ToolUseEvent, ToolResultEvent, GuardrailEvent
 from app.models.guardrail import GuardrailRecord
 from app.models.usage import UsageRecord, ToolUsageRecord
 from app.storage.guardrail import GuardrailStorageService
@@ -145,6 +145,10 @@ async def _stream_chat_response(
     tool_usage_counts: Dict[str, Dict[str, int]] = {}
     # Track pending tool uses by ID to correlate with results
     pending_tool_uses: Dict[str, Dict[str, Any]] = {}
+    # Track whether last event was a tool result (for paragraph break injection)
+    after_tool = False
+    # Track last message content to avoid breaking mid-sentence
+    last_message_content = ""
     
     async for event in client.invoke_stream(
         prompt=prompt,
@@ -152,6 +156,17 @@ async def _stream_chat_response(
         user_id=user_id,
         model_id=model_id,
     ):
+        # Inject paragraph break when message text follows a tool result
+        # Only if previous text ended a sentence (avoid splitting "Here" / "'s a full overview")
+        if isinstance(event, MessageEvent) and after_tool and event.content.strip():
+            after_tool = False
+            if last_message_content and last_message_content.rstrip()[-1:] in '.!?\n':
+                yield MessageEvent(content="\n\n").to_sse_format()
+        
+        # Track last message content for sentence boundary detection
+        if isinstance(event, MessageEvent) and event.content.strip():
+            last_message_content = event.content
+        
         # Track tool usage from ToolUseEvent
         if isinstance(event, ToolUseEvent):
             tool_name = event.tool_name or "unknown"
@@ -171,7 +186,8 @@ async def _stream_chat_response(
                 "status": "pending"
             }
             tool_usage_counts[tool_name]["call_count"] += 1
-        
+            after_tool = True
+
         # Track tool results and update success/error counts
         elif isinstance(event, ToolResultEvent):
             tool_use_id = event.tool_use_id

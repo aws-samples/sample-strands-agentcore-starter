@@ -10,8 +10,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
-# Load environment variables from .env file
-load_dotenv()
+# Load environment variables from .env file (override shell env vars)
+load_dotenv(override=True)
 
 from app.config import get_config, ConfigurationError
 from app.auth.middleware import AuthMiddleware

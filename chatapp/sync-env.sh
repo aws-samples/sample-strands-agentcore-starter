@@ -25,7 +25,7 @@ CDK_DIR="$(dirname "$SCRIPT_DIR")/cdk"
 # Default configuration
 AWS_REGION="${AWS_REGION:-us-east-1}"
 DEV_MODE=false
-SECRET_NAME="htmx-chatapp/config"
+SECRET_NAME="${SECRET_NAME:-htmx-chatapp/appconfig}"
 PROFILE_OVERRIDE=""
 
 # Parse arguments
