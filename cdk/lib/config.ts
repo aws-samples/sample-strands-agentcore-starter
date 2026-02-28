@@ -126,9 +126,12 @@ function getEnvNumberOrDefault(envVar: string, defaultValue: number): number {
  * Values can be overridden via environment variables.
  * Note: deploymentMode is set dynamically from CDK context in bin/app.ts
  */
+// Extract appName first so all other defaults can reference it
+const appName = getEnvOrDefault('APP_NAME', 'htmx-chatapp');
+
 export const config: AppConfig = {
   // Base configuration
-  appName: getEnvOrDefault('APP_NAME', 'htmx-chatapp'),
+  appName,
   region: getEnvOrDefault('AWS_REGION', getEnvOrDefault('CDK_DEFAULT_REGION', 'us-east-1')),
   account: getEnvOrDefault('AWS_ACCOUNT_ID', getEnvOrDefault('CDK_DEFAULT_ACCOUNT', '')),
   
@@ -136,26 +139,26 @@ export const config: AppConfig = {
   deploymentMode: 'ecs',
 
   // Cognito configuration
-  cognitoPoolName: getEnvOrDefault('COGNITO_POOL_NAME', 'htmx-chatapp-users'),
+  cognitoPoolName: getEnvOrDefault('COGNITO_POOL_NAME', `${appName}-users`),
 
   // DynamoDB table names
-  usageTableName: getEnvOrDefault('USAGE_TABLE_NAME', 'agentcore-usage-records'),
-  feedbackTableName: getEnvOrDefault('FEEDBACK_TABLE_NAME', 'agentcore-feedback'),
-  guardrailTableName: getEnvOrDefault('GUARDRAIL_TABLE_NAME', 'agentcore-guardrail-violations'),
-  promptTemplatesTableName: getEnvOrDefault('PROMPT_TEMPLATES_TABLE_NAME', 'agentcore-prompt-templates'),
-  appSettingsTableName: getEnvOrDefault('APP_SETTINGS_TABLE_NAME', 'agentcore-app-settings'),
-  runtimeUsageTableName: getEnvOrDefault('RUNTIME_USAGE_TABLE_NAME', 'agentcore-runtime-usage'),
+  usageTableName: getEnvOrDefault('USAGE_TABLE_NAME', `${appName}-usage-records`),
+  feedbackTableName: getEnvOrDefault('FEEDBACK_TABLE_NAME', `${appName}-feedback`),
+  guardrailTableName: getEnvOrDefault('GUARDRAIL_TABLE_NAME', `${appName}-guardrail-violations`),
+  promptTemplatesTableName: getEnvOrDefault('PROMPT_TEMPLATES_TABLE_NAME', `${appName}-prompt-templates`),
+  appSettingsTableName: getEnvOrDefault('APP_SETTINGS_TABLE_NAME', `${appName}-app-settings`),
+  runtimeUsageTableName: getEnvOrDefault('RUNTIME_USAGE_TABLE_NAME', `${appName}-runtime-usage`),
 
   // Bedrock configuration
-  guardrailName: getEnvOrDefault('GUARDRAIL_NAME', 'agentcore-chatapp-guardrail'),
-  kbName: getEnvOrDefault('KB_NAME', 'htmx-chatapp-kb'),
-  kbSourceBucketName: getEnvOrDefault('KB_SOURCE_BUCKET_NAME', 'htmx-chatapp-kb-source'),
+  guardrailName: getEnvOrDefault('GUARDRAIL_NAME', `${appName}-guardrail`),
+  kbName: getEnvOrDefault('KB_NAME', `${appName}-kb`),
+  kbSourceBucketName: getEnvOrDefault('KB_SOURCE_BUCKET_NAME', `${appName}-kb-source`),
 
   // Secrets configuration
-  secretName: getEnvOrDefault('SECRET_NAME', 'htmx-chatapp/appconfig'),
+  secretName: getEnvOrDefault('SECRET_NAME', `${appName}/appconfig`),
 
   // ECS configuration (used when deploymentMode = 'ecs' or 'both')
-  ecsServiceName: getEnvOrDefault('ECS_SERVICE_NAME', 'htmx-chatapp-express'),
+  ecsServiceName: getEnvOrDefault('ECS_SERVICE_NAME', `${appName}-express`),
   cpu: getEnvNumberOrDefault('ECS_CPU', 512),
   memory: getEnvNumberOrDefault('ECS_MEMORY', 1024),
   minTasks: getEnvNumberOrDefault('ECS_MIN_TASKS', 1),
@@ -163,21 +166,21 @@ export const config: AppConfig = {
   containerPort: getEnvNumberOrDefault('CONTAINER_PORT', 8080),
 
   // Lambda configuration (used when deploymentMode = 'furl' or 'both')
-  lambdaFunctionName: getEnvOrDefault('LAMBDA_FUNCTION_NAME', 'htmx-chatapp-lambda'),
+  lambdaFunctionName: getEnvOrDefault('LAMBDA_FUNCTION_NAME', `${appName}-lambda`),
   lambdaMemory: getEnvNumberOrDefault('LAMBDA_MEMORY', 1024),
   lambdaTimeout: getEnvNumberOrDefault('LAMBDA_TIMEOUT', 900),
   lambdaReservedConcurrency: getEnvNumberOrDefault('LAMBDA_RESERVED_CONCURRENCY', 10),
 
   // ECR configuration
-  agentRepoName: getEnvOrDefault('AGENT_REPO_NAME', 'htmx-chatapp-agent'),
-  chatappRepoName: getEnvOrDefault('CHATAPP_REPO_NAME', 'htmx-chatapp'),
+  agentRepoName: getEnvOrDefault('AGENT_REPO_NAME', `${appName}-agent`),
+  chatappRepoName: getEnvOrDefault('CHATAPP_REPO_NAME', appName),
 
   // CodeBuild configuration
-  agentBuildProjectName: getEnvOrDefault('AGENT_BUILD_PROJECT_NAME', 'htmx-chatapp-agent-build'),
-  buildSourceBucketName: getEnvOrDefault('BUILD_SOURCE_BUCKET_NAME', 'htmx-chatapp-build-source'),
+  agentBuildProjectName: getEnvOrDefault('AGENT_BUILD_PROJECT_NAME', `${appName}-agent-build`),
+  buildSourceBucketName: getEnvOrDefault('BUILD_SOURCE_BUCKET_NAME', `${appName}-build-source`),
 
   // AgentCore configuration
-  agentRuntimeName: getEnvOrDefault('AGENT_RUNTIME_NAME', 'chat_app'),
+  agentRuntimeName: getEnvOrDefault('AGENT_RUNTIME_NAME', appName.replace(/-/g, '_')),
 };
 
 /**

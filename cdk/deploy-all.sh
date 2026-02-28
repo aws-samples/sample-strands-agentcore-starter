@@ -117,7 +117,7 @@ fi
 # Change to CDK directory
 cd "$SCRIPT_DIR"
 
-APP_NAME="htmx-chatapp"
+APP_NAME="${APP_NAME:-htmx-chatapp}"
 
 # ============================================================================
 # STEP 1: Install dependencies and build

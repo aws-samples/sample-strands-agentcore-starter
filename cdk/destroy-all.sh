@@ -122,7 +122,7 @@ fi
 # Change to CDK directory
 cd "$SCRIPT_DIR"
 
-APP_NAME="htmx-chatapp"
+APP_NAME="${APP_NAME:-htmx-chatapp}"
 
 # ============================================================================
 # STEP 0: Clean up CloudWatch Logs Deliveries (must be deleted before sources)
@@ -226,7 +226,7 @@ echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━�
 echo -e "${YELLOW}Cleaning up CloudWatch log groups...${NC}"
 
 LOG_GROUPS=(
-    "/ecs/${APP_NAME}-express"
+    "/ecs/${APP_NAME}/${APP_NAME}-express"
     "/aws/bedrock-agentcore/runtimes"
 )
 
