@@ -1128,6 +1128,12 @@ exports.handler = async (event) => {
       action: 'lambda:InvokeFunctionUrl',
       sourceArn: `arn:aws:cloudfront::${this.account}:distribution/${this.distribution.distributionId}`,
     });
+
+    this.lambdaFunction.addPermission('CloudFrontInvokeFunction', {
+      principal: new iam.ServicePrincipal('cloudfront.amazonaws.com'),
+      action: 'lambda:InvokeFunction',
+      sourceArn: `arn:aws:cloudfront::${this.account}:distribution/${this.distribution.distributionId}`,
+    });    
   }
 
   /**
