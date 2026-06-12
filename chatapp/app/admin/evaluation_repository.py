@@ -169,6 +169,62 @@ class EvaluationRepository:
         """Get all evaluation records for a specific session."""
         return await self.storage.query_by_session(session_id)
 
+    async def get_session_turns(
+        self,
+        session_id: str,
+    ) -> List[Dict[str, Any]]:
+        """Get a session's evaluations grouped into conversation turns.
+
+        Each evaluator stores one record per turn, all sharing the same base
+        timestamp (the sort key is ``<timestamp>#<evaluator_name>``). This
+        groups those records back into turns for the per-turn admin view.
+
+        Returns:
+            List of turn dicts ordered chronologically, each containing:
+            - timestamp: ISO 8601 base timestamp of the turn
+            - model_id: model used for the turn (from the records)
+            - avg_score: mean score across the turn's evaluators
+            - all_passed: True if every evaluator passed
+            - evaluations: list of per-evaluator dicts
+              (evaluator_name, eval_type, score, passed, label, reason, latency_ms)
+        """
+        records = await self.storage.query_by_session(session_id)
+        if not records:
+            return []
+
+        turns: Dict[str, Dict[str, Any]] = {}
+        for record in records:
+            base_ts = record.timestamp.split("#")[0]
+            turn = turns.setdefault(
+                base_ts,
+                {
+                    "timestamp": base_ts,
+                    "model_id": record.model_id,
+                    "evaluations": [],
+                },
+            )
+            turn["evaluations"].append({
+                "evaluator_name": record.evaluator_name,
+                "eval_type": record.eval_type,
+                "score": record.score,
+                "passed": record.passed,
+                "label": record.label,
+                "reason": record.reason,
+                "latency_ms": record.latency_ms,
+            })
+
+        result = []
+        for base_ts in sorted(turns.keys()):
+            turn = turns[base_ts]
+            evals = turn["evaluations"]
+            scores = [e["score"] for e in evals]
+            turn["avg_score"] = round(sum(scores) / len(scores), 3) if scores else 0.0
+            turn["all_passed"] = all(e["passed"] for e in evals) if evals else False
+            # Stable ordering of evaluators within a turn
+            turn["evaluations"] = sorted(evals, key=lambda e: e["evaluator_name"])
+            result.append(turn)
+        return result
+
     async def get_score_distribution(
         self,
         start_time: str,

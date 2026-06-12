@@ -232,7 +232,7 @@
                         {% for session in worst_sessions %}
                         <tr class="border-t border-gray-100 hover:bg-gray-50">
                             <td class="py-3 px-4">
-                                <a href="/admin/history/{{ session.session_id }}" class="text-primary-600 hover:text-primary-800 font-mono text-xs">
+                                <a href="/admin/evaluations/session/{{ session.session_id }}" class="text-primary-600 hover:text-primary-800 font-mono text-xs">
                                     {{ session.session_id[:16] }}...
                                 </a>
                             </td>

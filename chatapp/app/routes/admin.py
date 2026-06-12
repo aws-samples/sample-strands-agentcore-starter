@@ -1100,3 +1100,44 @@ async def evaluations_analytics(
         },
     )
 
+
+@router.get("/evaluations/session/{session_id}", response_class=HTMLResponse)
+async def evaluation_session_detail(
+    request: Request,
+    session_id: str,
+):
+    """Per-session evaluation drill-down.
+
+    Shows each conversation turn's evaluation results and a deep link to the
+    full trace (including message content) in CloudWatch GenAI Observability.
+    """
+    from app.config import get_config
+    from app.helpers.observability import cloudwatch_session_url
+
+    repository = EvaluationRepository()
+    turns = await repository.get_session_turns(session_id)
+
+    region = get_config().aws_region
+    cloudwatch_url = cloudwatch_session_url(region, session_id)
+
+    evaluator_meta = {
+        "helpfulness": {"label": "Helpfulness", "color": "#3b82f6", "icon": "👍"},
+        "faithfulness": {"label": "Faithfulness", "color": "#8b5cf6", "icon": "🎯"},
+        "relevance": {"label": "Relevance", "color": "#06b6d4", "icon": "🔗"},
+        "completeness": {"label": "Completeness", "color": "#10b981", "icon": "✅"},
+        "safety": {"label": "Safety", "color": "#ef4444", "icon": "🛡️"},
+        "tool_selection": {"label": "Tool Selection", "color": "#f59e0b", "icon": "🔧"},
+        "response_efficiency": {"label": "Efficiency", "color": "#6366f1", "icon": "⚡"},
+    }
+
+    return templates.TemplateResponse(
+        "admin/evaluation_session.html",
+        {
+            "request": request,
+            "session_id": session_id,
+            "turns": turns,
+            "evaluator_meta": evaluator_meta,
+            "cloudwatch_url": cloudwatch_url,
+        },
+    )
+
