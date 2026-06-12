@@ -18,6 +18,7 @@ from app.admin.cost_calculator import CostCalculator
 from app.admin.guardrail_repository import GuardrailRepository, GuardrailAggregateStats
 from app.admin.feedback_repository import FeedbackRepository
 from app.admin.runtime_usage_repository import RuntimeUsageRepository
+from app.admin.evaluation_repository import EvaluationRepository
 from app.auth.cognito import get_user_emails_by_ids
 from app.templates_config import templates
 
@@ -1039,3 +1040,63 @@ async def chat_history_detail(
             "from_history": True,
         },
     )
+
+@router.get("/evaluations", response_class=HTMLResponse)
+async def evaluations_analytics(
+    request: Request,
+    start_time: Optional[str] = Query(None, description="Start time (ISO format)"),
+    end_time: Optional[str] = Query(None, description="End time (ISO format)"),
+):
+    """Evaluations analytics page.
+
+    Displays:
+    - Aggregate evaluation scores per evaluator
+    - Pass/fail rates
+    - Score distribution histograms
+    - Daily trends
+    - Worst-performing sessions
+    """
+    # Parse time range
+    start_dt, end_dt = _parse_time_range(start_time, end_time)
+    days_in_period = max(1, (end_dt - start_dt).days)
+
+    # Initialize repository
+    repository = EvaluationRepository()
+
+    # Fetch all data concurrently
+    import asyncio
+    stats_task = repository.get_aggregate_stats(start_dt.isoformat(), end_dt.isoformat())
+    trends_task = repository.get_daily_trends(start_dt.isoformat(), end_dt.isoformat())
+    worst_task = repository.get_worst_sessions(start_dt.isoformat(), end_dt.isoformat(), limit=10)
+    distribution_task = repository.get_score_distribution(start_dt.isoformat(), end_dt.isoformat())
+
+    stats, trends, worst_sessions, distribution = await asyncio.gather(
+        stats_task, trends_task, worst_task, distribution_task
+    )
+
+    # Define evaluator display metadata
+    evaluator_meta = {
+        "helpfulness": {"label": "Helpfulness", "color": "#3b82f6", "icon": "👍"},
+        "faithfulness": {"label": "Faithfulness", "color": "#8b5cf6", "icon": "🎯"},
+        "relevance": {"label": "Relevance", "color": "#06b6d4", "icon": "🔗"},
+        "completeness": {"label": "Completeness", "color": "#10b981", "icon": "✅"},
+        "safety": {"label": "Safety", "color": "#ef4444", "icon": "🛡️"},
+        "tool_selection": {"label": "Tool Selection", "color": "#f59e0b", "icon": "🔧"},
+        "response_efficiency": {"label": "Efficiency", "color": "#6366f1", "icon": "⚡"},
+    }
+
+    return templates.TemplateResponse(
+        "admin/evaluations.html",
+        {
+            "request": request,
+            "stats": stats,
+            "trends": trends,
+            "worst_sessions": worst_sessions,
+            "distribution": distribution,
+            "evaluator_meta": evaluator_meta,
+            "start_time": start_dt.isoformat(),
+            "end_time": end_dt.isoformat(),
+            "days_in_period": days_in_period,
+        },
+    )
+

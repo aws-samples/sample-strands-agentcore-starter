@@ -20,6 +20,7 @@ from app.models.guardrail import GuardrailRecord
 from app.models.usage import UsageRecord, ToolUsageRecord
 from app.storage.guardrail import GuardrailStorageService
 from app.storage.usage import UsageStorageService
+from app.evaluations.engine import run_evaluations
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +150,8 @@ async def _stream_chat_response(
     after_tool = False
     # Track last message content to avoid breaking mid-sentence
     last_message_content = ""
+    # Accumulate full agent output text for post-stream evaluation
+    accumulated_output: list[str] = []
     
     async for event in client.invoke_stream(
         prompt=prompt,
@@ -163,9 +166,12 @@ async def _stream_chat_response(
             if last_message_content and last_message_content.rstrip()[-1:] in '.!?\n':
                 yield MessageEvent(content="\n\n").to_sse_format()
         
-        # Track last message content for sentence boundary detection
-        if isinstance(event, MessageEvent) and event.content.strip():
-            last_message_content = event.content
+        # Track last message content for sentence boundary detection and
+        # accumulate full output for evaluation after the stream completes
+        if isinstance(event, MessageEvent) and event.content:
+            accumulated_output.append(event.content)
+            if event.content.strip():
+                last_message_content = event.content
         
         # Track tool usage from ToolUseEvent
         if isinstance(event, ToolUseEvent):
@@ -233,6 +239,23 @@ async def _stream_chat_response(
     if accumulated_metrics:
         asyncio.create_task(
             _store_usage_record(accumulated_metrics, session_id, user_id, model_id, user_email)
+        )
+
+    # Run evaluations asynchronously after stream completes (fire-and-forget).
+    # Evaluation failures are handled internally and never impact the response.
+    full_output = "".join(accumulated_output)
+    if full_output.strip():
+        asyncio.create_task(
+            run_evaluations(
+                user_input=prompt,
+                agent_output=full_output,
+                session_id=session_id,
+                user_id=user_id,
+                model_id=model_id,
+                tool_usage=tool_usage_counts or None,
+                input_tokens=accumulated_metrics.get("inputTokens", 0) or 0,
+                output_tokens=accumulated_metrics.get("outputTokens", 0) or 0,
+            )
         )
 
 

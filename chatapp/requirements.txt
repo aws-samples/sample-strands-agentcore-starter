@@ -8,6 +8,9 @@ python-multipart>=0.0.6
 jinja2>=3.1.0
 python-dotenv>=1.0.0
 
+# Evaluations
+strands-agents-evals>=0.1.8
+
 # Development/Testing dependencies
 pytest>=7.4.0
 pytest-asyncio>=0.23.0

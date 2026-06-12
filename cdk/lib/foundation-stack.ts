@@ -71,6 +71,9 @@ export class FoundationStack extends cdk.Stack {
   /** Runtime usage table for AgentCore runtime metrics */
   public readonly runtimeUsageTable: dynamodb.Table;
 
+  /** Evaluations table for agent response quality metrics */
+  public readonly evaluationsTable: dynamodb.Table;
+
   // ========================================================================
   // IAM Resources
   // ========================================================================
@@ -448,6 +451,35 @@ export class FoundationStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
+    // Evaluations table for agent response quality metrics
+    this.evaluationsTable = new dynamodb.Table(this, 'EvaluationsTable', {
+      tableName: config.evaluationsTableName,
+      partitionKey: {
+        name: 'session_id',
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'timestamp',
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    // GSI for querying evaluations by user
+    this.evaluationsTable.addGlobalSecondaryIndex({
+      indexName: 'user-index',
+      partitionKey: {
+        name: 'user_id',
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'timestamp',
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
     // ========================================================================
     // SECTION 4: IAM ROLES
     // Requirements: 1.2, 2.1
@@ -570,6 +602,8 @@ export class FoundationStack extends cdk.Stack {
           `${this.appSettingsTable.tableArn}/index/*`,
           this.runtimeUsageTable.tableArn,
           `${this.runtimeUsageTable.tableArn}/index/*`,
+          this.evaluationsTable.tableArn,
+          `${this.evaluationsTable.tableArn}/index/*`,
         ],
       })
     );
@@ -676,6 +710,7 @@ export class FoundationStack extends cdk.Stack {
         prompt_templates_table_name: cdk.SecretValue.unsafePlainText(this.promptTemplatesTable.tableName),
         app_settings_table_name: cdk.SecretValue.unsafePlainText(this.appSettingsTable.tableName),
         runtime_usage_table_name: cdk.SecretValue.unsafePlainText(this.runtimeUsageTable.tableName),
+        evaluations_table_name: cdk.SecretValue.unsafePlainText(this.evaluationsTable.tableName),
         
         // Placeholders for values from other stacks (will be updated)
         agentcore_runtime_arn: cdk.SecretValue.unsafePlainText(''),
@@ -779,6 +814,11 @@ export class FoundationStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'ComputeUsageTableName', {
       value: this.runtimeUsageTable.tableName,
       description: 'Runtime usage DynamoDB table name',
+    });
+
+    new cdk.CfnOutput(this, 'EvaluationsTableName', {
+      value: this.evaluationsTable.tableName,
+      description: 'Evaluations DynamoDB table name',
     });
 
     new cdk.CfnOutput(this, 'ComputeUsageTableArn', {
@@ -913,6 +953,7 @@ export class FoundationStack extends cdk.Stack {
             'Resource::<PromptTemplatesTableAA30D6E4.Arn>/index/*',
             'Resource::<AppSettingsTable41A0871E.Arn>/index/*',
             'Resource::<ComputeUsageTableA24180ED.Arn>/index/*',
+            'Resource::<EvaluationsTable9C502DB1.Arn>/index/*',
           ],
         },
       ]

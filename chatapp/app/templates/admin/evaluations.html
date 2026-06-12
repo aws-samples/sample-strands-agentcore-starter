@@ -1,0 +1,318 @@
+{% extends "base.html" %}
+
+{% block title %}Evaluations - Admin{% endblock %}
+
+{% block favicon %}
+<link rel="icon" type="image/svg+xml" href="{{ logo_url if logo_url is defined else '/static/favicon.svg' }}">
+{% endblock %}
+
+{% block body %}
+<div class="min-h-screen bg-gray-50">
+    {% set show_admin_btn = false %}
+    {% set primary_action = {'type': 'back_to_chat'} %}
+    {% set breadcrumbs = [
+        {'label': 'Admin', 'url': '/admin'},
+        {'label': 'Evaluations'}
+    ] %}
+    {% include "components/header.html" %}
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Time Range Selector -->
+        <div class="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <div class="flex flex-wrap items-center gap-4">
+                <span class="text-sm font-medium text-gray-700">Time Range:</span>
+                <div class="flex gap-2" id="preset-buttons">
+                    <button onclick="setTimeRange(1)" id="btn-1" class="px-3 py-1.5 text-sm rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">Today</button>
+                    <button onclick="setTimeRange(7)" id="btn-7" class="px-3 py-1.5 text-sm rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">7 Days</button>
+                    <button onclick="setTimeRange(30)" id="btn-30" class="px-3 py-1.5 text-sm rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">30 Days</button>
+                </div>
+                <div class="flex items-center gap-2 ml-auto">
+                    <label class="text-xs text-gray-500">From:</label>
+                    <input type="date" id="start-date" class="px-2 py-1 text-sm border border-gray-300 rounded-md" value="{{ start_time[:10] }}">
+                    <label class="text-xs text-gray-500">To:</label>
+                    <input type="date" id="end-date" class="px-2 py-1 text-sm border border-gray-300 rounded-md" value="{{ end_time[:10] }}">
+                    <button onclick="applyCustomRange()" class="px-3 py-1.5 text-sm rounded-md bg-primary-600 hover:bg-primary-700 text-white transition-colors">Apply</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Summary Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">Messages Evaluated</p>
+                        <p class="text-2xl font-bold text-gray-900 mt-1">{{ "{:,}".format(stats.total_messages_evaluated) }}</p>
+                    </div>
+                    <div class="p-3 bg-blue-100 rounded-full">
+                        <svg class="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                        </svg>
+                    </div>
+                </div>
+                <p class="mt-2 text-xs text-gray-500">{{ "{:,}".format(stats.total_evaluations) }} total evaluations</p>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">Overall Avg Score</p>
+                        {% set all_scores = stats.avg_scores.values() | list %}
+                        {% if all_scores %}
+                        {% set overall_avg = (all_scores | sum) / (all_scores | length) %}
+                        <p class="text-2xl font-bold mt-1 {% if overall_avg >= 0.7 %}text-green-600{% elif overall_avg >= 0.5 %}text-yellow-600{% else %}text-red-600{% endif %}">
+                            {{ "%.1f"|format(overall_avg * 100) }}%
+                        </p>
+                        {% else %}
+                        <p class="text-2xl font-bold text-gray-400 mt-1">—</p>
+                        {% endif %}
+                    </div>
+                    <div class="p-3 bg-green-100 rounded-full">
+                        <svg class="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                    </div>
+                </div>
+                <p class="mt-2 text-xs text-gray-500">Across all {{ stats.avg_scores | length }} evaluators</p>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">Overall Pass Rate</p>
+                        {% set all_pass_rates = stats.pass_rates.values() | list %}
+                        {% if all_pass_rates %}
+                        {% set overall_pass = (all_pass_rates | sum) / (all_pass_rates | length) %}
+                        <p class="text-2xl font-bold mt-1 {% if overall_pass >= 0.8 %}text-green-600{% elif overall_pass >= 0.6 %}text-yellow-600{% else %}text-red-600{% endif %}">
+                            {{ "%.1f"|format(overall_pass * 100) }}%
+                        </p>
+                        {% else %}
+                        <p class="text-2xl font-bold text-gray-400 mt-1">—</p>
+                        {% endif %}
+                    </div>
+                    <div class="p-3 bg-emerald-100 rounded-full">
+                        <svg class="w-6 h-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </div>
+                </div>
+                <p class="mt-2 text-xs text-gray-500">Messages passing all evaluations</p>
+            </div>
+        </div>
+
+        <!-- Per-Evaluator Score Cards -->
+        <div class="mb-8">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Evaluator Scores</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {% for eval_name, meta in evaluator_meta.items() %}
+                {% set avg = stats.avg_scores.get(eval_name, None) %}
+                {% set pass_rate = stats.pass_rates.get(eval_name, None) %}
+                {% set count = stats.eval_counts.get(eval_name, 0) %}
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="text-lg">{{ meta.icon }}</span>
+                        <span class="text-sm font-medium text-gray-700">{{ meta.label }}</span>
+                    </div>
+                    {% if avg is not none %}
+                    <!-- Score bar -->
+                    <div class="mb-2">
+                        <div class="flex justify-between text-xs text-gray-500 mb-1">
+                            <span>Avg Score</span>
+                            <span class="font-medium {% if avg >= 0.7 %}text-green-600{% elif avg >= 0.5 %}text-yellow-600{% else %}text-red-600{% endif %}">
+                                {{ "%.0f"|format(avg * 100) }}%
+                            </span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            <div class="h-2 rounded-full transition-all duration-500"
+                                 style="width: {{ (avg * 100)|int }}%; background-color: {{ meta.color }}"></div>
+                        </div>
+                    </div>
+                    <!-- Pass rate -->
+                    <div class="flex justify-between text-xs text-gray-500">
+                        <span>Pass Rate</span>
+                        <span class="font-medium">{{ "%.0f"|format((pass_rate or 0) * 100) }}%</span>
+                    </div>
+                    <div class="text-xs text-gray-400 mt-1">{{ "{:,}".format(count) }} evaluations</div>
+                    {% else %}
+                    <p class="text-sm text-gray-400 italic">No data yet</p>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Score Distribution -->
+        {% if distribution %}
+        <div class="mb-8">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Score Distribution</h3>
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {% for eval_name, buckets in distribution.items() %}
+                    {% set meta = evaluator_meta.get(eval_name, {"label": eval_name, "color": "#6b7280"}) %}
+                    <div>
+                        <p class="text-sm font-medium text-gray-700 mb-2">{{ meta.label }}</p>
+                        {% set max_count = buckets.values() | max %}
+                        {% for bucket, count in buckets.items() %}
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="text-xs text-gray-500 w-12 text-right">{{ bucket }}</span>
+                            <div class="flex-1 bg-gray-100 rounded h-4 relative">
+                                {% if max_count > 0 %}
+                                <div class="h-4 rounded transition-all duration-500"
+                                     style="width: {{ (count / max_count * 100)|int }}%; background-color: {{ meta.color }}; opacity: 0.7"></div>
+                                {% endif %}
+                            </div>
+                            <span class="text-xs text-gray-500 w-8">{{ count }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Daily Trends -->
+        {% if trends %}
+        <div class="mb-8">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Daily Trends</h3>
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 overflow-x-auto">
+                <table class="min-w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-gray-200">
+                            <th class="text-left py-2 px-3 text-gray-500 font-medium">Date</th>
+                            {% for eval_name, meta in evaluator_meta.items() %}
+                            <th class="text-center py-2 px-3 font-medium" style="color: {{ meta.color }}">
+                                {{ meta.icon }} {{ meta.label }}
+                            </th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for date_str, day_scores in trends.items() %}
+                        <tr class="border-b border-gray-100 hover:bg-gray-50">
+                            <td class="py-2 px-3 text-gray-700 font-mono text-xs">{{ date_str }}</td>
+                            {% for eval_name in evaluator_meta.keys() %}
+                            {% set score = day_scores.get(eval_name) %}
+                            <td class="text-center py-2 px-3">
+                                {% if score is not none %}
+                                <span class="inline-block px-2 py-0.5 rounded text-xs font-medium
+                                    {% if score >= 0.7 %}bg-green-100 text-green-700
+                                    {% elif score >= 0.5 %}bg-yellow-100 text-yellow-700
+                                    {% else %}bg-red-100 text-red-700{% endif %}">
+                                    {{ "%.0f"|format(score * 100) }}%
+                                </span>
+                                {% else %}
+                                <span class="text-gray-300">—</span>
+                                {% endif %}
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Worst Sessions -->
+        {% if worst_sessions %}
+        <div class="mb-8">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Lowest Scoring Sessions</h3>
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                <table class="min-w-full text-sm">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="text-left py-3 px-4 text-gray-500 font-medium">Session</th>
+                            <th class="text-center py-3 px-4 text-gray-500 font-medium">Avg Score</th>
+                            <th class="text-center py-3 px-4 text-gray-500 font-medium">Evaluations</th>
+                            <th class="text-left py-3 px-4 text-gray-500 font-medium">Evaluator Breakdown</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for session in worst_sessions %}
+                        <tr class="border-t border-gray-100 hover:bg-gray-50">
+                            <td class="py-3 px-4">
+                                <a href="/admin/history/{{ session.session_id }}" class="text-primary-600 hover:text-primary-800 font-mono text-xs">
+                                    {{ session.session_id[:16] }}...
+                                </a>
+                            </td>
+                            <td class="text-center py-3 px-4">
+                                <span class="inline-block px-2 py-0.5 rounded text-xs font-medium
+                                    {% if session.avg_score >= 0.7 %}bg-green-100 text-green-700
+                                    {% elif session.avg_score >= 0.5 %}bg-yellow-100 text-yellow-700
+                                    {% else %}bg-red-100 text-red-700{% endif %}">
+                                    {{ "%.0f"|format(session.avg_score * 100) }}%
+                                </span>
+                            </td>
+                            <td class="text-center py-3 px-4 text-gray-600">{{ session.eval_count }}</td>
+                            <td class="py-3 px-4">
+                                <div class="flex flex-wrap gap-1">
+                                    {% for eval_name, score in session.evaluator_scores.items() %}
+                                    {% set meta = evaluator_meta.get(eval_name, {"label": eval_name, "icon": "📊"}) %}
+                                    <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs
+                                        {% if score >= 0.7 %}bg-green-50 text-green-700
+                                        {% elif score >= 0.5 %}bg-yellow-50 text-yellow-700
+                                        {% else %}bg-red-50 text-red-700{% endif %}"
+                                        title="{{ meta.label }}">
+                                        {{ meta.icon }} {{ "%.0f"|format(score * 100) }}%
+                                    </span>
+                                    {% endfor %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Empty State -->
+        {% if stats.total_evaluations == 0 %}
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+            <svg class="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+            <h3 class="text-lg font-medium text-gray-900 mb-2">No Evaluations Yet</h3>
+            <p class="text-gray-500 max-w-md mx-auto">
+                Evaluations run automatically on every chat response. Start a conversation to see quality metrics here.
+            </p>
+        </div>
+        {% endif %}
+    </main>
+</div>
+
+<script>
+    function setTimeRange(days) {
+        const end = new Date();
+        const start = new Date();
+        start.setDate(start.getDate() - days);
+        const startStr = start.toISOString().split('T')[0] + 'T00:00:00';
+        const endStr = end.toISOString().split('T')[0] + 'T23:59:59';
+        window.location.href = `/admin/evaluations?start_time=${startStr}&end_time=${endStr}`;
+    }
+
+    function applyCustomRange() {
+        const start = document.getElementById('start-date').value;
+        const end = document.getElementById('end-date').value;
+        if (start && end) {
+            window.location.href = `/admin/evaluations?start_time=${start}T00:00:00&end_time=${end}T23:59:59`;
+        }
+    }
+
+    // Highlight active time range button
+    (function() {
+        const start = '{{ start_time }}';
+        const end = '{{ end_time }}';
+        const startDate = new Date(start);
+        const endDate = new Date(end);
+        const diffDays = Math.round((endDate - startDate) / (1000 * 60 * 60 * 24));
+        const btnId = `btn-${diffDays}`;
+        const btn = document.getElementById(btnId);
+        if (btn) {
+            btn.classList.remove('bg-gray-100', 'text-gray-700');
+            btn.classList.add('bg-primary-600', 'text-white');
+        }
+    })();
+</script>
+{% endblock %}
