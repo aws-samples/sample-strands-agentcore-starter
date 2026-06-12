@@ -93,6 +93,7 @@ class EvaluationAggregateStats:
     """
     total_evaluations: int = 0
     total_messages_evaluated: int = 0
+    total_failed: int = 0
     avg_scores: Dict[str, float] = None
     pass_rates: Dict[str, float] = None
     eval_counts: Dict[str, int] = None
@@ -110,6 +111,7 @@ class EvaluationAggregateStats:
         return {
             "total_evaluations": self.total_evaluations,
             "total_messages_evaluated": self.total_messages_evaluated,
+            "total_failed": self.total_failed,
             "avg_scores": self.avg_scores,
             "pass_rates": self.pass_rates,
             "eval_counts": self.eval_counts,

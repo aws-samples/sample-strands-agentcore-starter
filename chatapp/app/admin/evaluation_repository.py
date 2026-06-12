@@ -64,14 +64,16 @@ class EvaluationRepository:
             name: len(scores) for name, scores in scores_by_eval.items()
         }
 
-        # Estimate messages evaluated (each message produces ~7 eval records)
+        # Estimate messages evaluated (each message produces N eval records)
         total_evals = len(records)
         num_evaluators = len(scores_by_eval)
         approx_messages = total_evals // max(num_evaluators, 1)
+        total_failed = sum(1 for r in records if not r.passed)
 
         return EvaluationAggregateStats(
             total_evaluations=total_evals,
             total_messages_evaluated=approx_messages,
+            total_failed=total_failed,
             avg_scores=avg_scores,
             pass_rates=pass_rates,
             eval_counts=eval_counts,
@@ -235,40 +237,3 @@ class EvaluationRepository:
             turn["evaluations"] = sorted(evals, key=lambda e: e["evaluator_name"])
             result.append(turn)
         return result
-
-    async def get_score_distribution(
-        self,
-        start_time: str,
-        end_time: str,
-    ) -> Dict[str, Dict[str, int]]:
-        """Get score distribution per evaluator for histogram charts.
-        
-        Returns:
-            Dict of evaluator_name -> {bucket_label: count}
-            Buckets: "0-0.2", "0.2-0.4", "0.4-0.6", "0.6-0.8", "0.8-1.0"
-        """
-        records = await self.storage.scan_by_time_range(start_time, end_time)
-
-        if not records:
-            return {}
-
-        buckets = ["0-0.2", "0.2-0.4", "0.4-0.6", "0.6-0.8", "0.8-1.0"]
-        distribution: Dict[str, Dict[str, int]] = defaultdict(
-            lambda: {b: 0 for b in buckets}
-        )
-
-        for record in records:
-            score = record.score
-            if score < 0.2:
-                bucket = "0-0.2"
-            elif score < 0.4:
-                bucket = "0.2-0.4"
-            elif score < 0.6:
-                bucket = "0.4-0.6"
-            elif score < 0.8:
-                bucket = "0.6-0.8"
-            else:
-                bucket = "0.8-1.0"
-            distribution[record.evaluator_name][bucket] += 1
-
-        return dict(distribution)

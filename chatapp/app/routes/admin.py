@@ -27,19 +27,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
-# Display metadata for evaluators. Current evaluators are answer_quality,
-# faithfulness, and tool_selection; the others are retained so historical
-# records (from earlier evaluator sets) still render with labels.
+# Display metadata for the evaluators produced by the engine.
 EVALUATOR_META = {
     "answer_quality": {"label": "Answer Quality", "color": "#3b82f6", "icon": "⭐"},
     "faithfulness": {"label": "Faithfulness", "color": "#8b5cf6", "icon": "🎯"},
     "tool_selection": {"label": "Tool Selection", "color": "#f59e0b", "icon": "🔧"},
-    # Legacy evaluators (no longer produced) kept for historical display:
-    "helpfulness": {"label": "Helpfulness", "color": "#3b82f6", "icon": "👍"},
-    "relevance": {"label": "Relevance", "color": "#06b6d4", "icon": "🔗"},
-    "completeness": {"label": "Completeness", "color": "#10b981", "icon": "✅"},
-    "safety": {"label": "Safety", "color": "#ef4444", "icon": "🛡️"},
-    "response_efficiency": {"label": "Efficiency", "color": "#6366f1", "icon": "⚡"},
 }
 
 
@@ -1066,11 +1058,10 @@ async def evaluations_analytics(
     """Evaluations analytics page.
 
     Displays:
-    - Aggregate evaluation scores per evaluator
-    - Pass/fail rates
-    - Score distribution histograms
+    - Aggregate pass rates per evaluator
+    - Failed evaluation count
     - Daily trends
-    - Worst-performing sessions
+    - Lowest-passing sessions
     """
     # Parse time range
     start_dt, end_dt = _parse_time_range(start_time, end_time)
@@ -1084,10 +1075,9 @@ async def evaluations_analytics(
     stats_task = repository.get_aggregate_stats(start_dt.isoformat(), end_dt.isoformat())
     trends_task = repository.get_daily_trends(start_dt.isoformat(), end_dt.isoformat())
     worst_task = repository.get_worst_sessions(start_dt.isoformat(), end_dt.isoformat(), limit=10)
-    distribution_task = repository.get_score_distribution(start_dt.isoformat(), end_dt.isoformat())
 
-    stats, trends, worst_sessions, distribution = await asyncio.gather(
-        stats_task, trends_task, worst_task, distribution_task
+    stats, trends, worst_sessions = await asyncio.gather(
+        stats_task, trends_task, worst_task
     )
 
     # Define evaluator display metadata
@@ -1100,7 +1090,6 @@ async def evaluations_analytics(
             "stats": stats,
             "trends": trends,
             "worst_sessions": worst_sessions,
-            "distribution": distribution,
             "evaluator_meta": evaluator_meta,
             "start_time": start_dt.isoformat(),
             "end_time": end_dt.isoformat(),

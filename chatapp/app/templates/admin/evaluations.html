@@ -56,24 +56,18 @@
             <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                 <div class="flex items-center justify-between">
                     <div>
-                        <p class="text-sm font-medium text-gray-500">Overall Avg Score</p>
-                        {% set all_scores = stats.avg_scores.values() | list %}
-                        {% if all_scores %}
-                        {% set overall_avg = (all_scores | sum) / (all_scores | length) %}
-                        <p class="text-2xl font-bold mt-1 {% if overall_avg >= 0.7 %}text-green-600{% elif overall_avg >= 0.5 %}text-yellow-600{% else %}text-red-600{% endif %}">
-                            {{ "%.1f"|format(overall_avg * 100) }}%
+                        <p class="text-sm font-medium text-gray-500">Failed Evaluations</p>
+                        <p class="text-2xl font-bold mt-1 {% if stats.total_failed > 0 %}text-red-600{% else %}text-green-600{% endif %}">
+                            {{ "{:,}".format(stats.total_failed) }}
                         </p>
-                        {% else %}
-                        <p class="text-2xl font-bold text-gray-400 mt-1">—</p>
-                        {% endif %}
                     </div>
-                    <div class="p-3 bg-green-100 rounded-full">
-                        <svg class="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    <div class="p-3 bg-red-100 rounded-full">
+                        <svg class="w-6 h-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                         </svg>
                     </div>
                 </div>
-                <p class="mt-2 text-xs text-gray-500">Across all {{ stats.avg_scores | length }} evaluators</p>
+                <p class="mt-2 text-xs text-gray-500">Evaluations that did not pass</p>
             </div>
 
             <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -100,12 +94,11 @@
             </div>
         </div>
 
-        <!-- Per-Evaluator Score Cards -->
+        <!-- Per-Evaluator Result Cards -->
         <div class="mb-8">
-            <h3 class="text-lg font-semibold text-gray-900 mb-4">Evaluator Scores</h3>
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Evaluator Results</h3>
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {% for eval_name, meta in evaluator_meta.items() %}
-                {% set avg = stats.avg_scores.get(eval_name, None) %}
                 {% set pass_rate = stats.pass_rates.get(eval_name, None) %}
                 {% set count = stats.eval_counts.get(eval_name, 0) %}
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
@@ -113,24 +106,19 @@
                         <span class="text-lg">{{ meta.icon }}</span>
                         <span class="text-sm font-medium text-gray-700">{{ meta.label }}</span>
                     </div>
-                    {% if avg is not none %}
-                    <!-- Score bar -->
+                    {% if pass_rate is not none %}
+                    <!-- Pass rate bar -->
                     <div class="mb-2">
                         <div class="flex justify-between text-xs text-gray-500 mb-1">
-                            <span>Avg Score</span>
-                            <span class="font-medium {% if avg >= 0.7 %}text-green-600{% elif avg >= 0.5 %}text-yellow-600{% else %}text-red-600{% endif %}">
-                                {{ "%.0f"|format(avg * 100) }}%
+                            <span>Pass Rate</span>
+                            <span class="font-medium {% if pass_rate >= 0.8 %}text-green-600{% elif pass_rate >= 0.6 %}text-yellow-600{% else %}text-red-600{% endif %}">
+                                {{ "%.0f"|format(pass_rate * 100) }}%
                             </span>
                         </div>
                         <div class="w-full bg-gray-200 rounded-full h-2">
                             <div class="h-2 rounded-full transition-all duration-500"
-                                 style="width: {{ (avg * 100)|int }}%; background-color: {{ meta.color }}"></div>
+                                 style="width: {{ (pass_rate * 100)|int }}%; background-color: {{ meta.color }}"></div>
                         </div>
-                    </div>
-                    <!-- Pass rate -->
-                    <div class="flex justify-between text-xs text-gray-500">
-                        <span>Pass Rate</span>
-                        <span class="font-medium">{{ "%.0f"|format((pass_rate or 0) * 100) }}%</span>
                     </div>
                     <div class="text-xs text-gray-400 mt-1">{{ "{:,}".format(count) }} evaluations</div>
                     {% else %}
@@ -140,36 +128,6 @@
                 {% endfor %}
             </div>
         </div>
-
-        <!-- Score Distribution -->
-        {% if distribution %}
-        <div class="mb-8">
-            <h3 class="text-lg font-semibold text-gray-900 mb-4">Score Distribution</h3>
-            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {% for eval_name, buckets in distribution.items() %}
-                    {% set meta = evaluator_meta.get(eval_name, {"label": eval_name, "color": "#6b7280"}) %}
-                    <div>
-                        <p class="text-sm font-medium text-gray-700 mb-2">{{ meta.label }}</p>
-                        {% set max_count = buckets.values() | max %}
-                        {% for bucket, count in buckets.items() %}
-                        <div class="flex items-center gap-2 mb-1">
-                            <span class="text-xs text-gray-500 w-12 text-right">{{ bucket }}</span>
-                            <div class="flex-1 bg-gray-100 rounded h-4 relative">
-                                {% if max_count > 0 %}
-                                <div class="h-4 rounded transition-all duration-500"
-                                     style="width: {{ (count / max_count * 100)|int }}%; background-color: {{ meta.color }}; opacity: 0.7"></div>
-                                {% endif %}
-                            </div>
-                            <span class="text-xs text-gray-500 w-8">{{ count }}</span>
-                        </div>
-                        {% endfor %}
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-        </div>
-        {% endif %}
 
         <!-- Daily Trends -->
         {% if trends %}
