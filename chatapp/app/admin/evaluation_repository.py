@@ -215,9 +215,13 @@ class EvaluationRepository:
                 {
                     "timestamp": base_ts,
                     "model_id": record.model_id,
+                    "user_input": record.user_input,
                     "evaluations": [],
                 },
             )
+            # Backfill the question from whichever record carries it
+            if not turn.get("user_input") and record.user_input:
+                turn["user_input"] = record.user_input
             turn["evaluations"].append({
                 "evaluator_name": record.evaluator_name,
                 "eval_type": record.eval_type,

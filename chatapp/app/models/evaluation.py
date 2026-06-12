@@ -41,6 +41,7 @@ class EvaluationRecord:
     eval_type: str
     latency_ms: int
     model_id: str
+    user_input: str = ""
 
     def to_dynamodb_item(self) -> Dict[str, Any]:
         """Convert to DynamoDB item format."""
@@ -56,6 +57,7 @@ class EvaluationRecord:
             "eval_type": {"S": self.eval_type},
             "latency_ms": {"N": str(self.latency_ms)},
             "model_id": {"S": self.model_id},
+            "user_input": {"S": self.user_input[:1000]},  # Truncate long questions
         }
 
     @classmethod
@@ -73,6 +75,7 @@ class EvaluationRecord:
             eval_type=item.get("eval_type", {}).get("S", ""),
             latency_ms=int(item.get("latency_ms", {}).get("N", "0")),
             model_id=item.get("model_id", {}).get("S", ""),
+            user_input=item.get("user_input", {}).get("S", ""),
         )
 
     def to_dict(self) -> Dict[str, Any]:

@@ -174,7 +174,7 @@ async def run_evaluations(
         latency = int((time.monotonic() - start) * 1000)
         records.append(_make_record(
             "tool_selection", result, "programmatic", latency,
-            session_id, base_timestamp, user_id, model_id,
+            session_id, base_timestamp, user_id, model_id, user_input,
         ))
 
     # --- LLM-as-judge evaluators (binary, sampled, in thread pool) ---
@@ -225,7 +225,7 @@ async def run_evaluations(
                 continue
             records.append(_make_record(
                 name, result, "llm_judge", latency,
-                session_id, base_timestamp, user_id, model_id,
+                session_id, base_timestamp, user_id, model_id, user_input,
             ))
 
     # --- Store all results ---
@@ -252,6 +252,7 @@ def _make_record(
     base_timestamp: str,
     user_id: str,
     model_id: str,
+    user_input: str = "",
 ) -> EvaluationRecord:
     """Create an EvaluationRecord from an EvalResult.
 
@@ -271,4 +272,5 @@ def _make_record(
         eval_type=eval_type,
         latency_ms=latency_ms,
         model_id=model_id,
+        user_input=user_input,
     )

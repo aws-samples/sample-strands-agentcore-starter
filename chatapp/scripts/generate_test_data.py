@@ -424,6 +424,7 @@ def generate_all_data(
                     usage_records.append(usage)
                     
                     # Generate evaluation records for this turn (one per evaluator)
+                    turn_question = random.choice(USER_MESSAGES)
                     for evaluator in EVALUATORS:
                         if evaluator["type"] == "llm_judge":
                             # Binary judges: mostly pass for a working agent
@@ -450,6 +451,7 @@ def generate_all_data(
                             "eval_type": {"S": evaluator["type"]},
                             "latency_ms": {"N": str(latency)},
                             "model_id": {"S": random.choice(MODELS)},
+                            "user_input": {"S": turn_question},
                         }
                         evaluation_records.append(eval_record)
                     

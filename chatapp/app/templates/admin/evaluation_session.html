@@ -67,6 +67,12 @@
                         {% endif %}
                     </div>
                 </div>
+                {% if turn.user_input %}
+                <div class="px-4 py-3 border-b border-gray-100 bg-blue-50/40">
+                    <p class="text-xs font-medium text-gray-500 mb-1">User question</p>
+                    <p class="text-sm text-gray-800 whitespace-pre-wrap">{{ turn.user_input }}</p>
+                </div>
+                {% endif %}
                 <div class="divide-y divide-gray-100">
                     {% for ev in turn.evaluations %}
                     {% set meta = evaluator_meta.get(ev.evaluator_name, {"label": ev.evaluator_name, "icon": "📊"}) %}
