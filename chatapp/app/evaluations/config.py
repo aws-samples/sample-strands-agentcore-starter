@@ -22,7 +22,7 @@ class EvalConfig:
         max_reason_length: Max chars to store for evaluation reasons
     """
     enabled: bool = True
-    judge_model_id: str = "us.anthropic.claude-3-5-haiku-20241022-v1:0"
+    judge_model_id: str = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
     llm_evaluators: List[str] = field(default_factory=lambda: [
         "helpfulness",
         "faithfulness",
@@ -46,7 +46,7 @@ class EvalConfig:
 
         judge_model = os.environ.get(
             "EVALUATIONS_JUDGE_MODEL",
-            "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+            "global.anthropic.claude-haiku-4-5-20251001-v1:0",
         )
 
         # Allow disabling specific evaluators via comma-separated list

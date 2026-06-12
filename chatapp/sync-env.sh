@@ -160,7 +160,7 @@ EVALUATIONS_TABLE_NAME=$EVALUATIONS_TABLE_NAME
 
 # Evaluations Configuration
 EVALUATIONS_ENABLED=true
-EVALUATIONS_JUDGE_MODEL=us.anthropic.claude-3-5-haiku-20241022-v1:0
+EVALUATIONS_JUDGE_MODEL=global.anthropic.claude-haiku-4-5-20251001-v1:0
 
 # Guardrail Configuration
 GUARDRAIL_ID=$GUARDRAIL_ID
