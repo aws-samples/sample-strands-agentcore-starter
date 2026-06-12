@@ -27,6 +27,7 @@ Skip weeks of infrastructure setup and go straight to validating your agentic AI
 - 👍 **User feedback capture** with sentiment ratings and comments
 - 🛡️ **Guardrails analytics** with violation tracking and content filtering
 - 🔧 **Tool usage analytics** with per-tool invocation metrics and success rates
+- 🔬 **Automated evaluations** of every response (answer quality, faithfulness, tool selection) with CloudWatch trace deep links
 
 **Agent Capabilities**
 - 🧠 **Amazon Bedrock AgentCore** with Strands Agents SDK
@@ -122,6 +123,22 @@ The built-in admin dashboard (`/admin`) provides comprehensive usage analytics:
 **🎨 Application Settings** `/admin/settings`
 - Customize app title, subtitle, and welcome message
 - Set app theme including color and custom logos
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+**🔬 Evaluations** `/admin/evaluations`
+- Per-evaluator pass rates, failed counts, and daily trends
+- Recent sessions with drill-down to per-turn results
+
+</td>
+<td width="50%" valign="top">
+
+**🔎 Session Evaluations** `/admin/evaluations/session/{id}`
+- Each turn's question and evaluator pass/fail with reasons
+- Deep link to the full trace in CloudWatch GenAI Observability
 
 </td>
 </tr>
@@ -233,7 +250,7 @@ Note: Docker is not required locally - all container builds are handled by AWS C
 
 The deployment creates:
 - Cognito User Pool for authentication
-- DynamoDB tables for usage analytics, feedback, and guardrails
+- DynamoDB tables for usage analytics, feedback, guardrails, and evaluations
 - Bedrock Guardrail for content filtering
 - Bedrock Knowledge Base with S3 Vectors
 - AgentCore Memory with LTM strategies
@@ -431,6 +448,12 @@ Options:
 | `PROMPT_TEMPLATES_TABLE_NAME` | Yes | DynamoDB table for prompt templates |
 | `APP_SETTINGS_TABLE_NAME` | Yes | DynamoDB table for application settings |
 | `RUNTIME_USAGE_TABLE_NAME` | Yes | DynamoDB table for AgentCore runtime usage |
+| `EVALUATIONS_TABLE_NAME` | No | DynamoDB table for evaluation results |
+| `EVALUATIONS_ENABLED` | No | Enable/disable automated evaluations (default: true) |
+| `EVALUATIONS_JUDGE_MODEL` | No | Bedrock model ID for LLM-as-judge evaluators |
+| `EVALUATIONS_LLM_SAMPLE_RATE` | No | Fraction of turns (0.0-1.0) to run LLM judges on (default: 1.0) |
+| `EVALUATIONS_MAX_CONTEXT_LENGTH` | No | Max chars of source context sent to the faithfulness judge (default: 20000) |
+| `EVALUATIONS_DISABLED` | No | Comma-separated evaluators to disable (answer_quality, faithfulness, tool_selection) |
 | `APP_URL` | No | Application URL for callbacks |
 | `AWS_REGION` | Yes | AWS region |
 
@@ -449,7 +472,8 @@ sample-strands-agentcore-starter/
 │   │   ├── admin/                # Usage analytics module
 │   │   ├── auth/                 # Cognito authentication
 │   │   ├── agentcore/            # AgentCore client
-│   │   ├── helpers/              # Shared utilities (settings)
+│   │   ├── evaluations/          # Response evaluation engine (judges + config)
+│   │   ├── helpers/              # Shared utilities (settings, observability links)
 │   │   ├── storage/              # Data storage services
 │   │   ├── routes/               # Chat and Admin API routes
 │   │   ├── models/               # Data models
