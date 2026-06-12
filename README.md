@@ -129,6 +129,26 @@ The built-in admin dashboard (`/admin`) provides comprehensive usage analytics:
 
 ![Usage Dashboard](/assets/usage.png?raw=true "Usage Dashboard")
 
+## Evaluations
+
+Every chat response is scored automatically (fire-and-forget, after the SSE stream completes) and the results surface in the admin dashboard at `/admin/evaluations`. Results are stored in DynamoDB; the original message content and full execution trace are linked out to CloudWatch GenAI Observability rather than duplicated into the app.
+
+**Evaluators**
+- **Answer Quality** (LLM judge, binary pass/fail) — does the response directly, completely, and relevantly address the question?
+- **Faithfulness** (LLM judge, binary pass/fail) — is the response grounded in the retrieved tool/Knowledge Base context? Only runs when the turn used tools, so there is source material to check against.
+- **Tool Selection** (programmatic, runs every turn) — did the agent pick appropriate tools for the query?
+
+LLM judges can be sampled to control cost via `EVALUATIONS_LLM_SAMPLE_RATE` (programmatic evaluators always run). Content safety is intentionally **not** an evaluator here — Amazon Bedrock Guardrails covers that and is tracked separately.
+
+### Known Limitations / Future Work
+
+These are deliberate gaps in the starter kit, called out so you can address them for production use:
+
+1. **Judges are not calibrated.** The `answer_quality` and `faithfulness` judges are trusted without validation against human-labeled data. A judge is just another prompt and needs its own test set: label a benchmark of turns (human pass/fail), then measure agreement with the judge (true-positive/true-negative rate) and repeatability (does the verdict flip across runs?). Until calibrated, treat the dashboard pass rates as indicative, not authoritative.
+2. **Evaluators are generic, not trace-driven.** The current evaluators were chosen a priori rather than derived from your agent's observed failures. The recommended workflow is the reverse: review real traces (now linked from the admin UI), group failures by frequency × severity, fix what a prompt change can fix, and only then add a targeted evaluator per remaining failure mode (one problem → one yes/no question → one evaluator).
+3. **`tool_selection` uses keyword heuristics.** It approximates routing quality with keyword matching rather than precision/recall against a labeled set of expected-tool test cases, so treat its score as a rough signal rather than ground truth.
+
+
 ## Architecture
 
 The application supports two ingress modes for the FastAPI application: ECS Express Gateway (serverless container) or CloudFront + Lambda Web Adapter (serverless function with edge distribution).
