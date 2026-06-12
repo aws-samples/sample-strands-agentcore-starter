@@ -223,7 +223,7 @@
                     <thead class="bg-gray-50">
                         <tr>
                             <th class="text-left py-3 px-4 text-gray-500 font-medium">Session</th>
-                            <th class="text-center py-3 px-4 text-gray-500 font-medium">Avg Score</th>
+                            <th class="text-center py-3 px-4 text-gray-500 font-medium">Pass Rate</th>
                             <th class="text-center py-3 px-4 text-gray-500 font-medium">Evaluations</th>
                             <th class="text-left py-3 px-4 text-gray-500 font-medium">Evaluator Breakdown</th>
                         </tr>
@@ -238,10 +238,10 @@
                             </td>
                             <td class="text-center py-3 px-4">
                                 <span class="inline-block px-2 py-0.5 rounded text-xs font-medium
-                                    {% if session.avg_score >= 0.7 %}bg-green-100 text-green-700
-                                    {% elif session.avg_score >= 0.5 %}bg-yellow-100 text-yellow-700
+                                    {% if session.pass_rate >= 0.7 %}bg-green-100 text-green-700
+                                    {% elif session.pass_rate >= 0.5 %}bg-yellow-100 text-yellow-700
                                     {% else %}bg-red-100 text-red-700{% endif %}">
-                                    {{ "%.0f"|format(session.avg_score * 100) }}%
+                                    {{ "%.0f"|format(session.pass_rate * 100) }}%
                                 </span>
                             </td>
                             <td class="text-center py-3 px-4 text-gray-600">{{ session.eval_count }}</td>

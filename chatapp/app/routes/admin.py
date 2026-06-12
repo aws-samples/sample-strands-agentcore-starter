@@ -27,6 +27,22 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
+# Display metadata for evaluators. Current evaluators are answer_quality,
+# faithfulness, and tool_selection; the others are retained so historical
+# records (from earlier evaluator sets) still render with labels.
+EVALUATOR_META = {
+    "answer_quality": {"label": "Answer Quality", "color": "#3b82f6", "icon": "⭐"},
+    "faithfulness": {"label": "Faithfulness", "color": "#8b5cf6", "icon": "🎯"},
+    "tool_selection": {"label": "Tool Selection", "color": "#f59e0b", "icon": "🔧"},
+    # Legacy evaluators (no longer produced) kept for historical display:
+    "helpfulness": {"label": "Helpfulness", "color": "#3b82f6", "icon": "👍"},
+    "relevance": {"label": "Relevance", "color": "#06b6d4", "icon": "🔗"},
+    "completeness": {"label": "Completeness", "color": "#10b981", "icon": "✅"},
+    "safety": {"label": "Safety", "color": "#ef4444", "icon": "🛡️"},
+    "response_efficiency": {"label": "Efficiency", "color": "#6366f1", "icon": "⚡"},
+}
+
+
 def _get_default_time_range() -> tuple[datetime, datetime]:
     """Get default time range (last 7 days).
     
@@ -1075,15 +1091,7 @@ async def evaluations_analytics(
     )
 
     # Define evaluator display metadata
-    evaluator_meta = {
-        "helpfulness": {"label": "Helpfulness", "color": "#3b82f6", "icon": "👍"},
-        "faithfulness": {"label": "Faithfulness", "color": "#8b5cf6", "icon": "🎯"},
-        "relevance": {"label": "Relevance", "color": "#06b6d4", "icon": "🔗"},
-        "completeness": {"label": "Completeness", "color": "#10b981", "icon": "✅"},
-        "safety": {"label": "Safety", "color": "#ef4444", "icon": "🛡️"},
-        "tool_selection": {"label": "Tool Selection", "color": "#f59e0b", "icon": "🔧"},
-        "response_efficiency": {"label": "Efficiency", "color": "#6366f1", "icon": "⚡"},
-    }
+    evaluator_meta = EVALUATOR_META
 
     return templates.TemplateResponse(
         "admin/evaluations.html",
@@ -1120,15 +1128,7 @@ async def evaluation_session_detail(
     region = get_config().aws_region
     cloudwatch_url = cloudwatch_session_url(region, session_id)
 
-    evaluator_meta = {
-        "helpfulness": {"label": "Helpfulness", "color": "#3b82f6", "icon": "👍"},
-        "faithfulness": {"label": "Faithfulness", "color": "#8b5cf6", "icon": "🎯"},
-        "relevance": {"label": "Relevance", "color": "#06b6d4", "icon": "🔗"},
-        "completeness": {"label": "Completeness", "color": "#10b981", "icon": "✅"},
-        "safety": {"label": "Safety", "color": "#ef4444", "icon": "🛡️"},
-        "tool_selection": {"label": "Tool Selection", "color": "#f59e0b", "icon": "🔧"},
-        "response_efficiency": {"label": "Efficiency", "color": "#6366f1", "icon": "⚡"},
-    }
+    evaluator_meta = EVALUATOR_META
 
     return templates.TemplateResponse(
         "admin/evaluation_session.html",

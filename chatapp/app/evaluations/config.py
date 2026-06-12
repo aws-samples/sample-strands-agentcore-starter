@@ -12,28 +12,28 @@ from typing import List
 @dataclass
 class EvalConfig:
     """Configuration for the evaluation engine.
-    
+
     Attributes:
         enabled: Global enable/disable switch for all evaluations
         judge_model_id: Bedrock model ID for LLM-as-judge evaluators
-        llm_evaluators: List of enabled LLM-based evaluator names
+        llm_evaluators: List of enabled LLM-based evaluator names (binary judges)
         programmatic_evaluators: List of enabled programmatic evaluator names
+        llm_sample_rate: Fraction of turns (0.0-1.0) on which to run LLM judges.
+            Programmatic evaluators always run. Defaults to 1.0 (every turn);
+            lower it to control cost in higher-traffic deployments.
         max_output_length: Max chars of agent output to send to judge (cost control)
         max_reason_length: Max chars to store for evaluation reasons
     """
     enabled: bool = True
     judge_model_id: str = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
     llm_evaluators: List[str] = field(default_factory=lambda: [
-        "helpfulness",
+        "answer_quality",
         "faithfulness",
-        "relevance",
-        "completeness",
     ])
     programmatic_evaluators: List[str] = field(default_factory=lambda: [
-        "safety",
         "tool_selection",
-        "response_efficiency",
     ])
+    llm_sample_rate: float = 1.0
     max_output_length: int = 4000
     max_reason_length: int = 2000
 
@@ -55,15 +55,22 @@ class EvalConfig:
         )
         disabled_evals.discard("")
 
-        default_llm = ["helpfulness", "faithfulness", "relevance", "completeness"]
-        default_prog = ["safety", "tool_selection", "response_efficiency"]
+        default_llm = ["answer_quality", "faithfulness"]
+        default_prog = ["tool_selection"]
 
         llm_evals = [e for e in default_llm if e not in disabled_evals]
         prog_evals = [e for e in default_prog if e not in disabled_evals]
+
+        try:
+            sample_rate = float(os.environ.get("EVALUATIONS_LLM_SAMPLE_RATE", "1.0"))
+        except ValueError:
+            sample_rate = 1.0
+        sample_rate = max(0.0, min(1.0, sample_rate))
 
         return cls(
             enabled=enabled,
             judge_model_id=judge_model,
             llm_evaluators=llm_evals,
             programmatic_evaluators=prog_evals,
+            llm_sample_rate=sample_rate,
         )

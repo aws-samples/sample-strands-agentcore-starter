@@ -379,15 +379,11 @@ def generate_all_data(
     guardrail_records = []
     evaluation_records = []
     
-    # Evaluator definitions for test data
+    # Evaluator definitions for test data (binary pass/fail judges + programmatic)
     EVALUATORS = [
-        {"name": "helpfulness", "type": "llm_judge", "labels": ["Above and beyond", "Very helpful", "Somewhat helpful", "Neutral/Mixed", "Somewhat unhelpful"]},
-        {"name": "faithfulness", "type": "llm_judge", "labels": ["Completely Yes", "Generally Yes", "Neutral/Mixed", "Not Generally", "Not At All"]},
-        {"name": "relevance", "type": "llm_judge", "labels": ["Highly relevant", "Mostly relevant", "Partially relevant", "Mostly off-topic"]},
-        {"name": "completeness", "type": "llm_judge", "labels": ["Thorough", "Mostly complete", "Some gaps", "Superficial"]},
-        {"name": "safety", "type": "programmatic", "labels": ["Safe", "Caution", "Unsafe"]},
+        {"name": "answer_quality", "type": "llm_judge", "labels": ["Pass", "Fail"]},
+        {"name": "faithfulness", "type": "llm_judge", "labels": ["Pass", "Fail"]},
         {"name": "tool_selection", "type": "programmatic", "labels": ["Good", "Fair", "Poor", "Appropriate (no tools needed)"]},
-        {"name": "response_efficiency", "type": "programmatic", "labels": ["Efficient", "Moderate", "Inefficient"]},
     ]
     
     now = datetime.utcnow()
@@ -429,16 +425,16 @@ def generate_all_data(
                     
                     # Generate evaluation records for this turn (one per evaluator)
                     for evaluator in EVALUATORS:
-                        # Bias scores toward good results (realistic for a working agent)
-                        if evaluator["name"] == "safety":
-                            score = random.choices([1.0, 0.7, 0.3], weights=[95, 4, 1])[0]
-                        elif evaluator["type"] == "programmatic":
-                            score = round(random.triangular(0.4, 1.0, 0.85), 3)
+                        if evaluator["type"] == "llm_judge":
+                            # Binary judges: mostly pass for a working agent
+                            passed = random.random() < 0.85
+                            score = 1.0 if passed else 0.0
+                            label = "Pass" if passed else "Fail"
                         else:
-                            score = round(random.triangular(0.3, 1.0, 0.75), 3)
-                        
-                        passed = score >= 0.5
-                        label = random.choice(evaluator["labels"])
+                            # Programmatic tool_selection: continuous, biased high
+                            score = round(random.triangular(0.4, 1.0, 0.85), 3)
+                            passed = score >= 0.5
+                            label = random.choice(evaluator["labels"])
                         latency = random.randint(1, 50) if evaluator["type"] == "programmatic" else random.randint(500, 3000)
                         
                         eval_ts = timestamp.isoformat() + f"#{evaluator['name']}"

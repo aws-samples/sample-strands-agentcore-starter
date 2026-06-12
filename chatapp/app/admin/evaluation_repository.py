@@ -122,10 +122,15 @@ class EvaluationRepository:
         end_time: str,
         limit: int = 10,
     ) -> List[Dict[str, Any]]:
-        """Get sessions with the lowest average evaluation scores.
-        
+        """Get sessions with the lowest evaluation pass rates.
+
+        Ranking is by pass rate (fraction of evaluations that passed) rather
+        than a blended average score, since averaging across heterogeneous
+        evaluators (binary judges + programmatic) is not meaningful.
+
         Returns:
-            List of dicts with session_id, avg_score, eval_count, evaluator_scores
+            List of dicts with session_id, pass_rate, avg_score, eval_count,
+            failed_count, and per-evaluator pass rates.
         """
         records = await self.storage.scan_by_time_range(start_time, end_time)
 
@@ -134,32 +139,38 @@ class EvaluationRepository:
 
         # Group by session
         session_scores: Dict[str, List[float]] = defaultdict(list)
-        session_evals: Dict[str, Dict[str, List[float]]] = defaultdict(
+        session_passes: Dict[str, List[bool]] = defaultdict(list)
+        session_evals: Dict[str, Dict[str, List[bool]]] = defaultdict(
             lambda: defaultdict(list)
         )
 
         for record in records:
             session_scores[record.session_id].append(record.score)
+            session_passes[record.session_id].append(record.passed)
             session_evals[record.session_id][record.evaluator_name].append(
-                record.score
+                record.passed
             )
 
-        # Calculate session averages and sort
+        # Calculate session pass rates and sort
         sessions = []
-        for sid, scores in session_scores.items():
-            avg = sum(scores) / len(scores)
-            eval_avgs = {
-                name: round(sum(s) / len(s), 3)
-                for name, s in session_evals[sid].items()
+        for sid, passes in session_passes.items():
+            pass_rate = sum(1 for p in passes if p) / len(passes)
+            failed_count = sum(1 for p in passes if not p)
+            scores = session_scores[sid]
+            evaluator_pass_rates = {
+                name: round(sum(1 for p in p_list if p) / len(p_list), 3)
+                for name, p_list in session_evals[sid].items()
             }
             sessions.append({
                 "session_id": sid,
-                "avg_score": round(avg, 3),
-                "eval_count": len(scores),
-                "evaluator_scores": eval_avgs,
+                "pass_rate": round(pass_rate, 3),
+                "avg_score": round(sum(scores) / len(scores), 3),
+                "eval_count": len(passes),
+                "failed_count": failed_count,
+                "evaluator_scores": evaluator_pass_rates,
             })
 
-        sessions.sort(key=lambda x: x["avg_score"])
+        sessions.sort(key=lambda x: (x["pass_rate"], x["avg_score"]))
         return sessions[:limit]
 
     async def get_session_evaluations(

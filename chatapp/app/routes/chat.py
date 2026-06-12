@@ -152,6 +152,8 @@ async def _stream_chat_response(
     last_message_content = ""
     # Accumulate full agent output text for post-stream evaluation
     accumulated_output: list[str] = []
+    # Accumulate tool/KB result content to ground the faithfulness evaluator
+    accumulated_context: list[str] = []
     
     async for event in client.invoke_stream(
         prompt=prompt,
@@ -210,6 +212,14 @@ async def _stream_chat_response(
                     tool_usage_counts[tool_name]["error_count"] += 1
                 else:
                     tool_usage_counts[tool_name]["success_count"] += 1
+                    # Capture successful tool/KB output as grounding context
+                    if event.tool_result is not None:
+                        result_text = (
+                            event.tool_result
+                            if isinstance(event.tool_result, str)
+                            else json.dumps(event.tool_result, default=str)
+                        )
+                        accumulated_context.append(f"[{tool_name}] {result_text}")
         
         # Capture metrics from MetadataEvent
         if isinstance(event, MetadataEvent) and event.data:
@@ -255,6 +265,7 @@ async def _stream_chat_response(
                 tool_usage=tool_usage_counts or None,
                 input_tokens=accumulated_metrics.get("inputTokens", 0) or 0,
                 output_tokens=accumulated_metrics.get("outputTokens", 0) or 0,
+                context="\n\n".join(accumulated_context) if accumulated_context else None,
             )
         )
 
