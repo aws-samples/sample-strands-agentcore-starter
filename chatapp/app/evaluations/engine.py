@@ -200,7 +200,7 @@ async def run_evaluations(
             faithfulness_input = (
                 f"User question:\n{user_input}\n\n"
                 f"Source material (retrieved context and tool results):\n"
-                f"{context[:config.max_output_length]}"
+                f"{context[:config.max_context_length]}"
             )
             llm_tasks.append(("faithfulness", loop.run_in_executor(
                 None, _run_binary_judge,

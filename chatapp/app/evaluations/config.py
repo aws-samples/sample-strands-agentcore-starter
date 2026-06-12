@@ -22,6 +22,8 @@ class EvalConfig:
             Programmatic evaluators always run. Defaults to 1.0 (every turn);
             lower it to control cost in higher-traffic deployments.
         max_output_length: Max chars of agent output to send to judge (cost control)
+        max_context_length: Max chars of retrieved source context to send to the
+            faithfulness judge (larger than output so grounding is not truncated)
         max_reason_length: Max chars to store for evaluation reasons
     """
     enabled: bool = True
@@ -35,6 +37,7 @@ class EvalConfig:
     ])
     llm_sample_rate: float = 1.0
     max_output_length: int = 4000
+    max_context_length: int = 20000
     max_reason_length: int = 2000
 
     @classmethod
@@ -67,10 +70,16 @@ class EvalConfig:
             sample_rate = 1.0
         sample_rate = max(0.0, min(1.0, sample_rate))
 
+        try:
+            max_context = int(os.environ.get("EVALUATIONS_MAX_CONTEXT_LENGTH", "20000"))
+        except ValueError:
+            max_context = 20000
+
         return cls(
             enabled=enabled,
             judge_model_id=judge_model,
             llm_evaluators=llm_evals,
             programmatic_evaluators=prog_evals,
             llm_sample_rate=sample_rate,
+            max_context_length=max_context,
         )

@@ -205,21 +205,26 @@ async def _stream_chat_response(
                 tool_info = pending_tool_uses.pop(tool_use_id)
                 tool_name = tool_info["tool_name"]
                 
-                # Determine if result indicates success or error
+                # Determine if result indicates success or error (for usage stats only)
                 is_error = _is_error_result(event.tool_result, event.status)
                 
                 if is_error:
                     tool_usage_counts[tool_name]["error_count"] += 1
                 else:
                     tool_usage_counts[tool_name]["success_count"] += 1
-                    # Capture successful tool/KB output as grounding context
-                    if event.tool_result is not None:
-                        result_text = (
-                            event.tool_result
-                            if isinstance(event.tool_result, str)
-                            else json.dumps(event.tool_result, default=str)
-                        )
-                        accumulated_context.append(f"[{tool_name}] {result_text}")
+
+                # Capture the tool/KB output as grounding context for the
+                # faithfulness judge, regardless of the error heuristic. The
+                # heuristic does substring matching ("error", "cannot", ...)
+                # that misclassifies legitimate source text, so it must not
+                # gate what the judge sees.
+                if event.tool_result is not None:
+                    result_text = (
+                        event.tool_result
+                        if isinstance(event.tool_result, str)
+                        else json.dumps(event.tool_result, default=str)
+                    )
+                    accumulated_context.append(f"[{tool_name}] {result_text}")
         
         # Capture metrics from MetadataEvent
         if isinstance(event, MetadataEvent) and event.data:
