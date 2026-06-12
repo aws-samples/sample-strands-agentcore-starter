@@ -1061,7 +1061,7 @@ async def evaluations_analytics(
     - Aggregate pass rates per evaluator
     - Failed evaluation count
     - Daily trends
-    - Lowest-passing sessions
+    - Recent sessions
     """
     # Parse time range
     start_dt, end_dt = _parse_time_range(start_time, end_time)
@@ -1074,10 +1074,10 @@ async def evaluations_analytics(
     import asyncio
     stats_task = repository.get_aggregate_stats(start_dt.isoformat(), end_dt.isoformat())
     trends_task = repository.get_daily_trends(start_dt.isoformat(), end_dt.isoformat())
-    worst_task = repository.get_worst_sessions(start_dt.isoformat(), end_dt.isoformat(), limit=10)
+    recent_task = repository.get_recent_sessions(start_dt.isoformat(), end_dt.isoformat(), limit=10)
 
-    stats, trends, worst_sessions = await asyncio.gather(
-        stats_task, trends_task, worst_task
+    stats, trends, recent_sessions = await asyncio.gather(
+        stats_task, trends_task, recent_task
     )
 
     # Define evaluator display metadata
@@ -1089,7 +1089,7 @@ async def evaluations_analytics(
             "request": request,
             "stats": stats,
             "trends": trends,
-            "worst_sessions": worst_sessions,
+            "recent_sessions": recent_sessions,
             "evaluator_meta": evaluator_meta,
             "start_time": start_dt.isoformat(),
             "end_time": end_dt.isoformat(),

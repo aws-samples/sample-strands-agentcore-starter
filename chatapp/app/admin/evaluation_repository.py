@@ -118,42 +118,43 @@ class EvaluationRepository:
 
         return result
 
-    async def get_worst_sessions(
+    async def get_recent_sessions(
         self,
         start_time: str,
         end_time: str,
         limit: int = 10,
     ) -> List[Dict[str, Any]]:
-        """Get sessions with the lowest evaluation pass rates.
+        """Get the most recently evaluated sessions.
 
-        Ranking is by pass rate (fraction of evaluations that passed) rather
-        than a blended average score, since averaging across heterogeneous
-        evaluators (binary judges + programmatic) is not meaningful.
+        Sessions are ordered by their latest evaluation timestamp (newest
+        first). Each entry includes the same pass-rate summary used by the
+        sessions table.
 
         Returns:
             List of dicts with session_id, pass_rate, avg_score, eval_count,
-            failed_count, and per-evaluator pass rates.
+            failed_count, last_activity, and per-evaluator pass rates.
         """
         records = await self.storage.scan_by_time_range(start_time, end_time)
 
         if not records:
             return []
 
-        # Group by session
         session_scores: Dict[str, List[float]] = defaultdict(list)
         session_passes: Dict[str, List[bool]] = defaultdict(list)
         session_evals: Dict[str, Dict[str, List[bool]]] = defaultdict(
             lambda: defaultdict(list)
         )
+        session_last_ts: Dict[str, str] = {}
 
         for record in records:
-            session_scores[record.session_id].append(record.score)
-            session_passes[record.session_id].append(record.passed)
-            session_evals[record.session_id][record.evaluator_name].append(
-                record.passed
-            )
+            sid = record.session_id
+            session_scores[sid].append(record.score)
+            session_passes[sid].append(record.passed)
+            session_evals[sid][record.evaluator_name].append(record.passed)
+            base_ts = record.timestamp.split("#")[0]
+            if base_ts > session_last_ts.get(sid, ""):
+                session_last_ts[sid] = base_ts
 
-        # Calculate session pass rates and sort
         sessions = []
         for sid, passes in session_passes.items():
             pass_rate = sum(1 for p in passes if p) / len(passes)
@@ -169,10 +170,11 @@ class EvaluationRepository:
                 "avg_score": round(sum(scores) / len(scores), 3),
                 "eval_count": len(passes),
                 "failed_count": failed_count,
+                "last_activity": session_last_ts[sid],
                 "evaluator_scores": evaluator_pass_rates,
             })
 
-        sessions.sort(key=lambda x: (x["pass_rate"], x["avg_score"]))
+        sessions.sort(key=lambda x: x["last_activity"], reverse=True)
         return sessions[:limit]
 
     async def get_session_evaluations(
