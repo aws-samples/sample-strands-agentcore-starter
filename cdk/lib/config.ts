@@ -150,7 +150,7 @@ export const config: AppConfig = {
   promptTemplatesTableName: getEnvOrDefault('PROMPT_TEMPLATES_TABLE_NAME', `${appName}-prompt-templates`),
   appSettingsTableName: getEnvOrDefault('APP_SETTINGS_TABLE_NAME', `${appName}-app-settings`),
   runtimeUsageTableName: getEnvOrDefault('RUNTIME_USAGE_TABLE_NAME', `${appName}-runtime-usage`),
-  evaluationsTableName: getEnvOrDefault('EVALUATIONS_TABLE_NAME', '${appName}-agentcore-evaluations'),
+  evaluationsTableName: getEnvOrDefault('EVALUATIONS_TABLE_NAME', `${appName}-evaluations`),
 
   // Bedrock configuration
   guardrailName: getEnvOrDefault('GUARDRAIL_NAME', `${appName}-guardrail`),
