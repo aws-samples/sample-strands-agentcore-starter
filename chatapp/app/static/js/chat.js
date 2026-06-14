@@ -534,13 +534,7 @@ function selectTemplate(promptDetail) {
     }
 }
 
-/**
- * Clear the cached templates.
- * Call this when templates are updated via admin.
- */
-function clearTemplatesCache() {
-    cachedTemplates = null;
-}
+// clearTemplatesCache() is defined above (clears both in-memory and localStorage)
 
 /**
  * Prefetch templates in the background on page load.
