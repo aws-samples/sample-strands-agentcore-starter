@@ -9,7 +9,7 @@ import hashlib
 import hmac
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 import boto3
@@ -69,10 +69,13 @@ class UserInfo:
         user_id: The unique user identifier (sub claim)
         email: User's email address
         username: Cognito username
+        groups: Cognito group memberships from the verified token's
+            'cognito:groups' claim (empty if the user is in no groups)
     """
     user_id: str
     email: Optional[str] = None
     username: Optional[str] = None
+    groups: list[str] = field(default_factory=list)
 
 
 class CognitoAuth:
@@ -338,6 +341,12 @@ class CognitoAuth:
             user_id = claims.get("sub")
             if not user_id:
                 raise TokenValidationError("Token missing 'sub' claim")
+
+            # Group membership comes from the verified token's 'cognito:groups'
+            # claim (Cognito adds it to access and ID tokens for users in any
+            # group). Reading it here means admin status needs no per-request
+            # Cognito API call and cannot be spoofed via the session cookie.
+            groups = list(claims.get("cognito:groups") or [])
             
             # If ID token provided, verify and extract richer user info
             email = None
@@ -356,6 +365,8 @@ class CognitoAuth:
                     )
                     email = id_claims.get("email")
                     username = id_claims.get("cognito:username") or email
+                    if not groups:
+                        groups = list(id_claims.get("cognito:groups") or [])
                 except Exception as e:
                     logger.warning(f"Failed to verify ID token: {e}")
                     # Fall back to unverified claims for email (non-critical)
@@ -370,6 +381,7 @@ class CognitoAuth:
                 user_id=user_id,
                 email=email,
                 username=username,
+                groups=groups,
             )
             
         except ExpiredSignatureError:
@@ -402,29 +414,6 @@ def extract_user_id(token: str) -> str:
         raise
     except Exception as e:
         raise TokenValidationError(f"Invalid token: {str(e)}")
-
-
-async def get_user_groups(username: str) -> list[str]:
-    """Get the groups a user belongs to in Cognito.
-    
-    Args:
-        username: The user's username (email)
-        
-    Returns:
-        List of group names the user belongs to
-    """
-    config = get_config()
-    client = boto3.client('cognito-idp', region_name=config.aws_region)
-    
-    try:
-        response = client.admin_list_groups_for_user(
-            UserPoolId=config.cognito_user_pool_id,
-            Username=username,
-        )
-        return [group['GroupName'] for group in response.get('Groups', [])]
-    except ClientError as e:
-        logger.warning(f"Failed to get groups for user {username}: {e}")
-        return []
 
 
 def is_admin(groups: list[str]) -> bool:
