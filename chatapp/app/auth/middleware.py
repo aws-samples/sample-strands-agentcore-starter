@@ -18,7 +18,6 @@ from app.auth.cognito import (
     TokenExpiredError,
     TokenValidationError,
     UserInfo,
-    get_user_groups,
     is_admin,
 )
 from app.config import get_config
@@ -97,6 +96,41 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 return True
         return False
 
+    def _apply_authorization(
+        self,
+        request: Request,
+        user_info: UserInfo,
+        is_api: bool,
+    ) -> Optional[Response]:
+        """Resolve admin status and enforce admin-route access.
+
+        Sets ``request.state.is_admin`` (consumed by templates to show/hide the
+        admin UI) from the verified token's group membership
+        (``user_info.groups``, sourced from the ``cognito:groups`` claim). No
+        per-request Cognito API call is made, and the value cannot be spoofed via
+        the session cookie because it comes from the signed token.
+
+        This MUST run on BOTH the normal auth path and the token-refresh path.
+        If only the normal path sets it, a request that triggers a token refresh
+        (e.g. the first page load after the access token expires during
+        inactivity) renders with is_admin unset — the admin button disappears
+        until the next reload, and admin-route authorization is skipped.
+
+        Returns:
+            A forbidden Response if the route requires admin and the user is not
+            an admin; otherwise None.
+        """
+        request.state.is_admin = is_admin(user_info.groups or [])
+        logger.info(
+            f"Auth check: user={user_info.username or user_info.email}, "
+            f"is_admin={request.state.is_admin}, groups={user_info.groups}, "
+            f"path={request.url.path}"
+        )
+
+        if self._is_admin_route(request.url.path) and not request.state.is_admin:
+            return self._handle_forbidden(request, is_api)
+        return None
+
     async def dispatch(
         self, request: Request, call_next: Callable
     ) -> Response:
@@ -153,33 +187,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # Attach user info to request state
             request.state.user = user_info
             request.state.session = session_data
-            
-            # Get user groups (fetch fresh each time - don't cache in cookie to avoid size issues)
-            user_groups = []
-            username_for_groups = user_info.username or user_info.email or session_data.get("username")
-            logger.debug(f"Group lookup: username={user_info.username}, email={user_info.email}, session_username={session_data.get('username')}, using={username_for_groups}")
-            
-            if username_for_groups:
-                try:
-                    user_groups = await get_user_groups(username_for_groups)
-                    logger.debug(f"Fetched groups for {username_for_groups}: {user_groups}")
-                except Exception as e:
-                    # Failed to fetch groups - log the error and default to no groups
-                    logger.error(f"Failed to fetch groups for {username_for_groups}: {e}", exc_info=True)
-                    user_groups = []
-            else:
-                logger.warning(f"No username available for group lookup (user_id={user_info.user_id})")
-            
-            # Set is_admin flag for all routes (used by templates)
-            is_admin_user = is_admin(user_groups or [])
-            request.state.is_admin = is_admin_user
-            logger.info(f"Auth check: user={user_info.username or user_info.email}, is_admin={is_admin_user}, groups={user_groups}, path={request.url.path}")
-            
-            # Check admin authorization for admin routes
-            if self._is_admin_route(request.url.path):
-                if not request.state.is_admin:
-                    return self._handle_forbidden(request, is_api)
-            
+
+            # Resolve admin status and enforce admin-route authorization.
+            forbidden = self._apply_authorization(request, user_info, is_api)
+            if forbidden is not None:
+                return forbidden
+
             return await call_next(request)
             
         except TokenExpiredError:
@@ -360,7 +373,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
             
             # Store new refresh token in request state
             request.state.refresh_token = token_response.refresh_token or refresh_token
-            
+
+            # Resolve admin status and enforce admin-route authorization on the
+            # refresh path too, so the admin UI does not vanish (and admin routes
+            # are not left unguarded) on the first request after token expiry.
+            forbidden = self._apply_authorization(request, user_info, is_api)
+            if forbidden is not None:
+                return forbidden
+
             # Continue with the request
             response = await call_next(request)
             

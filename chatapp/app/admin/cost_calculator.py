@@ -6,18 +6,13 @@ based on token usage and model pricing rates.
 
 from typing import Dict
 
+from app.helpers.model_catalog import get_pricing
 
-# Model pricing in USD per 1 million tokens
+
+# Model pricing in USD per 1 million tokens, sourced from the single
+# source of truth at app/static/models.json (shared with the front-end).
 # Format: {"model_id": {"input": rate, "output": rate}}
-MODEL_PRICING: Dict[str, Dict[str, float]] = {
-    "global.amazon.nova-2-lite-v1:0": {"input": 0.30, "output": 2.50},
-    "us.amazon.nova-pro-v1:0": {"input": 0.80, "output": 3.20},
-    "global.anthropic.claude-haiku-4-5-20251001-v1:0": {"input": 1.00, "output": 5.00},
-    "global.anthropic.claude-sonnet-4-5-20250929-v1:0": {"input": 3.00, "output": 15.00},
-    "global.anthropic.claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
-    "global.anthropic.claude-opus-4-5-20251101-v1:0": {"input": 5.00, "output": 25.00},
-    "global.anthropic.claude-opus-4-6-v1": {"input": 5.00, "output": 25.00},
-}
+MODEL_PRICING: Dict[str, Dict[str, float]] = get_pricing()
 
 # Default pricing for unknown models
 DEFAULT_PRICING = {"input": 0.00, "output": 0.00}

@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 
 from app.evaluations.config import EvalConfig
+from app.evaluations.capabilities import AGENT_CAPABILITIES_MANIFEST
 from app.evaluations.evaluators import (
     EvalResult,
     ToolSelectionEvaluator,
@@ -37,12 +38,27 @@ _tool_selection_evaluator = ToolSelectionEvaluator()
 # Binary rubrics for LLM-as-judge evaluators. Each asks for a single
 # yes/no judgment with an explicit pass criterion (not a 0-5 scale).
 ANSWER_QUALITY_RUBRIC = """\
-Decide whether the assistant's response is a good answer to the user's question.
+Decide whether the assistant's response is a good answer to the user's latest
+message.
+
+You are given a description of the assistant's actual capabilities (the tools it
+really has). Treat it as ground truth: if the response describes capabilities
+that match this list, those statements are ACCURATE and must NOT be penalized as
+false or misleading. Only treat capability claims as a problem when they
+contradict the listed capabilities or go beyond them.
+
+The user's latest message may be a short follow-up (e.g. "yes", "do it", "the
+second one") that only makes sense in light of the conversation so far. When
+prior conversation is provided, interpret the latest message in that context;
+do NOT penalize the response for addressing the established topic rather than the
+literal words of the latest message.
 
 A response PASSES only if ALL of the following hold:
-- It directly addresses what the user actually asked.
+- It addresses what the user actually asked, interpreted in light of the
+  conversation so far.
 - It is complete enough to be useful (no major missing pieces).
 - It is clear and on-topic (no significant irrelevant content).
+- It does not misrepresent the assistant's actual capabilities.
 
 Set test_pass to true and score to 1.0 if the response PASSES.
 Set test_pass to false and score to 0.0 if it FAILS any criterion.
@@ -122,6 +138,45 @@ def _run_binary_judge(
         return None
 
 
+def _build_grounded_context(context_items: List[str], max_total: int) -> str:
+    """Join tool/KB results into one grounding block within a char budget.
+
+    Allocates the budget fairly across results so a few large results (e.g. a
+    fetched web page or web-search dump) cannot starve later ones (e.g. a
+    weather tool result that happened to run last). Without this, a blind
+    `joined[:max_total]` truncation drops the tail, causing faithfulness false
+    negatives when the response is grounded in a late tool call.
+
+    Strategy: process shortest results first so small ones are kept whole, and
+    redistribute the freed budget to larger results. Output preserves the
+    original call order, and truncated results are marked so the judge knows
+    the source was cut rather than absent.
+    """
+    items = [i for i in context_items if i and i.strip()]
+    if not items:
+        return ""
+
+    budgets = [0] * len(items)
+    remaining = max_total
+    slots = len(items)
+    for idx in sorted(range(len(items)), key=lambda i: len(items[i])):
+        share = remaining // slots if slots else 0
+        take = min(len(items[idx]), share)
+        budgets[idx] = take
+        remaining -= take
+        slots -= 1
+
+    parts = []
+    for i, item in enumerate(items):
+        if budgets[i] <= 0:
+            continue
+        if budgets[i] < len(item):
+            parts.append(item[:budgets[i]] + " …[truncated]")
+        else:
+            parts.append(item)
+    return "\n\n".join(parts)
+
+
 async def run_evaluations(
     user_input: str,
     agent_output: str,
@@ -131,7 +186,8 @@ async def run_evaluations(
     tool_usage: Optional[Dict[str, Dict[str, int]]] = None,
     input_tokens: int = 0,
     output_tokens: int = 0,
-    context: Optional[str] = None,
+    context_items: Optional[List[str]] = None,
+    conversation_history: Optional[str] = None,
 ) -> None:
     """Run all enabled evaluations asynchronously and store results.
 
@@ -147,8 +203,13 @@ async def run_evaluations(
         tool_usage: Dict of tool_name -> usage counts
         input_tokens: Input tokens consumed (operational; not evaluated here)
         output_tokens: Output tokens generated (operational; not evaluated here)
-        context: Retrieved source material (tool/KB results) used in the turn,
-            required for faithfulness evaluation
+        context_items: Retrieved source material as a list of individual
+            tool/KB results (one string per tool call), required for
+            faithfulness. Passed as a list (not a pre-joined string) so the
+            budget can be allocated fairly across results.
+        conversation_history: Prior turns of the conversation (a plain-text
+            transcript), used so judges can interpret follow-up messages like
+            "yes" that only make sense in context. Optional.
     """
     config = EvalConfig.from_env()
 
@@ -189,18 +250,45 @@ async def run_evaluations(
     llm_tasks = []
     if run_llm:
         if "answer_quality" in config.llm_evaluators:
+            # Ground the judge with the agent's real capabilities so it does not
+            # flag truthful tool/capability claims as hallucinations, and with
+            # prior turns so follow-ups like "yes" are interpreted in context.
+            history_block = (
+                f"Conversation so far (prior turns, for context):\n"
+                f"{conversation_history}\n\n"
+                if conversation_history else ""
+            )
+            answer_quality_input = (
+                f"Assistant's actual capabilities:\n{AGENT_CAPABILITIES_MANIFEST}\n\n"
+                f"{history_block}"
+                f"User's latest message:\n{user_input}"
+            )
             llm_tasks.append(("answer_quality", loop.run_in_executor(
                 None, _run_binary_judge,
-                ANSWER_QUALITY_RUBRIC, user_input, agent_output, config,
+                ANSWER_QUALITY_RUBRIC, answer_quality_input, agent_output, config,
             )))
 
         # Faithfulness only makes sense when there is source material to
         # ground against. Skip it for turns that used no tools/KB.
-        if "faithfulness" in config.llm_evaluators and context and context.strip():
+        grounded_context = _build_grounded_context(
+            context_items or [], config.max_context_length
+        )
+        if "faithfulness" in config.llm_evaluators and grounded_context:
+            # Include the capability manifest alongside retrieved context so
+            # truthful capability statements are also treated as grounded, plus
+            # prior turns so the judge can interpret follow-up messages.
+            history_block = (
+                f"Conversation so far (prior turns, for context):\n"
+                f"{conversation_history}\n\n"
+                if conversation_history else ""
+            )
             faithfulness_input = (
-                f"User question:\n{user_input}\n\n"
-                f"Source material (retrieved context and tool results):\n"
-                f"{context[:config.max_context_length]}"
+                f"{history_block}"
+                f"User's latest message:\n{user_input}\n\n"
+                f"Source material (assistant capabilities, retrieved context, "
+                f"and tool results):\n"
+                f"{AGENT_CAPABILITIES_MANIFEST}\n\n"
+                f"{grounded_context}"
             )
             llm_tasks.append(("faithfulness", loop.run_in_executor(
                 None, _run_binary_judge,

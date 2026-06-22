@@ -124,10 +124,14 @@ async def _stream_chat_response(
     user_email: str | None = None,
 ):
     """Generate SSE stream from AgentCore response.
-    
-    Accumulates metrics during stream and stores usage record asynchronously
-    after stream completes (fire-and-forget pattern per Requirements 2.1, 8.1).
-    
+
+    Accumulates metrics during the stream and stores the usage record
+    asynchronously (fire-and-forget) after the stream completes. Also runs
+    response evaluations fire-and-forget once the stream finishes.
+
+    Sends SSE comment keepalives every 15s while waiting for the next token so
+    a load balancer / proxy idle timeout never drops a long-running connection.
+
     Args:
         prompt: User message
         session_id: Session ID for conversation context
@@ -139,17 +143,13 @@ async def _stream_chat_response(
         SSE formatted event strings
     """
     client = AgentCoreClient()
-    
+
     # Accumulate metrics during stream
     accumulated_metrics: Dict[str, Any] = {}
     # Track tool usage from ToolUseEvents in the stream
     tool_usage_counts: Dict[str, Dict[str, int]] = {}
     # Track pending tool uses by ID to correlate with results
     pending_tool_uses: Dict[str, Dict[str, Any]] = {}
-    # Track whether last event was a tool result (for paragraph break injection)
-    after_tool = False
-    # Track last message content to avoid breaking mid-sentence
-    last_message_content = ""
     # Accumulate full agent output text for post-stream evaluation
     accumulated_output: list[str] = []
     # Accumulate tool/KB result content to ground the faithfulness evaluator
@@ -157,14 +157,18 @@ async def _stream_chat_response(
 
     # Keepalive via asyncio.Queue + producer task.
     #
-    # asyncio.wait_for() on an async generator's __anext__() is unsafe: when
-    # the timeout fires it cancels the coroutine and leaves the generator in a
-    # broken state. The safe pattern: run the generator in a separate task that
-    # pushes events onto a Queue. The consumer waits on the queue with a
-    # timeout; on timeout it yields an SSE comment (invisible to the browser,
-    # resets the ALB/proxy idle timer) and loops.
+    # asyncio.wait_for() on an async generator's __anext__() is unsafe: when the
+    # timeout fires it cancels the coroutine and leaves the generator in a
+    # broken state, causing a RuntimeError on the next iteration. That unhandled
+    # exception inside StreamingResponse makes uvicorn RST the HTTP/2 stream
+    # (ERR_HTTP2_PROTOCOL_ERROR 200).
+    #
+    # The safe pattern: run the generator in a separate task that pushes events
+    # onto a Queue. The consumer waits on the queue with a timeout; on timeout
+    # it yields an SSE comment (invisible to the browser, resets the idle timer)
+    # and loops. The generator task is never interrupted.
     KEEPALIVE_INTERVAL = 15  # seconds — well under typical 60s LB idle timeouts
-    _SENTINEL = object()
+    _SENTINEL = object()  # signals end-of-stream
     queue: asyncio.Queue = asyncio.Queue(maxsize=64)
 
     async def _producer():
@@ -188,6 +192,8 @@ async def _stream_chat_response(
         try:
             item = await asyncio.wait_for(queue.get(), timeout=KEEPALIVE_INTERVAL)
         except asyncio.TimeoutError:
+            # No event within the interval — send an SSE comment to reset the
+            # proxy/LB idle timer. Comments are ignored by EventSource clients.
             yield ": keepalive\n\n"
             continue
 
@@ -195,25 +201,17 @@ async def _stream_chat_response(
             break
 
         event = item
-        # Inject paragraph break when message text follows a tool result
-        # Only if previous text ended a sentence (avoid splitting "Here" / "'s a full overview")
-        if isinstance(event, MessageEvent) and after_tool and event.content.strip():
-            after_tool = False
-            if last_message_content and last_message_content.rstrip()[-1:] in '.!?\n':
-                yield MessageEvent(content="\n\n").to_sse_format()
-        
-        # Track last message content for sentence boundary detection and
-        # accumulate full output for evaluation after the stream completes
+
+        # Accumulate full output for post-stream evaluation.
+        # Tool/text separation (line breaks) is handled client-side in chat.js.
         if isinstance(event, MessageEvent) and event.content:
             accumulated_output.append(event.content)
-            if event.content.strip():
-                last_message_content = event.content
-        
+
         # Track tool usage from ToolUseEvent
         if isinstance(event, ToolUseEvent):
             tool_name = event.tool_name or "unknown"
             tool_use_id = event.tool_use_id
-            
+
             # Initialize tool in counts if needed
             if tool_name not in tool_usage_counts:
                 tool_usage_counts[tool_name] = {
@@ -221,59 +219,61 @@ async def _stream_chat_response(
                     "success_count": 0,
                     "error_count": 0,
                 }
-            
+
             # Track this tool use as pending (will be resolved when result arrives)
             pending_tool_uses[tool_use_id] = {
                 "tool_name": tool_name,
                 "status": "pending"
             }
             tool_usage_counts[tool_name]["call_count"] += 1
-            after_tool = True
 
         # Track tool results and update success/error counts
         elif isinstance(event, ToolResultEvent):
             tool_use_id = event.tool_use_id
-            
+
             # Find the corresponding tool use
             if tool_use_id in pending_tool_uses:
                 tool_info = pending_tool_uses.pop(tool_use_id)
                 tool_name = tool_info["tool_name"]
-                
-                # Determine if result indicates success or error (for usage stats only)
+
+                # Determine if result indicates success or error (usage stats only)
                 is_error = _is_error_result(event.tool_result, event.status)
-                
+
                 if is_error:
                     tool_usage_counts[tool_name]["error_count"] += 1
                 else:
                     tool_usage_counts[tool_name]["success_count"] += 1
 
-                # Capture the tool/KB output as grounding context for the
-                # faithfulness judge, regardless of the error heuristic. The
-                # heuristic does substring matching ("error", "cannot", ...)
-                # that misclassifies legitimate source text, so it must not
-                # gate what the judge sees.
-                if event.tool_result is not None:
-                    result_text = (
-                        event.tool_result
-                        if isinstance(event.tool_result, str)
-                        else json.dumps(event.tool_result, default=str)
-                    )
-                    accumulated_context.append(f"[{tool_name}] {result_text}")
-        
+            # Capture the tool/KB output as grounding context for the
+            # faithfulness judge, regardless of the error heuristic. The
+            # heuristic does substring matching ("error", "cannot", ...) that
+            # misclassifies legitimate source text, so it must not gate what
+            # the judge sees.
+            if event.tool_result is not None:
+                tool_label = (event.tool_use_id or "tool")
+                result_text = (
+                    event.tool_result
+                    if isinstance(event.tool_result, str)
+                    else json.dumps(event.tool_result, default=str)
+                )
+                accumulated_context.append(f"[{tool_label}] {result_text}")
+
         # Capture metrics from MetadataEvent
         if isinstance(event, MetadataEvent) and event.data:
             accumulated_metrics = event.data
-        
-        # Store guardrail violations asynchronously (fire-and-forget)
-        # Requirements 5.1, 5.4: Store violation without blocking response
+
+        # Store guardrail violations asynchronously (fire-and-forget) so
+        # violation capture never blocks the streamed response.
         if isinstance(event, GuardrailEvent) and event.action == "GUARDRAIL_INTERVENED":
             asyncio.create_task(
                 _store_guardrail_violation(event, session_id, user_id)
             )
-        
+
         yield event.to_sse_format()
 
     finally:
+        # Always cancel the producer task to avoid resource leaks if the client
+        # disconnects before the stream finishes.
         producer_task.cancel()
         try:
             await producer_task
@@ -298,21 +298,97 @@ async def _stream_chat_response(
 
     # Run evaluations asynchronously after stream completes (fire-and-forget).
     # Evaluation failures are handled internally and never impact the response.
+    # The wrapper first pulls recent conversation history from memory so judges
+    # can interpret follow-up turns (e.g. "yes") in context.
     full_output = "".join(accumulated_output)
     if full_output.strip():
         asyncio.create_task(
-            run_evaluations(
-                user_input=prompt,
-                agent_output=full_output,
+            _evaluate_turn_with_history(
+                prompt=prompt,
+                full_output=full_output,
                 session_id=session_id,
                 user_id=user_id,
                 model_id=model_id,
-                tool_usage=tool_usage_counts or None,
+                tool_usage_counts=tool_usage_counts or None,
                 input_tokens=accumulated_metrics.get("inputTokens", 0) or 0,
                 output_tokens=accumulated_metrics.get("outputTokens", 0) or 0,
-                context="\n\n".join(accumulated_context) if accumulated_context else None,
+                context_items=list(accumulated_context) if accumulated_context else None,
             )
         )
+
+
+async def _fetch_conversation_history(
+    session_id: str,
+    user_id: str,
+    exclude_texts: set[str],
+    max_messages: int = 10,
+) -> Optional[str]:
+    """Fetch recent conversation history from AgentCore Memory for eval context.
+
+    Returns a plain-text transcript of up to `max_messages` recent messages
+    (chronological), excluding any whose text matches the current turn so the
+    judge is not handed the answer it is supposed to assess. Returns None when
+    memory is unconfigured/empty or on any error (evaluation still runs without
+    history).
+    """
+    try:
+        from app.agentcore.memory import MemoryClient
+
+        mem = MemoryClient()
+        events = await mem.get_events(
+            session_id=session_id,
+            user_id=user_id,
+            max_results=max_messages * 2 + 4,
+        )
+        if not events:
+            return None
+
+        events = sorted(events, key=lambda e: e.timestamp)
+        lines = []
+        for ev in events:
+            text = (ev.content or "").strip()
+            if not text or text in exclude_texts:
+                continue
+            role = "User" if (ev.role or "").lower() == "user" else "Assistant"
+            lines.append(f"{role}: {text}")
+
+        if not lines:
+            return None
+        return "\n".join(lines[-max_messages:])
+    except Exception as e:
+        logger.warning("Failed to fetch conversation history for evaluation: %s", e)
+        return None
+
+
+async def _evaluate_turn_with_history(
+    prompt: str,
+    full_output: str,
+    session_id: str,
+    user_id: str,
+    model_id: str,
+    tool_usage_counts: Optional[Dict[str, Dict[str, int]]],
+    input_tokens: int,
+    output_tokens: int,
+    context_items: Optional[list[str]],
+) -> None:
+    """Fetch conversation history, then run evaluations (fire-and-forget)."""
+    history = await _fetch_conversation_history(
+        session_id=session_id,
+        user_id=user_id,
+        exclude_texts={prompt.strip(), full_output.strip()},
+    )
+    await run_evaluations(
+        user_input=prompt,
+        agent_output=full_output,
+        session_id=session_id,
+        user_id=user_id,
+        model_id=model_id,
+        tool_usage=tool_usage_counts,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        context_items=context_items,
+        conversation_history=history,
+    )
 
 
 async def _store_usage_record(

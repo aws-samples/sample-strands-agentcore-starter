@@ -44,6 +44,12 @@
     
     <!-- DOMPurify for XSS protection when rendering markdown -->
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+
+    <!-- Model catalog: single source of truth (app/static/models.json),
+         injected so the front-end and Python read the very same data. -->
+    <script>
+        window.__MODEL_CATALOG__ = {{ (model_catalog if model_catalog else {"default_model_id": "", "models": []}) | tojson }};
+    </script>
     
     <!-- Custom styles -->
     <style>

@@ -89,10 +89,6 @@
                                 {% else %}
                                 <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700">FAIL</span>
                                 {% endif %}
-                                <span class="text-xs font-mono text-gray-500">{{ "%.2f"|format(ev.score) }}</span>
-                                {% if ev.label %}
-                                <span class="text-xs text-gray-400">{{ ev.label }}</span>
-                                {% endif %}
                             </div>
                         </div>
                         {% if ev.reason %}

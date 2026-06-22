@@ -1,0 +1,12 @@
+{
+  "default_model_id": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+  "models": [
+    { "id": "global.anthropic.claude-opus-4-8",              "name": "Claude Opus 4.8",   "input": 5.00, "output": 25.00 },
+    { "id": "global.anthropic.claude-opus-4-7",              "name": "Claude Opus 4.7",   "input": 5.00, "output": 25.00 },
+    { "id": "global.anthropic.claude-sonnet-4-6",               "name": "Claude Sonnet 4.6", "input": 3.00, "output": 15.00 },
+    { "id": "global.anthropic.claude-sonnet-4-5-20250929-v1:0", "name": "Claude Sonnet 4.5", "input": 3.00, "output": 15.00 },
+    { "id": "global.anthropic.claude-haiku-4-5-20251001-v1:0",  "name": "Claude Haiku 4.5",  "input": 1.00, "output": 5.00 },
+    { "id": "us.amazon.nova-pro-v1:0",                          "name": "Nova Pro",          "input": 0.80, "output": 3.20 },
+    { "id": "global.amazon.nova-2-lite-v1:0",                   "name": "Nova 2 Lite",       "input": 0.30, "output": 2.50 }
+  ]
+}

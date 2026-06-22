@@ -106,50 +106,26 @@ loadMemoryCacheFromStorage();
  * 
  * Requirements: 10.3
  */
-const AVAILABLE_MODELS = [
-    {
-        id: "global.anthropic.claude-opus-4-6-v1",
-        name: "Claude Opus 4.6",
-        description: "IN [$5.00] - OUT [$25.00]"
-    },
-    {
-        id: "global.anthropic.claude-sonnet-4-6",
-        name: "Claude Sonnet 4.6",
-        description: "IN [$3.00] - OUT [$15.00]"
-    },
-    {
-        id: "global.anthropic.claude-opus-4-5-20251101-v1:0",
-        name: "Claude Opus 4.5",
-        description: "IN [$5.00] - OUT [$25.00]"
-    },
-    {
-        id: "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-        name: "Claude Sonnet 4.5",
-        description: "IN [$3.00] - OUT [$15.00]"
-    },
-    {
-        id: "global.anthropic.claude-haiku-4-5-20251001-v1:0",
-        name: "Claude Haiku 4.5",
-        description: "IN [$1.00] - OUT [$5.00]"
-    },
-    {
-        id: "us.amazon.nova-pro-v1:0",
-        name: "Nova Pro",
-        description: "IN [$0.80] - OUT [$3.20]"
-    },
-    {
-        id: "global.amazon.nova-2-lite-v1:0",
-        name: "Nova 2 Lite",
-        description: "IN [$0.30] - OUT [$2.50]"
-    }
-];
+// Model data is NOT hardcoded here. It comes from the single source of truth
+// at app/static/models.json, injected by base.html as window.__MODEL_CATALOG__
+// and read by Python via app/helpers/model_catalog.py. To add/remove/reprice a
+// model, edit models.json. Pricing is USD per 1M tokens.
+const _MODEL_CATALOG = (typeof window !== 'undefined' && window.__MODEL_CATALOG__) || { default_model_id: '', models: [] };
+
+const AVAILABLE_MODELS = (_MODEL_CATALOG.models || []).map(function (m) {
+    return {
+        id: m.id,
+        name: m.name,
+        description: "IN [$" + Number(m.input).toFixed(2) + "] - OUT [$" + Number(m.output).toFixed(2) + "]"
+    };
+});
 
 /**
  * Default model ID when no selection is stored.
  * 
  * Requirements: 10.8
  */
-const DEFAULT_MODEL_ID = "global.amazon.nova-2-lite-v1:0";
+const DEFAULT_MODEL_ID = _MODEL_CATALOG.default_model_id || "global.amazon.nova-2-lite-v1:0";
 
 /**
  * Get the currently selected model from localStorage.
@@ -964,6 +940,21 @@ function handleSSEEvent(event, msgId, currentContent) {
             // Filter out thinking tags (Requirement 2.6 - streaming indicator)
             let content = event.content || '';
             content = filterThinkingTags(content);
+            // Inject a paragraph break when assistant narration resumes after a
+            // tool ran, so tool output and following text don't run together.
+            // (Replaces the old server-side break injection in chat.py.)
+            // Only break when the pre-tool narration ended a sentence — the
+            // model often emits a word or two ("Here's") and then calls a tool
+            // mid-sentence, and we must not split that ("Here's" + break +
+            // "the current weather"). Mirrors the original server-side guard.
+            if (content.trim() && msgElement.dataset.afterTool === '1') {
+                msgElement.dataset.afterTool = '0';
+                var prevTrimmed = currentContent.replace(/\s+$/, '');
+                var lastChar = prevTrimmed.slice(-1);
+                if (prevTrimmed && (lastChar === '.' || lastChar === '!' || lastChar === '?')) {
+                    currentContent += '\n\n';
+                }
+            }
             currentContent += content;
             
             // Render markdown (Requirement 2.3 - render message content incrementally)
@@ -1059,6 +1050,8 @@ function handleSSEEvent(event, msgId, currentContent) {
             `;
             toolsContainer.insertAdjacentHTML('beforeend', toolUseHtml);
             updateToolsVisibility(toolsContainer);
+            // Mark that a tool ran so the next narration chunk gets a paragraph break
+            msgElement.dataset.afterTool = '1';
             scrollToBottom();
             break;
             
