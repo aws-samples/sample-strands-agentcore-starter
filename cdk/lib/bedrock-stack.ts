@@ -360,6 +360,19 @@ export class BedrockStack extends cdk.Stack {
             namespaces: ['/users/{actorId}/facts'],
           },
         },
+        {
+          // Episodic strategy - consolidates interactions into structured
+          // episodes (situation/intent/assessment/...). Namespace must match
+          // the chatapp read path in app/agentcore/memory.py (get_episodic):
+          // /episodes/{actorId}/{sessionId}/
+          episodicMemoryStrategy: {
+            name: 'EpisodicMemory',
+            namespaces: ['/episodes/{actorId}/{sessionId}/'],
+            reflectionConfiguration: {
+              namespaces: ['/episodes/{actorId}/'],
+            },
+          },
+        },
       ],
       
       // Tags

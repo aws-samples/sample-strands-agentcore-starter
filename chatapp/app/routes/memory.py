@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 
 from app.auth.cognito import extract_user_id, TokenValidationError
 from app.auth.middleware import SESSION_COOKIE_NAME
-from app.agentcore.memory import MemoryClient, MemoryEvent, SemanticFact
+from app.agentcore.memory import MemoryClient, MemoryEvent, SemanticFact, EpisodicMemory
 
 
 router = APIRouter(prefix="/api/memory", tags=["memory"])
@@ -164,6 +164,54 @@ async def get_semantic_memory(
             "sessionId": session_id,
             "type": memory_type,
             "count": len(item_list),
+        }
+    )
+
+
+@router.get("/episodic")
+async def get_episodic_memory(
+    request: Request,
+    session_id: str = Query(..., description="Session ID for the conversation"),
+):
+    """Get episodic memory (structured interaction episodes) for a session.
+
+    Fetches episodic memory records from AgentCore Memory for the specified
+    session. Returns episodes with content and timestamp. Returns an empty
+    list (never errors) when no episodic strategy/records exist.
+
+    Args:
+        request: Incoming request with session cookie
+        session_id: Session ID for the conversation
+
+    Returns:
+        JSON response with episodes array
+    """
+    user_id = _get_user_id_from_session(request)
+
+    if not session_id or not session_id.strip():
+        raise HTTPException(status_code=400, detail="session_id is required")
+
+    client = MemoryClient()
+    episodes: List[EpisodicMemory] = await client.get_episodic(
+        session_id=session_id,
+        user_id=user_id,
+    )
+
+    episode_list = [
+        {
+            "id": ep.episode_id,
+            "content": ep.content,
+            "createdAt": ep.timestamp,
+        }
+        for ep in episodes
+    ]
+
+    return JSONResponse(
+        content={
+            "episodes": episode_list,
+            "items": episode_list,  # Generic key for frontend compatibility
+            "sessionId": session_id,
+            "count": len(episode_list),
         }
     )
 
