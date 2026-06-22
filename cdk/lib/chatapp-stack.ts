@@ -590,6 +590,10 @@ def handler(event, context):
             name: 'KB_ID',
             valueFrom: `${secretArn}:kb_id::`,
           },
+          {
+            name: 'EVALUATIONS_TABLE_NAME',
+            valueFrom: `${secretArn}:evaluations_table_name::`,
+          },
         ],
         
         // Environment variables (non-secret)
@@ -974,6 +978,7 @@ def handler(event, context):
       'GUARDRAIL_ID': 'guardrail_id',
       'GUARDRAIL_VERSION': 'guardrail_version',
       'KB_ID': 'kb_id',
+      'EVALUATIONS_TABLE_NAME': 'evaluations_table_name',
     };
     
     // Add each secret as an environment variable

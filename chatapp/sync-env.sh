@@ -109,6 +109,7 @@ GUARDRAIL_TABLE_NAME=$(echo "$SECRET_VALUE" | jq -r '.guardrail_table_name // em
 PROMPT_TEMPLATES_TABLE_NAME=$(echo "$SECRET_VALUE" | jq -r '.prompt_templates_table_name // empty')
 APP_SETTINGS_TABLE_NAME=$(echo "$SECRET_VALUE" | jq -r '.app_settings_table_name // empty')
 RUNTIME_USAGE_TABLE_NAME=$(echo "$SECRET_VALUE" | jq -r '.runtime_usage_table_name // empty')
+EVALUATIONS_TABLE_NAME=$(echo "$SECRET_VALUE" | jq -r '.evaluations_table_name // empty')
 GUARDRAIL_ID=$(echo "$SECRET_VALUE" | jq -r '.guardrail_id // empty')
 GUARDRAIL_VERSION=$(echo "$SECRET_VALUE" | jq -r '.guardrail_version // empty')
 KB_ID=$(echo "$SECRET_VALUE" | jq -r '.kb_id // empty')
@@ -155,6 +156,11 @@ GUARDRAIL_TABLE_NAME=$GUARDRAIL_TABLE_NAME
 PROMPT_TEMPLATES_TABLE_NAME=$PROMPT_TEMPLATES_TABLE_NAME
 APP_SETTINGS_TABLE_NAME=$APP_SETTINGS_TABLE_NAME
 RUNTIME_USAGE_TABLE_NAME=$RUNTIME_USAGE_TABLE_NAME
+EVALUATIONS_TABLE_NAME=$EVALUATIONS_TABLE_NAME
+
+# Evaluations Configuration
+EVALUATIONS_ENABLED=true
+EVALUATIONS_JUDGE_MODEL=global.anthropic.claude-haiku-4-5-20251001-v1:0
 
 # Guardrail Configuration
 GUARDRAIL_ID=$GUARDRAIL_ID

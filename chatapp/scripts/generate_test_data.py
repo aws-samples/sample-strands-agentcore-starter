@@ -331,6 +331,7 @@ def generate_all_data(
     usage_table: str,
     feedback_table: str,
     guardrail_table: str,
+    evaluations_table: str = "agentcore-evaluations",
     dry_run: bool = False,
 ):
     """Generate and write all test data."""
@@ -347,6 +348,7 @@ def generate_all_data(
     print(f"  Usage: {usage_table}")
     print(f"  Feedback: {feedback_table}")
     print(f"  Guardrails: {guardrail_table}")
+    print(f"  Evaluations: {evaluations_table}")
     
     if dry_run:
         print(f"\n[DRY RUN] No data will be written")
@@ -375,6 +377,14 @@ def generate_all_data(
     usage_records = []
     feedback_records = []
     guardrail_records = []
+    evaluation_records = []
+    
+    # Evaluator definitions for test data (binary pass/fail judges + programmatic)
+    EVALUATORS = [
+        {"name": "answer_quality", "type": "llm_judge", "labels": ["Pass", "Fail"]},
+        {"name": "faithfulness", "type": "llm_judge", "labels": ["Pass", "Fail"]},
+        {"name": "tool_selection", "type": "programmatic", "labels": ["Good", "Fair", "Poor", "Appropriate (no tools needed)"]},
+    ]
     
     now = datetime.utcnow()
     
@@ -413,6 +423,38 @@ def generate_all_data(
                     )
                     usage_records.append(usage)
                     
+                    # Generate evaluation records for this turn (one per evaluator)
+                    turn_question = random.choice(USER_MESSAGES)
+                    for evaluator in EVALUATORS:
+                        if evaluator["type"] == "llm_judge":
+                            # Binary judges: mostly pass for a working agent
+                            passed = random.random() < 0.85
+                            score = 1.0 if passed else 0.0
+                            label = "Pass" if passed else "Fail"
+                        else:
+                            # Programmatic tool_selection: continuous, biased high
+                            score = round(random.triangular(0.4, 1.0, 0.85), 3)
+                            passed = score >= 0.5
+                            label = random.choice(evaluator["labels"])
+                        latency = random.randint(1, 50) if evaluator["type"] == "programmatic" else random.randint(500, 3000)
+                        
+                        eval_ts = timestamp.isoformat() + f"#{evaluator['name']}"
+                        eval_record = {
+                            "session_id": {"S": session_id},
+                            "timestamp": {"S": eval_ts},
+                            "user_id": {"S": user["user_id"]},
+                            "evaluator_name": {"S": evaluator["name"]},
+                            "score": {"N": str(score)},
+                            "passed": {"BOOL": passed},
+                            "label": {"S": label},
+                            "reason": {"S": f"Test data: {label} ({score:.3f})"},
+                            "eval_type": {"S": evaluator["type"]},
+                            "latency_ms": {"N": str(latency)},
+                            "model_id": {"S": random.choice(MODELS)},
+                            "user_input": {"S": turn_question},
+                        }
+                        evaluation_records.append(eval_record)
+                    
                     # Track tools used
                     tool_usage = json.loads(usage["tool_usage"]["S"])
                     tools_used_in_session.update(tool_usage.keys())
@@ -448,6 +490,7 @@ def generate_all_data(
     print(f"  Usage records: {len(usage_records)}")
     print(f"  Feedback records: {len(feedback_records)}")
     print(f"  Guardrail violations: {len(guardrail_records)}")
+    print(f"  Evaluation records: {len(evaluation_records)}")
     
     if dry_run:
         print(f"\n[DRY RUN] Skipping database writes")
@@ -468,10 +511,14 @@ def generate_all_data(
     guardrail_written = batch_write_items(client, guardrail_table, guardrail_records)
     print(f"  ✓ Wrote {guardrail_written} guardrail records")
     
+    print(f"\n  Writing evaluation records to {evaluations_table}...")
+    eval_written = batch_write_items(client, evaluations_table, evaluation_records)
+    print(f"  ✓ Wrote {eval_written} evaluation records")
+    
     print(f"\n{'=' * 60}")
     print("Data generation complete!")
     print(f"{'=' * 60}")
-    print(f"\nTotal records written: {usage_written + feedback_written + guardrail_written}")
+    print(f"\nTotal records written: {usage_written + feedback_written + guardrail_written + eval_written}")
     print(f"\nTest users created (all @example.com):")
     for u in users:
         print(f"  - {u['email']}")
@@ -502,6 +549,11 @@ def main():
         help="Guardrail violations table name",
     )
     parser.add_argument(
+        "--evaluations-table",
+        default=os.environ.get("EVALUATIONS_TABLE_NAME", "agentcore-evaluations"),
+        help="Evaluations table name",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Generate data but don't write to DynamoDB",
@@ -515,6 +567,7 @@ def main():
             usage_table=args.usage_table,
             feedback_table=args.feedback_table,
             guardrail_table=args.guardrail_table,
+            evaluations_table=args.evaluations_table,
             dry_run=args.dry_run,
         )
     except Exception as e:

@@ -22,6 +22,7 @@ import * as cr from 'aws-cdk-lib/custom-resources';
 import * as bedrockagentcore from 'aws-cdk-lib/aws-bedrockagentcore';
 import * as firehose from 'aws-cdk-lib/aws-kinesisfirehose';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import { AwsCliLayer } from 'aws-cdk-lib/lambda-layer-awscli';
 import { NagSuppressions } from 'cdk-nag';
 import { Construct } from 'constructs';
 import { config, exportNames } from './config';
@@ -1135,6 +1136,261 @@ def handler(event, context):
     });
 
     // ========================================================================
+    // AGENTCORE ONLINE EVALUATION CONFIG
+    // Continuous monitoring of agent quality using built-in evaluators
+    // ========================================================================
+
+    // IAM execution role for AgentCore Evaluations service
+    const evalExecutionRole = new iam.Role(this, 'EvalExecutionRole', {
+      roleName: `${config.appName}-eval-execution-role-${this.region}`,
+      assumedBy: new iam.ServicePrincipal('bedrock-agentcore.amazonaws.com', {
+        conditions: {
+          StringEquals: {
+            'aws:SourceAccount': this.account,
+          },
+        },
+      }),
+      description: 'IAM role for AgentCore Evaluations to read logs and invoke models',
+    });
+
+    // Read CloudWatch logs (agent traces) - per official docs
+    evalExecutionRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'CloudWatchLogRead',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'logs:DescribeLogGroups',
+          'logs:GetQueryResults',
+          'logs:StartQuery',
+        ],
+        resources: ['*'],
+      })
+    );
+
+    // Write evaluation results to CloudWatch logs
+    evalExecutionRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'CloudWatchLogWrite',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'logs:CreateLogGroup',
+          'logs:CreateLogStream',
+          'logs:PutLogEvents',
+        ],
+        resources: [
+          `arn:aws:logs:${this.region}:${this.account}:log-group:/aws/bedrock-agentcore/evaluations/*`,
+        ],
+      })
+    );
+
+    // CloudWatch index policy for trace analysis
+    evalExecutionRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'CloudWatchIndexPolicy',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'logs:DescribeIndexPolicies',
+          'logs:PutIndexPolicy',
+        ],
+        resources: [
+          `arn:aws:logs:${this.region}:${this.account}:log-group:aws/spans`,
+          `arn:aws:logs:${this.region}:${this.account}:log-group:aws/spans:*`,
+        ],
+      })
+    );
+
+    // Invoke Bedrock models for LLM-as-judge evaluations
+    evalExecutionRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'BedrockModelInvoke',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'bedrock:InvokeModel',
+          'bedrock:InvokeModelWithResponseStream',
+        ],
+        resources: [
+          `arn:aws:bedrock:${this.region}::foundation-model/*`,
+          `arn:aws:bedrock:${this.region}:${this.account}:inference-profile/*`,
+        ],
+      })
+    );
+
+    // The service name for the agent — follows the pattern <runtime-name>.<endpoint-name>
+    // For agents with a DEFAULT endpoint, the service name is <runtime-name>.DEFAULT
+    const evalServiceName = `${config.agentRuntimeName}.DEFAULT`;
+
+    // Lambda-backed custom resource to create online evaluation config
+    // Uses boto3 directly since the bedrock-agentcore-control SDK client
+    // may not be available in the AwsCustomResource Lambda runtime
+    const onlineEvalFunction = new lambda.Function(this, 'OnlineEvalFunction', {
+      functionName: `${config.appName}-online-eval-config`,
+      runtime: lambda.Runtime.PYTHON_3_11,
+      handler: 'index.handler',
+      timeout: cdk.Duration.minutes(2),
+      memorySize: 256,
+      layers: [new AwsCliLayer(this, 'AwsCliLayer')],
+      environment: {
+        EVAL_CONFIG_NAME: `${config.appName.replace(/-/g, '_')}_quality_eval`,
+        EVAL_DESCRIPTION: `Quality evaluation for ${config.appName} agent`,
+        EVAL_ROLE_ARN: evalExecutionRole.roleArn,
+        LOG_GROUP_NAME: this.runtimeLogGroup.logGroupName!,
+        SERVICE_NAME: evalServiceName,
+        AWS_REGION_NAME: this.region,
+      },
+      code: lambda.Code.fromInline(`
+import json
+import os
+import subprocess
+
+def run_cli(args):
+    cmd = ['/opt/awscli/aws'] + args + ['--output', 'json', '--region', os.environ['AWS_REGION_NAME']]
+    print(f"Running: {' '.join(cmd)}")
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
+    print(f"stdout: {result.stdout[:2000]}")
+    if result.stderr:
+        print(f"stderr: {result.stderr[:2000]}")
+    if result.returncode != 0:
+        raise Exception(f"CLI failed (rc={result.returncode}): {result.stderr[:500]}")
+    return json.loads(result.stdout) if result.stdout.strip() else {}
+
+def handler(event, context):
+    print(f"Event: {json.dumps(event)}")
+    request_type = event['RequestType']
+    
+    if request_type == 'Delete':
+        config_id = event.get('PhysicalResourceId', '')
+        if config_id and config_id != 'NONE':
+            try:
+                run_cli(['bedrock-agentcore-control', 'update-online-evaluation-config',
+                    '--online-evaluation-config-id', config_id,
+                    '--execution-status', 'DISABLED'])
+            except Exception:
+                pass
+            try:
+                run_cli(['bedrock-agentcore-control', 'delete-online-evaluation-config',
+                    '--online-evaluation-config-id', config_id])
+                print(f"Deleted: {config_id}")
+            except Exception as e:
+                print(f"Delete warning: {e}")
+        return {'PhysicalResourceId': config_id or 'NONE'}
+    
+    config_name = os.environ['EVAL_CONFIG_NAME']
+    
+    # Check if already exists
+    try:
+        resp = run_cli(['bedrock-agentcore-control', 'list-online-evaluation-configs'])
+        for cfg in resp.get('onlineEvaluationConfigSummaries', []):
+            if cfg.get('onlineEvaluationConfigName') == config_name:
+                config_id = cfg['onlineEvaluationConfigId']
+                print(f"Already exists: {config_id}")
+                return {'PhysicalResourceId': config_id}
+    except Exception as e:
+        print(f"List check failed: {e}")
+    
+    try:
+        resp = run_cli([
+            'bedrock-agentcore-control', 'create-online-evaluation-config',
+            '--online-evaluation-config-name', config_name,
+            '--description', os.environ['EVAL_DESCRIPTION'],
+            '--enable-on-create',
+            '--evaluation-execution-role-arn', os.environ['EVAL_ROLE_ARN'],
+            '--data-source-config', json.dumps({
+                'cloudWatchLogs': {
+                    'logGroupNames': [os.environ['LOG_GROUP_NAME']],
+                    'serviceNames': [os.environ['SERVICE_NAME']],
+                }
+            }),
+            '--evaluators', json.dumps([
+                {'evaluatorId': 'Builtin.Helpfulness'},
+                {'evaluatorId': 'Builtin.Correctness'},
+                {'evaluatorId': 'Builtin.Faithfulness'},
+                {'evaluatorId': 'Builtin.GoalSuccessRate'},
+            ]),
+            '--rule', json.dumps({
+                'samplingConfig': {'samplingPercentage': 100.0},
+                'sessionConfig': {'sessionTimeoutMinutes': 15},
+            }),
+        ])
+        config_id = resp.get('onlineEvaluationConfigId', 'NONE')
+        print(f"Created: {config_id}")
+        return {'PhysicalResourceId': config_id}
+    except Exception as e:
+        if 'ConflictException' in str(e) or 'already exists' in str(e):
+            print(f"Config already exists (conflict), treating as success")
+            # Re-list to get the ID
+            try:
+                resp = run_cli(['bedrock-agentcore-control', 'list-online-evaluation-configs'])
+                for cfg in resp.get('onlineEvaluationConfigSummaries', []):
+                    if cfg.get('onlineEvaluationConfigName') == config_name:
+                        return {'PhysicalResourceId': cfg['onlineEvaluationConfigId']}
+            except Exception:
+                pass
+            return {'PhysicalResourceId': config_name}
+        raise
+`),
+    });
+
+    onlineEvalFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'bedrock-agentcore:CreateOnlineEvaluationConfig',
+          'bedrock-agentcore:DeleteOnlineEvaluationConfig',
+          'bedrock-agentcore:GetOnlineEvaluationConfig',
+          'bedrock-agentcore:ListOnlineEvaluationConfigs',
+          'bedrock-agentcore:UpdateOnlineEvaluationConfig',
+        ],
+        resources: ['*'],
+      })
+    );
+
+    onlineEvalFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['iam:PassRole'],
+        resources: [evalExecutionRole.roleArn],
+        conditions: {
+          StringEquals: {
+            'iam:PassedToService': 'bedrock-agentcore.amazonaws.com',
+          },
+        },
+      })
+    );
+
+    onlineEvalFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'logs:DescribeIndexPolicies',
+          'logs:PutIndexPolicy',
+          'logs:CreateLogGroup',
+        ],
+        resources: ['*'],
+      })
+    );
+
+    const onlineEvalProviderLogGroup = new logs.LogGroup(this, 'OnlineEvalProviderLogs', {
+      retention: logs.RetentionDays.ONE_DAY,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    const onlineEvalProvider = new cr.Provider(this, 'OnlineEvalProvider', {
+      onEventHandler: onlineEvalFunction,
+      logGroup: onlineEvalProviderLogGroup,
+    });
+
+    const onlineEvalConfig = new cdk.CustomResource(this, 'OnlineEvalConfig', {
+      serviceToken: onlineEvalProvider.serviceToken,
+      properties: {
+        Timestamp: Date.now().toString(),
+      },
+    });
+
+    // Ensure eval config is created after observability is set up
+    onlineEvalConfig.node.addDependency(this.runtimeLogGroup);
+    onlineEvalConfig.node.addDependency(this.agentRuntime);
+
+    // ========================================================================
     // UPDATE SECRETS MANAGER WITH AGENT RUNTIME ARN
     // Requirements: 2.1, 2.3
     // ========================================================================
@@ -1507,6 +1763,62 @@ def handler(event, context):
         {
           id: 'AwsSolutions-KDF1',
           reason: 'Firehose uses S3 managed encryption for backup bucket. Server-side encryption enabled on destination.',
+        },
+      ]
+    );
+
+    // Suppress eval execution role wildcards
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Agent/EvalExecutionRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'CloudWatch Logs query APIs require wildcard resource for cross-log-group queries.',
+          appliesTo: ['Resource::*'],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'Evaluation results log group names are dynamic. Scoped to evaluations prefix.',
+          appliesTo: [`Resource::arn:aws:logs:${this.region}:${this.account}:log-group:/aws/bedrock-agentcore/evaluations/*`],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'CloudWatch spans log group requires :* suffix for log stream access.',
+          appliesTo: [`Resource::arn:aws:logs:${this.region}:${this.account}:log-group:aws/spans:*`],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'Bedrock foundation models require wildcard pattern. Scoped to InvokeModel actions only.',
+          appliesTo: [
+            `Resource::arn:aws:bedrock:${this.region}::foundation-model/*`,
+            `Resource::arn:aws:bedrock:${this.region}:${this.account}:inference-profile/*`,
+          ],
+        },
+      ]
+    );
+
+    // Suppress online eval config custom resource wildcards
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Agent/OnlineEvalFunction/ServiceRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'AgentCore online evaluation config ID is not known at synthesis time. Scoped to evaluation actions only.',
+          appliesTo: ['Resource::*'],
+        },
+      ]
+    );
+
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${config.appName}-Agent/OnlineEvalProvider/framework-onEvent/ServiceRole/DefaultPolicy/Resource`,
+      [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'CDK Provider framework requires lambda:InvokeFunction with wildcard for versioned invocations.',
+          appliesTo: ['Resource::<OnlineEvalFunction931C393F.Arn>:*'],
         },
       ]
     );

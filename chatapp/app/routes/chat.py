@@ -20,6 +20,7 @@ from app.models.guardrail import GuardrailRecord
 from app.models.usage import UsageRecord, ToolUsageRecord
 from app.storage.guardrail import GuardrailStorageService
 from app.storage.usage import UsageStorageService
+from app.evaluations.engine import run_evaluations
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +150,10 @@ async def _stream_chat_response(
     after_tool = False
     # Track last message content to avoid breaking mid-sentence
     last_message_content = ""
+    # Accumulate full agent output text for post-stream evaluation
+    accumulated_output: list[str] = []
+    # Accumulate tool/KB result content to ground the faithfulness evaluator
+    accumulated_context: list[str] = []
     
     async for event in client.invoke_stream(
         prompt=prompt,
@@ -163,9 +168,12 @@ async def _stream_chat_response(
             if last_message_content and last_message_content.rstrip()[-1:] in '.!?\n':
                 yield MessageEvent(content="\n\n").to_sse_format()
         
-        # Track last message content for sentence boundary detection
-        if isinstance(event, MessageEvent) and event.content.strip():
-            last_message_content = event.content
+        # Track last message content for sentence boundary detection and
+        # accumulate full output for evaluation after the stream completes
+        if isinstance(event, MessageEvent) and event.content:
+            accumulated_output.append(event.content)
+            if event.content.strip():
+                last_message_content = event.content
         
         # Track tool usage from ToolUseEvent
         if isinstance(event, ToolUseEvent):
@@ -197,13 +205,26 @@ async def _stream_chat_response(
                 tool_info = pending_tool_uses.pop(tool_use_id)
                 tool_name = tool_info["tool_name"]
                 
-                # Determine if result indicates success or error
+                # Determine if result indicates success or error (for usage stats only)
                 is_error = _is_error_result(event.tool_result, event.status)
                 
                 if is_error:
                     tool_usage_counts[tool_name]["error_count"] += 1
                 else:
                     tool_usage_counts[tool_name]["success_count"] += 1
+
+                # Capture the tool/KB output as grounding context for the
+                # faithfulness judge, regardless of the error heuristic. The
+                # heuristic does substring matching ("error", "cannot", ...)
+                # that misclassifies legitimate source text, so it must not
+                # gate what the judge sees.
+                if event.tool_result is not None:
+                    result_text = (
+                        event.tool_result
+                        if isinstance(event.tool_result, str)
+                        else json.dumps(event.tool_result, default=str)
+                    )
+                    accumulated_context.append(f"[{tool_name}] {result_text}")
         
         # Capture metrics from MetadataEvent
         if isinstance(event, MetadataEvent) and event.data:
@@ -233,6 +254,24 @@ async def _stream_chat_response(
     if accumulated_metrics:
         asyncio.create_task(
             _store_usage_record(accumulated_metrics, session_id, user_id, model_id, user_email)
+        )
+
+    # Run evaluations asynchronously after stream completes (fire-and-forget).
+    # Evaluation failures are handled internally and never impact the response.
+    full_output = "".join(accumulated_output)
+    if full_output.strip():
+        asyncio.create_task(
+            run_evaluations(
+                user_input=prompt,
+                agent_output=full_output,
+                session_id=session_id,
+                user_id=user_id,
+                model_id=model_id,
+                tool_usage=tool_usage_counts or None,
+                input_tokens=accumulated_metrics.get("inputTokens", 0) or 0,
+                output_tokens=accumulated_metrics.get("outputTokens", 0) or 0,
+                context="\n\n".join(accumulated_context) if accumulated_context else None,
+            )
         )
 
 
