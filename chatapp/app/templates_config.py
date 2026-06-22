@@ -29,7 +29,12 @@ async def init_template_globals():
     into the Jinja2 environment globals.
     """
     from app.helpers import get_app_settings
-    
+    from app.helpers.model_catalog import load_catalog
+
+    # Single source of truth for model ids/names/pricing, shared with the
+    # front-end via window.__MODEL_CATALOG__ (see base.html).
+    templates.env.globals["model_catalog"] = load_catalog()
+
     try:
         # Load settings asynchronously at startup
         settings = await get_app_settings()
