@@ -255,8 +255,14 @@
     function applyCustomRange() {
         const start = document.getElementById('start-date').value;
         const end = document.getElementById('end-date').value;
-        if (start && end) {
-            window.location.href = `/admin/evaluations?start_time=${start}T00:00:00&end_time=${end}T23:59:59`;
+        // Validate inputs are plain YYYY-MM-DD dates, then URL-encode before
+        // building the navigation URL. This prevents untrusted DOM text from
+        // injecting URL/HTML meta-characters (CodeQL js/xss-through-dom).
+        const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+        if (dateRe.test(start) && dateRe.test(end)) {
+            const startParam = encodeURIComponent(`${start}T00:00:00`);
+            const endParam = encodeURIComponent(`${end}T23:59:59`);
+            window.location.href = `/admin/evaluations?start_time=${startParam}&end_time=${endParam}`;
         }
     }
 
