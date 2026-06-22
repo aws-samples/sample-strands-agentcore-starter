@@ -222,24 +222,61 @@ echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━�
 
 # Note: ECR repositories are now managed by CDK and deleted automatically
 
-# Clean up CloudWatch log groups that may have been created outside CDK
+# Delete the ECS Express Gateway service.
+# CloudFormation deletion of AWS::ECS::ExpressGatewayService does not always
+# remove the underlying service, and a leftover service blocks a future
+# redeploy with: "Resource of type 'AWS::ECS::ExpressGatewayService' ...
+# already exists." So delete it explicitly here.
+echo -e "${YELLOW}Cleaning up ECS Express Gateway service...${NC}"
+if [ "$DRY_RUN" = true ]; then
+    echo -e "${CYAN}[DRY RUN] Would delete ECS Express Gateway service '${APP_NAME}-express' if present${NC}"
+else
+    EXPRESS_SVC_ARN=$(aws ecs list-services \
+        --cluster default \
+        --region "$AWS_REGION" \
+        --query "serviceArns[?contains(@, '${APP_NAME}-express')]" \
+        --output text 2>/dev/null | head -1 || echo "")
+    if [ -n "$EXPRESS_SVC_ARN" ] && [ "$EXPRESS_SVC_ARN" != "None" ]; then
+        aws ecs delete-express-gateway-service \
+            --service-arn "$EXPRESS_SVC_ARN" \
+            --region "$AWS_REGION" >/dev/null 2>&1 \
+            && echo -e "${GREEN}Deleted ECS Express Gateway service: ${EXPRESS_SVC_ARN}${NC}" \
+            || echo -e "${YELLOW}Could not delete express service (may already be gone): ${EXPRESS_SVC_ARN}${NC}"
+    else
+        echo -e "${GREEN}No ECS Express Gateway service found to delete${NC}"
+    fi
+fi
+
+# Clean up CloudWatch log groups left behind by deleted stacks.
+# CDK-declared log groups and Lambda-auto-created log groups can survive a
+# stack delete; if they have fixed names they then block a future deploy's
+# change set (e.g. /aws/lambda/${APP_NAME}-ecs-build-waiter-provider). All
+# stacks are already destroyed at this point, so prefix-based bulk deletion
+# of app-owned groups is safe.
 echo -e "${YELLOW}Cleaning up CloudWatch log groups...${NC}"
 
-LOG_GROUPS=(
-    "/ecs/${APP_NAME}/${APP_NAME}-express"
+LOG_GROUP_PREFIXES=(
+    "/aws/lambda/${APP_NAME}"
+    "/ecs/${APP_NAME}"
+    "/aws/vendedlogs/bedrock-agentcore"
     "/aws/bedrock-agentcore/runtimes"
 )
 
-for LOG_GROUP in "${LOG_GROUPS[@]}"; do
+for PREFIX in "${LOG_GROUP_PREFIXES[@]}"; do
     if [ "$DRY_RUN" = true ]; then
-        echo -e "${CYAN}[DRY RUN] Would check and delete log group: $LOG_GROUP${NC}"
-    else
-        # Check if log group exists and delete it
-        if aws logs describe-log-groups --log-group-name-prefix "$LOG_GROUP" --region "$AWS_REGION" --query 'logGroups[0]' --output text 2>/dev/null | grep -q "$LOG_GROUP"; then
-            aws logs delete-log-group --log-group-name "$LOG_GROUP" --region "$AWS_REGION" 2>/dev/null || true
-            echo -e "${GREEN}Deleted log group: $LOG_GROUP${NC}"
-        fi
+        echo -e "${CYAN}[DRY RUN] Would delete log groups with prefix: $PREFIX${NC}"
+        continue
     fi
+    LOG_GROUP_NAMES=$(aws logs describe-log-groups \
+        --log-group-name-prefix "$PREFIX" \
+        --region "$AWS_REGION" \
+        --query 'logGroups[].logGroupName' \
+        --output text 2>/dev/null || echo "")
+    for LOG_GROUP in $LOG_GROUP_NAMES; do
+        [ -z "$LOG_GROUP" ] && continue
+        aws logs delete-log-group --log-group-name "$LOG_GROUP" --region "$AWS_REGION" 2>/dev/null \
+            && echo -e "${GREEN}Deleted log group: $LOG_GROUP${NC}" || true
+    done
 done
 
 # Clean up CDK outputs file
