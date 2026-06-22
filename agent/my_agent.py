@@ -1,4 +1,5 @@
 """AgentCore agent with memory support."""
+import json
 import os
 import time
 from bedrock_agentcore import BedrockAgentCoreApp
@@ -351,12 +352,21 @@ async def invoke(payload, context):
                                 tool_id = tool_result.get('toolUseId')
                                 if tool_id:
                                     log.info(f"Tool result for: {tool_id}")
-                                    # Extract text from result content
-                                    result_text = ''
+                                    # Capture ALL content blocks (text and json),
+                                    # not just the first text block. Tools that
+                                    # return structured data (e.g. the weather
+                                    # tool's dict) surface as a json block; only
+                                    # reading text dropped that data from the UI
+                                    # and from evaluation grounding.
+                                    result_parts = []
                                     for result_content in tool_result.get('content', []):
                                         if 'text' in result_content:
-                                            result_text = result_content['text']
-                                            break
+                                            result_parts.append(result_content['text'])
+                                        elif 'json' in result_content:
+                                            result_parts.append(
+                                                json.dumps(result_content['json'], default=str)
+                                            )
+                                    result_text = '\n'.join(result_parts)
                                     yield {
                                         "type": "tool_result",
                                         "tool_name": tool_id,

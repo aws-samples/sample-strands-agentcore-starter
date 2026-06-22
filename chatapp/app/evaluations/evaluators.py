@@ -5,7 +5,6 @@ Content safety is handled by Amazon Bedrock Guardrails, not here.
 """
 
 import logging
-import re
 from dataclasses import dataclass
 from typing import Dict, Any, List, Optional
 
@@ -35,28 +34,9 @@ class ToolSelectionEvaluator:
     unnecessary tool calls based on the user's query.
     """
 
-    # Keywords that suggest specific tools should be used
-    TOOL_HINTS = {
-        "calculator": [
-            r'\b(?:calculate|compute|math|sum|add|subtract|multiply|divide|percentage|%)\b',
-            r'\b\d+\s*[\+\-\*\/\%]\s*\d+\b',
-        ],
-        "current_time": [
-            r'\b(?:time|date|today|now|clock|day of week)\b',
-        ],
-        "get_current_weather": [
-            r'\b(?:weather|temperature|forecast|rain|snow|sunny|cloudy)\b',
-        ],
-        "ddg_web_search": [
-            r'\b(?:search|look up|find|google|latest|recent|news)\b',
-        ],
-        "search_knowledge_base": [
-            r'\b(?:knowledge base|documentation|docs|internal|curated)\b',
-        ],
-        "fetch_url_content": [
-            r'\b(?:url|link|website|webpage|http|https)\b',
-        ],
-    }
+    # A turn passes if its computed tool-selection quality meets this bar.
+    # Quality is computed internally only to derive Pass/Fail; it is not shown.
+    PASS_THRESHOLD = 0.5
 
     def evaluate(
         self,
@@ -65,62 +45,47 @@ class ToolSelectionEvaluator:
         tools_used: Dict[str, Dict[str, int]],
     ) -> EvalResult:
         """Evaluate tool selection quality.
-        
+
+        Judges only what can be measured reliably from execution: whether the
+        tools the agent actually invoked succeeded and were used efficiently.
+
+        It deliberately does NOT guess which tools "should" have been used from
+        the wording of the query. Keyword-based intent guessing produces false
+        negatives (e.g. expecting current_time just because the word "today"
+        appears), penalizing the agent for correctly skipping an unneeded tool.
+
         Args:
-            user_input: The user's message
-            agent_output: The agent's response text
+            user_input: The user's message (unused; kept for interface parity)
+            agent_output: The agent's response text (unused)
             tools_used: Dict of tool_name -> {call_count, success_count, error_count}
-            
+
         Returns:
             EvalResult with tool selection assessment
         """
         if not tools_used:
-            # No tools used - check if tools should have been used
-            expected = self._get_expected_tools(user_input)
-            if expected:
-                return EvalResult(
-                    score=0.5,
-                    passed=True,
-                    label="Possibly missed tools",
-                    reason=f"No tools used, but query may have benefited from: {', '.join(expected)}",
-                )
+            # No tools were used. Without reliable intent detection we do not
+            # second-guess that decision, so it passes.
             return EvalResult(
                 score=1.0,
                 passed=True,
-                label="Appropriate (no tools needed)",
-                reason="No tools used and none appeared necessary",
+                label="Pass",
+                reason="No tools used",
             )
 
         used_names = set(tools_used.keys())
-        expected = set(self._get_expected_tools(user_input))
 
-        # Calculate metrics
         total_calls = sum(t.get("call_count", 0) for t in tools_used.values())
         total_errors = sum(t.get("error_count", 0) for t in tools_used.values())
         error_rate = total_errors / total_calls if total_calls > 0 else 0
 
-        # Score components
-        scores = []
-
-        # 1. Were expected tools used?
-        if expected:
-            overlap = used_names & expected
-            expected_score = len(overlap) / len(expected) if expected else 1.0
-            scores.append(expected_score)
-
-        # 2. Error rate penalty
+        # Quality components for tools that were actually invoked. Take the
+        # weakest signal (min), not the average, so a high error rate cannot be
+        # masked by otherwise-efficient usage.
         error_score = 1.0 - error_rate
-        scores.append(error_score)
-
-        # 3. Efficiency - penalize excessive tool calls (>5 is suspicious)
         efficiency_score = min(1.0, 5.0 / total_calls) if total_calls > 5 else 1.0
-        scores.append(efficiency_score)
-
-        avg_score = sum(scores) / len(scores) if scores else 1.0
+        quality = min(error_score, efficiency_score)
 
         reasons = []
-        if expected and not (used_names & expected):
-            reasons.append(f"Expected tools not used: {', '.join(expected - used_names)}")
         if error_rate > 0:
             reasons.append(f"Tool error rate: {error_rate:.0%}")
         if total_calls > 5:
@@ -128,22 +93,11 @@ class ToolSelectionEvaluator:
         if not reasons:
             reasons.append(f"Tools used appropriately: {', '.join(used_names)}")
 
-        label = "Good" if avg_score >= 0.7 else ("Fair" if avg_score >= 0.4 else "Poor")
+        passed = quality >= self.PASS_THRESHOLD
 
         return EvalResult(
-            score=round(avg_score, 3),
-            passed=avg_score >= 0.5,
-            label=label,
+            score=1.0 if passed else 0.0,
+            passed=passed,
+            label="Pass" if passed else "Fail",
             reason="; ".join(reasons),
         )
-
-    def _get_expected_tools(self, user_input: str) -> List[str]:
-        """Determine which tools the query likely needs."""
-        expected = []
-        input_lower = user_input.lower()
-        for tool_name, patterns in self.TOOL_HINTS.items():
-            for pattern in patterns:
-                if re.search(pattern, input_lower):
-                    expected.append(tool_name)
-                    break
-        return expected
