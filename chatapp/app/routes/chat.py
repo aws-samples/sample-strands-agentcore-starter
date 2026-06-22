@@ -154,13 +154,47 @@ async def _stream_chat_response(
     accumulated_output: list[str] = []
     # Accumulate tool/KB result content to ground the faithfulness evaluator
     accumulated_context: list[str] = []
-    
-    async for event in client.invoke_stream(
-        prompt=prompt,
-        session_id=session_id,
-        user_id=user_id,
-        model_id=model_id,
-    ):
+
+    # Keepalive via asyncio.Queue + producer task.
+    #
+    # asyncio.wait_for() on an async generator's __anext__() is unsafe: when
+    # the timeout fires it cancels the coroutine and leaves the generator in a
+    # broken state. The safe pattern: run the generator in a separate task that
+    # pushes events onto a Queue. The consumer waits on the queue with a
+    # timeout; on timeout it yields an SSE comment (invisible to the browser,
+    # resets the ALB/proxy idle timer) and loops.
+    KEEPALIVE_INTERVAL = 15  # seconds — well under typical 60s LB idle timeouts
+    _SENTINEL = object()
+    queue: asyncio.Queue = asyncio.Queue(maxsize=64)
+
+    async def _producer():
+        try:
+            async for ev in client.invoke_stream(
+                prompt=prompt,
+                session_id=session_id,
+                user_id=user_id,
+                model_id=model_id,
+            ):
+                await queue.put(ev)
+        except Exception as exc:
+            logger.error("AgentCore stream error in producer: %s", exc)
+        finally:
+            await queue.put(_SENTINEL)
+
+    producer_task = asyncio.create_task(_producer())
+
+    try:
+      while True:
+        try:
+            item = await asyncio.wait_for(queue.get(), timeout=KEEPALIVE_INTERVAL)
+        except asyncio.TimeoutError:
+            yield ": keepalive\n\n"
+            continue
+
+        if item is _SENTINEL:
+            break
+
+        event = item
         # Inject paragraph break when message text follows a tool result
         # Only if previous text ended a sentence (avoid splitting "Here" / "'s a full overview")
         if isinstance(event, MessageEvent) and after_tool and event.content.strip():
@@ -238,9 +272,15 @@ async def _stream_chat_response(
             )
         
         yield event.to_sse_format()
-    
+
+    finally:
+        producer_task.cancel()
+        try:
+            await producer_task
+        except (asyncio.CancelledError, Exception):
+            pass
+
     # Handle any remaining pending tool uses (tools that started but never completed)
-    # Mark them as errors since they didn't produce a result
     for tool_use_id, tool_info in pending_tool_uses.items():
         tool_name = tool_info["tool_name"]
         tool_usage_counts[tool_name]["error_count"] += 1

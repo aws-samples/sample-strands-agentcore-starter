@@ -4,6 +4,7 @@ This module provides the MemoryClient class for fetching event and semantic
 memory from AgentCore Memory service.
 """
 
+import json
 import logging
 from dataclasses import dataclass
 from typing import List, Optional
@@ -14,6 +15,41 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from app.config import get_config
+
+
+def _format_event_content(raw_text, default_role):
+    """Unwrap a stored Strands message envelope into (role, display_text).
+
+    Some agents persist the full message object as the event text, e.g.:
+        {"message": {"role": "assistant", "content": [{"text": "..."},
+                                                       {"toolUse": {...}}]}, ...}
+    Returns the message's real role plus the concatenated human-readable text
+    blocks (tool-use / tool-result blocks are dropped). Plain-text events are
+    returned unchanged.
+    """
+    if not raw_text or not isinstance(raw_text, str):
+        return default_role, raw_text or ""
+    if not raw_text.lstrip().startswith("{"):
+        return default_role, raw_text
+    try:
+        obj = json.loads(raw_text)
+    except (ValueError, TypeError):
+        return default_role, raw_text
+    if not isinstance(obj, dict) or not isinstance(obj.get("message"), dict):
+        return default_role, raw_text
+    msg = obj["message"]
+    role = msg.get("role", default_role)
+    role = role.lower() if isinstance(role, str) else default_role
+    content = msg.get("content")
+    if isinstance(content, str):
+        return role, content
+    if not isinstance(content, list):
+        return role, raw_text
+    texts = [
+        b["text"] for b in content
+        if isinstance(b, dict) and isinstance(b.get("text"), str)
+    ]
+    return role, "\n\n".join(texts).strip()
 
 
 logger = logging.getLogger(__name__)
@@ -147,7 +183,11 @@ class MemoryClient:
                             role = role.lower()
                         content_obj = conv.get('content', {})
                         text = content_obj.get('text', '')
-                        
+
+                        # Unwrap Strands message envelopes so the
+                        # Events panel shows clean text, not raw JSON.
+                        role, text = _format_event_content(text, role)
+
                         if text:
                             # Handle timestamp
                             timestamp = evt.get('eventTimestamp')
