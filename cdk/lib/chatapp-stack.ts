@@ -594,6 +594,14 @@ def handler(event, context):
             name: 'EVALUATIONS_TABLE_NAME',
             valueFrom: `${secretArn}:evaluations_table_name::`,
           },
+          {
+            name: 'APP_SETTINGS_TABLE_NAME',
+            valueFrom: `${secretArn}:app_settings_table_name::`,
+          },
+          {
+            name: 'RUNTIME_USAGE_TABLE_NAME',
+            valueFrom: `${secretArn}:runtime_usage_table_name::`,
+          },
         ],
         
         // Environment variables (non-secret)
@@ -979,6 +987,8 @@ def handler(event, context):
       'GUARDRAIL_VERSION': 'guardrail_version',
       'KB_ID': 'kb_id',
       'EVALUATIONS_TABLE_NAME': 'evaluations_table_name',
+      'APP_SETTINGS_TABLE_NAME': 'app_settings_table_name',
+      'RUNTIME_USAGE_TABLE_NAME': 'runtime_usage_table_name',
     };
     
     // Add each secret as an environment variable
