@@ -6,6 +6,18 @@
 <link rel="icon" type="image/svg+xml" href="{{ logo_url if logo_url is defined else '/static/favicon.svg' }}">
 {% endblock %}
 
+{% block head %}
+<style>
+    @keyframes highlight-fade {
+        0% { background-color: #dbeafe; }
+        100% { background-color: transparent; }
+    }
+    .template-highlight {
+        animation: highlight-fade 2s ease-out;
+    }
+</style>
+{% endblock %}
+
 {% block body %}
 <div class="min-h-screen bg-gray-50">
     {% set show_admin_btn = false %}
@@ -23,103 +35,150 @@
             <h1 class="font-display text-2xl sm:text-3xl font-bold" style="color: var(--text);">Prompt Templates</h1>
         </div>
 
-        <!-- Create Template Form -->
-        <div class="mb-8 bg-white rounded-lg shadow-sm border border-gray-200">
-            <div class="px-6 py-4 border-b border-gray-200">
-                <h2 class="text-lg font-semibold text-gray-900">Create New Template</h2>
-                <p class="text-sm text-gray-500 mt-1">Add a new prompt template for users to quickly access</p>
-            </div>
-            <form action="/admin/templates/create" method="POST" class="p-6">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                        <label for="title" class="block text-sm font-medium text-gray-700 mb-1">Title</label>
-                        <input 
-                            type="text" 
-                            id="title" 
-                            name="title" 
-                            required
-                            placeholder="e.g., AWS News"
-                            class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
-                        >
-                    </div>
-                    <div>
-                        <label for="description" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                        <input 
-                            type="text" 
-                            id="description" 
-                            name="description" 
-                            required
-                            placeholder="e.g., Check the latest AWS News"
-                            class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
-                        >
-                    </div>
+        <!-- Templates Table -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-900">All Templates</h2>
+                    <p class="text-sm text-gray-500 mt-1">Manage existing prompt templates</p>
                 </div>
-                <div class="mt-4">
-                    <label for="prompt_detail" class="block text-sm font-medium text-gray-700 mb-1">Prompt Detail</label>
-                    <textarea 
-                        id="prompt_detail" 
-                        name="prompt_detail" 
-                        rows="3" 
-                        required
-                        placeholder="e.g., Please search the internet for the latest AWS news and announcements..."
-                        class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
-                    ></textarea>
-                </div>
-                <div class="mt-4 flex justify-end">
-                    <button 
-                        type="submit"
-                        class="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
+                <div class="flex items-center gap-3">
+                    <button
+                        id="toggle-bulk-upload-btn"
+                        type="button"
+                        class="px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-md border border-gray-300 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors flex items-center gap-2"
                     >
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                        </svg>
+                        Bulk Upload
+                    </button>
+                    <button
+                        id="toggle-create-form-btn"
+                        type="button"
+                        class="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors flex items-center gap-2"
+                    >
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                        </svg>
                         Create Template
                     </button>
                 </div>
-            </form>
-        </div>
+            </div>
 
-        <!-- Templates Table -->
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200">
-            <div class="px-6 py-4 border-b border-gray-200">
-                <h2 class="text-lg font-semibold text-gray-900">All Templates</h2>
-                <p class="text-sm text-gray-500 mt-1">Manage existing prompt templates</p>
+            <!-- Collapsible Create Form -->
+            <div id="create-form-panel" class="hidden border-b border-gray-200 bg-gray-50">
+                <form id="create-template-form" action="/admin/templates/create" method="POST" class="p-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label for="title" class="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                            <input 
+                                type="text" 
+                                id="title" 
+                                name="title" 
+                                required
+                                placeholder="e.g., AWS News"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+                            >
+                        </div>
+                        <div>
+                            <label for="description" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                            <input 
+                                type="text" 
+                                id="description" 
+                                name="description" 
+                                required
+                                placeholder="e.g., Check the latest AWS News"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+                            >
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <label for="prompt_detail" class="block text-sm font-medium text-gray-700 mb-1">Prompt Detail</label>
+                        <textarea 
+                            id="prompt_detail" 
+                            name="prompt_detail" 
+                            rows="3" 
+                            required
+                            placeholder="e.g., Please search the internet for the latest AWS news and announcements..."
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+                        ></textarea>
+                    </div>
+                    <div class="mt-4 flex justify-end gap-3">
+                        <button 
+                            type="button"
+                            id="cancel-create-btn"
+                            class="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors"
+                        >
+                            Cancel
+                        </button>
+                        <button 
+                            type="submit"
+                            class="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
+                        >
+                            Create Template
+                        </button>
+                    </div>
+                </form>
             </div>
             
             {% if templates %}
-            <div class="overflow-x-auto">
-                <table class="w-full">
+            <div class="overflow-hidden">
+                <table class="w-full table-fixed">
+                    <colgroup>
+                        <col style="width:36px;">
+                        <col style="width:36px;">
+                        <col style="width:15%;">
+                        <col style="width:22%;">
+                        <col style="width:auto;">
+                        <col style="width:120px;">
+                    </colgroup>
                     <thead class="bg-gray-50">
                         <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Title</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prompt Detail</th>
-                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            <th class="px-2 py-3">
+                                <input type="checkbox" id="select-all-cb" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer" title="Select all">
+                            </th>
+                            <th class="px-2 py-3"></th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Title</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prompt Detail</th>
+                            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-gray-200">
+                    <tbody id="templates-tbody" class="divide-y divide-gray-200">
                         {% for template in templates %}
-                        <tr class="hover:bg-gray-50" id="row-{{ template.template_id }}">
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <div class="text-sm font-medium text-gray-900">{{ template.title }}</div>
+                        <tr class="hover:bg-gray-50 template-row" id="row-{{ template.template_id }}" data-id="{{ template.template_id }}" draggable="true">
+                            <td class="px-2 py-4 text-center">
+                                <input type="checkbox" class="template-cb rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer" data-id="{{ template.template_id }}">
                             </td>
-                            <td class="px-6 py-4">
-                                <div class="text-sm text-gray-600 max-w-xs truncate" title="{{ template.description }}">
-                                    {{ template.description }}
-                                </div>
+                            <td class="px-2 py-4 cursor-grab active:cursor-grabbing drag-handle" title="Drag to reorder">
+                                <svg class="w-4 h-4 text-gray-400 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 8h16M4 16h16" />
+                                </svg>
                             </td>
-                            <td class="px-6 py-4">
-                                <div class="text-sm text-gray-600 max-w-md truncate" title="{{ template.prompt_detail }}">
-                                    {{ template.prompt_detail[:100] }}{% if template.prompt_detail|length > 100 %}...{% endif %}
-                                </div>
+                            <td class="px-4 py-4">
+                                <div class="text-sm font-medium text-gray-900 truncate">{{ template.title }}</div>
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <td class="px-4 py-4">
+                                <div class="text-sm text-gray-600 truncate" title="{{ template.description }}">{{ template.description }}</div>
+                            </td>
+                            <td class="px-4 py-4 overflow-hidden">
+                                <div class="text-sm text-gray-600 truncate" title="{{ template.prompt_detail }}">{{ template.prompt_detail[:80] }}{% if template.prompt_detail|length > 80 %}...{% endif %}</div>
+                            </td>
+                            <td class="px-4 py-4 text-right text-sm font-medium">
                                 <button 
-                                    onclick="openEditModal('{{ template.template_id }}', '{{ template.title | e }}', '{{ template.description | e }}', '{{ template.prompt_detail | e }}')"
-                                    class="text-primary-600 hover:text-primary-900 mr-3"
+                                    class="text-primary-600 hover:text-primary-900 mr-3 edit-template-btn"
+                                    data-id="{{ template.template_id }}"
+                                    data-title="{{ template.title | e }}"
+                                    data-description="{{ template.description | e }}"
+                                    data-prompt="{{ template.prompt_detail | e }}"
                                 >
                                     Edit
                                 </button>
                                 <button 
-                                    onclick="confirmDelete('{{ template.template_id }}', '{{ template.title | e }}')"
-                                    class="text-red-600 hover:text-red-900"
+                                    class="text-red-600 hover:text-red-900 delete-template-btn"
+                                    data-id="{{ template.template_id }}"
+                                    data-title="{{ template.title | e }}"
                                 >
                                     Delete
                                 </button>
@@ -237,10 +296,97 @@
         </form>
     </div>
 </div>
+
+<!-- Bulk Upload Modal -->
+<div id="bulk-upload-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden overflow-y-auto h-full w-full z-50">
+    <div class="mx-auto my-4 p-5 border w-full max-w-2xl shadow-lg rounded-lg bg-white flex flex-col" style="min-height: calc(100vh - 2rem);">
+        <div class="flex justify-between items-center pb-3 border-b border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-900">Bulk Upload Templates</h3>
+            <button onclick="closeBulkUploadModal()" class="text-gray-400 hover:text-gray-600">
+                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        <div class="mt-4 flex-1 flex flex-col">
+            <p class="text-sm text-gray-600 mb-2">Paste a Python-style list of template dictionaries. Each item needs: <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">template_id</code>, <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">title</code>, <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">description</code>, <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">prompt_detail</code>.</p>
+            <p class="text-xs text-gray-400 mb-3">Example format:</p>
+            <pre class="text-xs bg-gray-50 border border-gray-200 rounded p-2 mb-3 overflow-x-auto text-gray-600">TEMPLATES = [
+    {
+        "template_id": "my-template",
+        "title": "My Template",
+        "description": "A helpful template",
+        "prompt_detail": "Do something useful",
+    },
+]</pre>
+            <textarea
+                id="bulk-upload-textarea"
+                placeholder='Paste your TEMPLATES = [ ... ] here'
+                class="w-full flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 font-mono text-xs"
+                style="min-height: 120px; resize: none;"
+            ></textarea>
+            <div id="bulk-upload-error" class="hidden mt-2 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700"></div>
+            <div id="bulk-upload-success" class="hidden mt-2 p-3 bg-green-50 border border-green-200 rounded-md text-sm text-green-700"></div>
+        </div>
+        <div class="mt-4 flex justify-end gap-3">
+            <button
+                type="button"
+                onclick="closeBulkUploadModal()"
+                class="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors"
+            >
+                Cancel
+            </button>
+            <button
+                id="bulk-upload-submit-btn"
+                type="button"
+                onclick="submitBulkUpload()"
+                class="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
+            >
+                Upload Templates
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk Action Toast Bar (fixed bottom) -->
+<div id="bulk-actions-bar" class="fixed bottom-0 inset-x-0 z-40 hidden">
+    <div class="mx-auto max-w-4xl px-4 pb-4">
+        <div class="flex items-center justify-between bg-gray-900 text-white rounded-lg shadow-lg px-6 py-3">
+            <span class="text-sm"><span id="bulk-selected-count" class="font-semibold">0</span> templates selected</span>
+            <div class="flex items-center gap-3">
+                <button id="bulk-cancel-btn" class="px-3 py-1.5 text-sm font-medium text-gray-300 hover:text-white transition-colors">
+                    Clear
+                </button>
+                <button id="bulk-delete-btn" class="px-4 py-1.5 text-sm font-medium bg-red-600 hover:bg-red-700 rounded-md transition-colors">
+                    Delete selected
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
+<!-- nosemgrep: insecure-document-method -->
 <script>
+    /** Escape HTML for safe insertion into the DOM. */
+    function escapeHTML(str) {
+        if (str == null) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    /** Decode HTML entities for display in form fields */
+    function decodeHTMLEntities(text) {
+        const textarea = document.createElement('textarea');
+        textarea.innerHTML = text; // nosemgrep: insecure-innerhtml, insecure-document-method
+        return textarea.value;
+    }
+
     /** Open the edit modal with template data */
     function openEditModal(templateId, title, description, promptDetail) {
         document.getElementById('edit-form').action = `/admin/templates/${templateId}/edit`;
@@ -267,12 +413,116 @@
         document.getElementById('delete-modal').classList.add('hidden');
     }
 
-    /** Decode HTML entities for display */
-    function decodeHTMLEntities(text) {
-        const textarea = document.createElement('textarea');
-        textarea.innerHTML = text;
-        return textarea.value;
-    }
+    // ── Toggle Create Form ──
+    (function() {
+        var btn = document.getElementById('toggle-create-form-btn');
+        var panel = document.getElementById('create-form-panel');
+        var cancelBtn = document.getElementById('cancel-create-btn');
+        if (!btn || !panel) return;
+
+        function togglePanel() {
+            panel.classList.toggle('hidden');
+            if (!panel.classList.contains('hidden')) {
+                document.getElementById('title').focus();
+            }
+        }
+        btn.addEventListener('click', togglePanel);
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', function() {
+                panel.classList.add('hidden');
+                document.getElementById('create-template-form').reset();
+            });
+        }
+    })();
+
+    // ── AJAX Create Template ──
+    (function() {
+        var form = document.getElementById('create-template-form');
+        if (!form) return;
+
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            var formData = new FormData(form);
+            var submitBtn = form.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Creating...';
+
+            fetch(form.action, {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                body: formData,
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.success) {
+                    alert(data.error || 'Failed to create template');
+                    return;
+                }
+                var t = data.template;
+                var tbody = document.getElementById('templates-tbody');
+
+                // If the table doesn't exist yet (empty state), reload to get the table structure
+                if (!tbody) {
+                    window.location.reload();
+                    return;
+                }
+
+                // Build the new row
+                var promptTruncated = t.prompt_detail.length > 80
+                    ? t.prompt_detail.substring(0, 80) + '...'
+                    : t.prompt_detail;
+
+                var tr = document.createElement('tr');
+                tr.className = 'hover:bg-gray-50 template-row';
+                tr.id = 'row-' + t.template_id;
+                tr.dataset.id = t.template_id;
+                tr.draggable = true;
+                tr.innerHTML = // nosemgrep: insecure-innerhtml, insecure-document-method
+                    '<td class="px-2 py-4 text-center">' +
+                        '<input type="checkbox" class="template-cb rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer" data-id="' + escapeHTML(t.template_id) + '">' +
+                    '</td>' +
+                    '<td class="px-2 py-4 cursor-grab active:cursor-grabbing drag-handle" title="Drag to reorder">' +
+                        '<svg class="w-4 h-4 text-gray-400 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">' +
+                            '<path stroke-linecap="round" stroke-linejoin="round" d="M4 8h16M4 16h16" />' +
+                        '</svg>' +
+                    '</td>' +
+                    '<td class="px-4 py-4"><div class="text-sm font-medium text-gray-900 truncate">' + escapeHTML(t.title) + '</div></td>' +
+                    '<td class="px-4 py-4"><div class="text-sm text-gray-600 truncate" title="' + escapeHTML(t.description) + '">' + escapeHTML(t.description) + '</div></td>' +
+                    '<td class="px-4 py-4 overflow-hidden"><div class="text-sm text-gray-600 truncate" title="' + escapeHTML(t.prompt_detail) + '">' + escapeHTML(promptTruncated) + '</div></td>' +
+                    '<td class="px-4 py-4 text-right text-sm font-medium">' +
+                        '<button class="text-primary-600 hover:text-primary-900 mr-3 edit-template-btn"' +
+                            ' data-id="' + escapeHTML(t.template_id) + '"' +
+                            ' data-title="' + escapeHTML(t.title) + '"' +
+                            ' data-description="' + escapeHTML(t.description) + '"' +
+                            ' data-prompt="' + escapeHTML(t.prompt_detail) + '">Edit</button>' +
+                        '<button class="text-red-600 hover:text-red-900 delete-template-btn"' +
+                            ' data-id="' + escapeHTML(t.template_id) + '"' +
+                            ' data-title="' + escapeHTML(t.title) + '">Delete</button>' +
+                    '</td>';
+
+                // Append to end of list
+                tbody.appendChild(tr);
+
+                // Scroll into view and highlight
+                tr.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                setTimeout(function() {
+                    tr.classList.add('template-highlight');
+                }, 300);
+
+                // Clear the form and collapse the panel
+                form.reset();
+                document.getElementById('create-form-panel').classList.add('hidden');
+            })
+            .catch(function(err) {
+                console.error('Create template failed:', err);
+                alert('Failed to create template. Please try again.');
+            })
+            .finally(function() {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Create Template';
+            });
+        });
+    })();
 
     // Close modals when clicking outside
     document.getElementById('edit-modal').addEventListener('click', function(e) {
@@ -287,7 +537,380 @@
         if (e.key === 'Escape') {
             closeEditModal();
             closeDeleteModal();
+            closeBulkUploadModal();
         }
     });
+
+    // Event delegation for edit/delete buttons (avoids inline onclick with quotes)
+    document.addEventListener('click', function(e) {
+        var editBtn = e.target.closest('.edit-template-btn');
+        if (editBtn) {
+            openEditModal(editBtn.dataset.id, editBtn.dataset.title, editBtn.dataset.description, editBtn.dataset.prompt);
+            return;
+        }
+        var deleteBtn = e.target.closest('.delete-template-btn');
+        if (deleteBtn) {
+            confirmDelete(deleteBtn.dataset.id, deleteBtn.dataset.title);
+        }
+    });
+
+    // ── Bulk Upload Modal ──
+    var bulkTextarea = document.getElementById('bulk-upload-textarea');
+    var bulkErrorDiv = document.getElementById('bulk-upload-error');
+    var bulkSuccessDiv = document.getElementById('bulk-upload-success');
+    var bulkSubmitBtn = document.getElementById('bulk-upload-submit-btn');
+
+    document.getElementById('toggle-bulk-upload-btn').addEventListener('click', function() {
+        document.getElementById('bulk-upload-modal').classList.remove('hidden');
+        bulkTextarea.value = '';
+        resetBulkValidation();
+        bulkTextarea.focus();
+    });
+
+    function closeBulkUploadModal() {
+        document.getElementById('bulk-upload-modal').classList.add('hidden');
+        resetBulkValidation();
+    }
+
+    function resetBulkValidation() {
+        bulkTextarea.className = bulkTextarea.className
+            .replace(/border-green-500|border-red-500|ring-green-500|ring-red-500|border-gray-300/g, '')
+            .trim() + ' border-gray-300';
+        bulkErrorDiv.classList.add('hidden');
+        bulkSuccessDiv.classList.add('hidden');
+        bulkSubmitBtn.disabled = true;
+        bulkSubmitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    }
+
+    function setBulkBorder(state) {
+        // state: 'valid', 'invalid', or 'neutral'
+        var cls = bulkTextarea.className
+            .replace(/border-green-500|border-red-500|ring-green-500|ring-red-500|ring-1|border-gray-300/g, '')
+            .trim();
+        if (state === 'valid') {
+            bulkTextarea.className = cls + ' border-green-500 ring-1 ring-green-500';
+            bulkSubmitBtn.disabled = false;
+            bulkSubmitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        } else if (state === 'invalid') {
+            bulkTextarea.className = cls + ' border-red-500 ring-1 ring-red-500';
+            bulkSubmitBtn.disabled = true;
+            bulkSubmitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        } else {
+            bulkTextarea.className = cls + ' border-gray-300';
+            bulkSubmitBtn.disabled = true;
+            bulkSubmitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        }
+    }
+
+    document.getElementById('bulk-upload-modal').addEventListener('click', function(e) {
+        if (e.target === this) closeBulkUploadModal();
+    });
+
+    /**
+     * Parse Python-style TEMPLATES list into a JS array.
+     * Accepts: TEMPLATES = [ {...}, ... ] or just [ {...}, ... ]
+     * Handles trailing commas and Python-style single/double quotes.
+     */
+    function parseBulkInput(raw) {
+        var text = raw.trim();
+        text = text.replace(/^TEMPLATES\s*=\s*/, '');
+        text = text.replace(/,\s*([}\]])/g, '$1');
+        try {
+            var parsed = JSON.parse(text);
+            if (Array.isArray(parsed)) return { ok: true, data: parsed };
+            return { ok: false, error: 'Top-level value must be an array.' };
+        } catch(e) {
+            var converted = text.replace(/'/g, '"');
+            converted = converted.replace(/,\s*([}\]])/g, '$1');
+            try {
+                var parsed2 = JSON.parse(converted);
+                if (Array.isArray(parsed2)) return { ok: true, data: parsed2 };
+                return { ok: false, error: 'Top-level value must be an array.' };
+            } catch(e2) {
+                return { ok: false, error: 'Could not parse as JSON. Check for syntax errors (mismatched brackets, missing commas, etc.).' };
+            }
+        }
+    }
+
+    /** Validate parsed templates array. Returns { valid: true } or { valid: false, errors: [...] } */
+    function validateTemplates(templates) {
+        var required = ['template_id', 'title', 'description', 'prompt_detail'];
+        var errors = [];
+        if (templates.length === 0) {
+            return { valid: false, errors: ['Array is empty — add at least one template.'] };
+        }
+        templates.forEach(function(item, idx) {
+            if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+                errors.push('Item ' + (idx + 1) + ': not a dictionary');
+                return;
+            }
+            required.forEach(function(key) {
+                if (!item.hasOwnProperty(key)) {
+                    errors.push('Item ' + (idx + 1) + ': missing key "' + key + '"');
+                } else if (typeof item[key] !== 'string' || !item[key].trim()) {
+                    errors.push('Item ' + (idx + 1) + ': "' + key + '" is empty');
+                }
+            });
+        });
+        return errors.length ? { valid: false, errors: errors } : { valid: true };
+    }
+
+    /** Real-time validation on every keystroke / paste */
+    var bulkValidateTimer = null;
+    bulkTextarea.addEventListener('input', function() {
+        clearTimeout(bulkValidateTimer);
+        bulkValidateTimer = setTimeout(runBulkValidation, 250);
+    });
+
+    function runBulkValidation() {
+        var raw = bulkTextarea.value;
+        bulkErrorDiv.classList.add('hidden');
+        bulkSuccessDiv.classList.add('hidden');
+
+        if (!raw.trim()) {
+            setBulkBorder('neutral');
+            return;
+        }
+
+        var result = parseBulkInput(raw);
+        if (!result.ok) {
+            setBulkBorder('invalid');
+            bulkErrorDiv.innerHTML = escapeHTML(result.error); // nosemgrep: insecure-innerhtml, insecure-document-method
+            bulkErrorDiv.classList.remove('hidden');
+            return;
+        }
+
+        var validation = validateTemplates(result.data);
+        if (!validation.valid) {
+            setBulkBorder('invalid');
+            bulkErrorDiv.innerHTML = validation.errors.map(function(e) { return '• ' + escapeHTML(e); }).join('<br>'); // nosemgrep: insecure-innerhtml, insecure-document-method
+            bulkErrorDiv.classList.remove('hidden');
+            return;
+        }
+
+        // All good
+        setBulkBorder('valid');
+        bulkSuccessDiv.textContent = '✓ Valid — ' + result.data.length + ' template(s) ready to upload.';
+        bulkSuccessDiv.classList.remove('hidden');
+    }
+
+    function submitBulkUpload() {
+        if (bulkSubmitBtn.disabled) return;
+
+        bulkErrorDiv.classList.add('hidden');
+        bulkSuccessDiv.classList.add('hidden');
+
+        var raw = bulkTextarea.value;
+        var result = parseBulkInput(raw);
+        if (!result.ok) return;
+        var validation = validateTemplates(result.data);
+        if (!validation.valid) return;
+
+        bulkSubmitBtn.disabled = true;
+        bulkSubmitBtn.textContent = 'Uploading...';
+
+        fetch('/admin/templates/bulk-upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ templates: result.data }),
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.success) {
+                var msg = data.error || 'Upload failed';
+                if (data.details) msg += '<br>' + data.details.map(function(d) { return '• ' + escapeHTML(d); }).join('<br>');
+                setBulkBorder('invalid');
+                bulkErrorDiv.innerHTML = msg; // nosemgrep: insecure-innerhtml, insecure-document-method
+                bulkErrorDiv.classList.remove('hidden');
+                return;
+            }
+            setBulkBorder('valid');
+            bulkSuccessDiv.textContent = 'Successfully uploaded ' + data.created + ' template(s). Reloading...';
+            bulkSuccessDiv.classList.remove('hidden');
+            setTimeout(function() { window.location.reload(); }, 1200);
+        })
+        .catch(function(err) {
+            setBulkBorder('invalid');
+            bulkErrorDiv.textContent = 'Request failed: ' + err.message;
+            bulkErrorDiv.classList.remove('hidden');
+        })
+        .finally(function() {
+            bulkSubmitBtn.disabled = false;
+            bulkSubmitBtn.textContent = 'Upload Templates';
+        });
+    }
+
+    // ── Bulk Select & Delete ──
+    (function() {
+        var selectAllCb = document.getElementById('select-all-cb');
+        var bulkBar = document.getElementById('bulk-actions-bar');
+        var bulkCount = document.getElementById('bulk-selected-count');
+        var bulkDeleteBtn = document.getElementById('bulk-delete-btn');
+        var bulkCancelBtn = document.getElementById('bulk-cancel-btn');
+        if (!selectAllCb || !bulkBar) return;
+
+        function getCheckboxes() {
+            return document.querySelectorAll('.template-cb');
+        }
+
+        function getSelectedIds() {
+            var ids = [];
+            getCheckboxes().forEach(function(cb) { if (cb.checked) ids.push(cb.dataset.id); });
+            return ids;
+        }
+
+        function updateBulkBar() {
+            var ids = getSelectedIds();
+            var cbs = getCheckboxes();
+            bulkCount.textContent = ids.length;
+            bulkBar.classList.toggle('hidden', ids.length === 0);
+            // Update select-all state
+            if (cbs.length > 0 && ids.length === cbs.length) {
+                selectAllCb.checked = true;
+                selectAllCb.indeterminate = false;
+            } else if (ids.length > 0) {
+                selectAllCb.checked = false;
+                selectAllCb.indeterminate = true;
+            } else {
+                selectAllCb.checked = false;
+                selectAllCb.indeterminate = false;
+            }
+        }
+
+        selectAllCb.addEventListener('change', function() {
+            var checked = this.checked;
+            getCheckboxes().forEach(function(cb) { cb.checked = checked; });
+            updateBulkBar();
+        });
+
+        document.addEventListener('change', function(e) {
+            if (e.target.classList.contains('template-cb')) updateBulkBar();
+        });
+
+        bulkCancelBtn.addEventListener('click', function() {
+            selectAllCb.checked = false;
+            selectAllCb.indeterminate = false;
+            getCheckboxes().forEach(function(cb) { cb.checked = false; });
+            updateBulkBar();
+        });
+
+        bulkDeleteBtn.addEventListener('click', function() {
+            var ids = getSelectedIds();
+            if (!ids.length) return;
+            if (!confirm('Delete ' + ids.length + ' template(s)? This cannot be undone.')) return;
+
+            bulkDeleteBtn.disabled = true;
+            bulkDeleteBtn.textContent = 'Deleting...';
+
+            fetch('/admin/templates/bulk-delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ template_ids: ids }),
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    ids.forEach(function(id) {
+                        var row = document.getElementById('row-' + id);
+                        if (row) row.remove();
+                    });
+                    selectAllCb.checked = false;
+                    selectAllCb.indeterminate = false;
+                    updateBulkBar();
+                    if (!document.querySelectorAll('.template-row').length) {
+                        window.location.reload();
+                    }
+                } else {
+                    alert(data.error || 'Bulk delete failed');
+                }
+            })
+            .catch(function(err) {
+                alert('Bulk delete failed: ' + err.message);
+            })
+            .finally(function() {
+                bulkDeleteBtn.disabled = false;
+                bulkDeleteBtn.textContent = 'Delete selected';
+            });
+        });
+    })();
+
+    // ── Drag-and-drop reordering ──
+    (function() {
+        var tbody = document.getElementById('templates-tbody');
+        if (!tbody) return;
+        var dragRow = null;
+
+        // Create a drop indicator line
+        var indicator = document.createElement('tr');
+        indicator.innerHTML = '<td colspan="6" style="padding:0;border:none;"><div style="height:3px;background:#0969da;border-radius:2px;margin:0 0.5rem;"></div></td>'; // nosemgrep: insecure-innerhtml, insecure-document-method
+        indicator.style.display = 'none';
+        indicator.id = 'drop-indicator';
+
+        tbody.addEventListener('dragstart', function(e) {
+            var row = e.target.closest('.template-row');
+            if (!row) return;
+            dragRow = row;
+            row.style.opacity = '0.4';
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', row.dataset.id);
+        });
+
+        tbody.addEventListener('dragend', function(e) {
+            if (dragRow) dragRow.style.opacity = '1';
+            dragRow = null;
+            indicator.style.display = 'none';
+            if (indicator.parentNode) indicator.parentNode.removeChild(indicator);
+        });
+
+        tbody.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            var target = e.target.closest('.template-row');
+            if (!target || target === dragRow) {
+                indicator.style.display = 'none';
+                return;
+            }
+            var rect = target.getBoundingClientRect();
+            var midY = rect.top + rect.height / 2;
+            indicator.style.display = '';
+            if (e.clientY < midY) {
+                tbody.insertBefore(indicator, target);
+            } else {
+                tbody.insertBefore(indicator, target.nextSibling);
+            }
+        });
+
+        tbody.addEventListener('dragleave', function(e) {
+            if (!tbody.contains(e.relatedTarget)) {
+                indicator.style.display = 'none';
+            }
+        });
+
+        tbody.addEventListener('drop', function(e) {
+            e.preventDefault();
+            var target = e.target.closest('.template-row');
+            if (!target || !dragRow || target === dragRow) return;
+            // Insert at indicator position
+            if (indicator.parentNode) {
+                tbody.insertBefore(dragRow, indicator);
+                indicator.parentNode.removeChild(indicator);
+            }
+            indicator.style.display = 'none';
+            // Save new order
+            var order = [];
+            tbody.querySelectorAll('.template-row').forEach(function(r) {
+                order.push(r.dataset.id);
+            });
+            fetch('/admin/templates/reorder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ order: order }),
+            }).then(function(r) { return r.json(); }).then(function(data) {
+                if (data.success) console.log('Templates reordered');
+            }).catch(function(err) {
+                console.error('Reorder failed:', err);
+            });
+        });
+    })();
 </script>
 {% endblock %}

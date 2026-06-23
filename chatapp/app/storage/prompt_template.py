@@ -162,6 +162,10 @@ class PromptTemplateStorageService:
             template_id = str(uuid.uuid4())
             now = datetime.utcnow().isoformat()
             
+            # Assign sort_order to max + 1 so new templates appear at the end
+            existing = await self.get_all_templates()
+            max_order = max((t.sort_order for t in existing), default=-1)
+            
             template = PromptTemplate(
                 template_id=template_id,
                 title=title,
@@ -169,6 +173,7 @@ class PromptTemplateStorageService:
                 prompt_detail=prompt_detail,
                 created_at=now,
                 updated_at=now,
+                sort_order=max_order + 1,
             )
             
             loop = asyncio.get_event_loop()
@@ -207,6 +212,54 @@ class PromptTemplateStorageService:
             Item=template.to_dynamodb_item(),
         )
 
+    async def create_template_with_id(
+        self,
+        template_id: str,
+        title: str,
+        description: str,
+        prompt_detail: str,
+        sort_order: int = 0,
+    ) -> Optional[PromptTemplate]:
+        """Create a template using a caller-supplied template_id.
+        
+        Used for bulk upload / seeding where IDs are provided by the caller
+        rather than auto-generated.
+        
+        Args:
+            template_id: Caller-supplied unique identifier
+            title: Display title for the template
+            description: Brief description
+            prompt_detail: The actual prompt text
+            sort_order: Integer for display ordering
+            
+        Returns:
+            Created PromptTemplate if successful, None otherwise
+        """
+        try:
+            now = datetime.utcnow().isoformat()
+            template = PromptTemplate(
+                template_id=template_id,
+                title=title,
+                description=description,
+                prompt_detail=prompt_detail,
+                created_at=now,
+                updated_at=now,
+                sort_order=sort_order,
+            )
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, self._put_item_sync, template)
+            logger.info(
+                "Created prompt template (with id)",
+                extra={"template_id": template_id, "title": title},
+            )
+            return template
+        except Exception as e:
+            logger.error(
+                "Failed to create template with id",
+                extra={"template_id": template_id, "error": str(e)},
+            )
+            return None
+
     async def update_template(
         self,
         template_id: str,
@@ -244,6 +297,7 @@ class PromptTemplateStorageService:
                 prompt_detail=prompt_detail,
                 created_at=existing.created_at,
                 updated_at=now,
+                sort_order=existing.sort_order,
             )
             
             loop = asyncio.get_event_loop()
@@ -317,4 +371,36 @@ class PromptTemplateStorageService:
         self._client.delete_item(
             TableName=self.table_name,
             Key={"template_id": {"S": template_id}},
+        )
+
+    async def update_sort_order(self, template_id: str, sort_order: int) -> None:
+        """Update only the sort_order field for a template.
+        
+        Args:
+            template_id: The template ID to update
+            sort_order: New sort order value
+        """
+        try:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None, self._update_sort_order_sync, template_id, sort_order
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to update sort_order",
+                extra={"template_id": template_id, "error": str(e)},
+            )
+
+    def _update_sort_order_sync(self, template_id: str, sort_order: int) -> None:
+        """Synchronous helper to update the sort_order attribute.
+        
+        Args:
+            template_id: The template ID to update
+            sort_order: New sort order value
+        """
+        self._client.update_item(
+            TableName=self.table_name,
+            Key={"template_id": {"S": template_id}},
+            UpdateExpression="SET sort_order = :so",
+            ExpressionAttributeValues={":so": {"N": str(sort_order)}},
         )
