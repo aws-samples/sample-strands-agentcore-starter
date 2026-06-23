@@ -10,7 +10,7 @@ from app.storage.app_settings import AppSettingsStorageService
 
 # Default values
 DEFAULT_APP_TITLE = "Chat Agent"
-DEFAULT_APP_SUBTITLE = "Bedrock AgentCore + Strands Agents SDK"
+DEFAULT_APP_SUBTITLE = "Mantle | AgentCore | Strands"
 DEFAULT_LOGO_URL = "/static/favicon.svg"
 DEFAULT_CHAT_LOGO_URL = "/static/chat-placeholder.svg"
 DEFAULT_WELCOME_MESSAGE = "Start a conversation by typing a message below"
