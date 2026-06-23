@@ -129,7 +129,7 @@
                         {% for model in model_stats %}
                         <tr class="hover:bg-gray-50">
                             <td class="px-6 py-4 whitespace-nowrap">
-                                <div class="text-sm font-medium text-gray-900">{{ model.model_id.split('.')[-1] if '.' in model.model_id else model.model_id }}</div>
+                                <div class="text-sm font-medium text-gray-900">{{ model.model_id|model_name }}</div>
                                 <div class="text-xs text-gray-500">{{ model.model_id }}</div>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-900">{{ "{:,}".format(model.input_tokens) }}</td>

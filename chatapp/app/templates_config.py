@@ -22,6 +22,19 @@ TEMPLATES_DIR = BASE_DIR / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
+def _model_display_name(model_id: str) -> str:
+    """Jinja2 filter to convert a model ID to its display name from the catalog."""
+    from app.helpers.model_catalog import get_models
+    for m in get_models():
+        if m.get("id") == model_id:
+            return m.get("name", model_id)
+    # Fallback: strip provider prefix (e.g. "anthropic.claude-haiku-4-5" → "claude-haiku-4-5")
+    return model_id.split(".", 1)[-1] if "." in model_id else model_id
+
+
+templates.env.filters["model_name"] = _model_display_name
+
+
 async def init_template_globals():
     """Initialize template global variables with app settings.
     

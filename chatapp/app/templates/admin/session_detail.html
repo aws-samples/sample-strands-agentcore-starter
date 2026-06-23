@@ -181,7 +181,7 @@
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                                    {{ record.model_id.split('.')[-1][:25] if '.' in record.model_id else record.model_id[:25] }}
+                                    {{ record.model_id|model_name }}
                                 </span>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-500">
