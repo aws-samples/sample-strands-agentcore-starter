@@ -4,6 +4,7 @@ This module provides routes for the admin dashboard that displays
 usage statistics, cost analysis, and projections.
 """
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
@@ -114,17 +115,25 @@ async def dashboard(
     feedback_repo = FeedbackRepository()
     runtime_repo = RuntimeUsageRepository()
     
-    # OPTIMIZATION: Fetch usage records once and reuse for all computations
-    records = await repository.get_all_records(start_dt, end_dt)
+    # OPTIMIZATION: the usage scan, runtime scan, guardrail scan and feedback
+    # scan are independent, so run them concurrently instead of sequentially.
+    # (Each repository call offloads its blocking boto3 work to a thread, so
+    # asyncio.gather genuinely parallelizes them.)
+    records, runtime_stats, guardrail_stats, feedback_stats = await asyncio.gather(
+        repository.get_all_records(start_dt, end_dt),
+        runtime_repo.get_aggregate_stats(start_dt, end_dt),
+        guardrail_repo.get_aggregate_stats(start_dt, end_dt),
+        feedback_repo.get_feedback_stats(start_dt, end_dt),
+    )
     
     # Compute all stats from the same record set (no additional DB queries)
     aggregate_stats = repository.compute_aggregate_stats(records, start_dt, end_dt)
     user_stats = repository.compute_stats_by_user(records)
     tool_stats = repository.compute_tool_analytics(records)
     model_stats = repository.compute_stats_by_model(records)
-    
-    # Fetch runtime usage stats
-    runtime_stats = await runtime_repo.get_aggregate_stats(start_dt, end_dt)
+    # Per-day series for the trend chart (computed from the same records,
+    # so it adds no extra DynamoDB queries to the page load)
+    daily_series = repository.compute_daily_series(records, start_dt, end_dt)
     
     # Get top 5 for each category
     top_users = user_stats[:5]
@@ -135,13 +144,9 @@ async def dashboard(
         reverse=True,
     )[:5]
     
-    # Fetch user emails for top users
+    # Fetch user emails for top users (cached + concurrent under the hood)
     user_ids = [user.user_id for user in top_users]
     user_emails = await get_user_emails_by_ids(user_ids)
-    
-    # Fetch guardrails and feedback stats (separate tables)
-    guardrail_stats = await guardrail_repo.get_aggregate_stats(start_dt, end_dt)
-    feedback_stats = await feedback_repo.get_feedback_stats(start_dt, end_dt)
     
     # Calculate tool totals for summary card
     total_tool_calls = sum(t.call_count for t in tool_stats)
@@ -177,6 +182,7 @@ async def dashboard(
             "total_tool_success": total_tool_success,
             "total_tool_errors": total_tool_errors,
             "tool_success_rate": tool_success_rate,
+            "daily_series": daily_series,
             "start_time": start_dt.isoformat(),
             "end_time": end_dt.isoformat(),
             "days_in_period": days_in_period,
@@ -258,32 +264,30 @@ async def user_analytics(
     repository = UsageRepository()
     runtime_repo = RuntimeUsageRepository()
     
-    # Fetch user stats (with optional search)
-    if search and search.strip():
-        user_stats = await repository.search_users(search.strip(), start_dt, end_dt)
-    else:
-        user_stats = await repository.get_stats_by_user(start_dt, end_dt)
+    # Fetch usage records once and per-session runtime costs concurrently.
+    # (Previously this page scanned the usage table twice and issued one
+    # runtime query per session; now it's one usage scan + one runtime scan.)
+    all_records, session_runtime_costs = await asyncio.gather(
+        repository.get_all_records(start_dt, end_dt),
+        runtime_repo.get_runtime_costs_in_range(start_dt, end_dt),
+    )
     
-    # Fetch user emails from Cognito
+    # Compute user stats from the already-fetched records (no extra scan)
+    user_stats = repository.compute_stats_by_user(all_records)
+    if search and search.strip():
+        query_lower = search.strip().lower()
+        user_stats = [u for u in user_stats if query_lower in u.user_id.lower()]
+    
+    # Fetch user emails from Cognito (cached + concurrent under the hood)
     user_ids = [user.user_id for user in user_stats]
     user_emails = await get_user_emails_by_ids(user_ids)
     
-    # Fetch all records to get session IDs per user
-    all_records = await repository.get_all_records(start_dt, end_dt)
+    # Map session IDs per user from the same records
     user_sessions: Dict[str, set] = {}
     for record in all_records:
         if record.user_id not in user_sessions:
             user_sessions[record.user_id] = set()
         user_sessions[record.user_id].add(record.session_id)
-    
-    # Fetch runtime costs for all sessions
-    all_session_ids = set()
-    for session_ids in user_sessions.values():
-        all_session_ids.update(session_ids)
-    
-    session_runtime_costs = await runtime_repo.get_runtime_costs_for_sessions(
-        list(all_session_ids)
-    )
     
     # Calculate total runtime cost per user
     user_runtime_costs: Dict[str, float] = {}
@@ -604,24 +608,21 @@ async def user_detail(
     cost_calculator = CostCalculator()
     runtime_repo = RuntimeUsageRepository()
     
-    # Fetch user stats
-    user_stats = await repository.get_user_detail(user_id, start_dt, end_dt)
+    # Fetch this user's records via a direct partition-key Query (user_id is
+    # the table PK), instead of scanning the whole table and filtering in
+    # Python. Compute the user's stats from those same records.
+    user_records = await repository.get_records_by_user(user_id, start_dt, end_dt)
+    user_stats_list = repository.compute_stats_by_user(user_records)
+    user_stats = user_stats_list[0] if user_stats_list else None
     
-    # Fetch all records for this user to get session details
-    all_records = await repository.get_all_records(start_dt, end_dt)
-    user_records = [r for r in all_records if r.user_id == user_id]
-    
-    # Fetch runtime stats for all sessions this user has
+    # Fetch runtime costs for this user's sessions concurrently (parallel
+    # per-session queries rather than a sequential loop).
     session_ids = list(set(r.session_id for r in user_records))
-    session_runtime_stats = {}
-    for session_id in session_ids:
-        stats = await runtime_repo.get_session_runtime_stats(session_id)
-        if stats:
-            session_runtime_stats[session_id] = stats
+    session_runtime_costs = await runtime_repo.get_runtime_costs_for_sessions(session_ids)
     
     # Calculate total runtime cost for user
     total_runtime_cost = sum(
-        float(s.runtime_cost) for s in session_runtime_stats.values()
+        float(cost) for cost in session_runtime_costs.values()
     )
     
     # Group records by session
@@ -666,8 +667,8 @@ async def user_detail(
     
     # Add runtime costs to sessions and calculate total cost
     for session_id, session in sessions.items():
-        if session_id in session_runtime_stats:
-            session["runtime_cost"] = float(session_runtime_stats[session_id].runtime_cost)
+        if session_id in session_runtime_costs:
+            session["runtime_cost"] = float(session_runtime_costs[session_id])
         session["total_cost"] = session["token_cost"] + session["runtime_cost"]
     
     # Convert sets to lists for template
@@ -833,8 +834,13 @@ async def chat_history(
     cost_calculator = CostCalculator()
     runtime_repo = RuntimeUsageRepository()
     
-    # Fetch all records in time range
-    all_records = await repository.get_all_records(start_dt, end_dt)
+    # Fetch usage records and per-session runtime costs concurrently.
+    # Runtime costs come from a single range scan (was an N+1: one query
+    # per session) so cost scales with table size, not session count.
+    all_records, session_runtime_costs = await asyncio.gather(
+        repository.get_all_records(start_dt, end_dt),
+        runtime_repo.get_runtime_costs_in_range(start_dt, end_dt),
+    )
     
     # Group records by session
     sessions: Dict[str, Dict[str, Any]] = {}
@@ -875,11 +881,7 @@ async def chat_history(
         if record.timestamp > session["last_timestamp"]:
             session["last_timestamp"] = record.timestamp
     
-    # Fetch runtime costs for all sessions
-    session_ids = list(sessions.keys())
-    session_runtime_costs = await runtime_repo.get_runtime_costs_for_sessions(session_ids)
-    
-    # Add runtime costs to sessions
+    # Add runtime costs to sessions (fetched above in a single range scan)
     for session_id, session in sessions.items():
         session["runtime_cost"] = float(session_runtime_costs.get(session_id, 0))
         session["total_cost"] = session["token_cost"] + session["runtime_cost"]

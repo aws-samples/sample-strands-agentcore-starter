@@ -294,6 +294,11 @@ async def update_settings(
         )
         logger.info("Reset chat logo to default")
     
+    # Invalidate the cached app settings so the next read (and the template
+    # globals refresh below) picks up the freshly-saved values immediately.
+    from app.helpers.settings import invalidate_settings_cache
+    invalidate_settings_cache()
+
     # Refresh template globals with updated settings
     await init_template_globals()
     logger.info("Refreshed template globals after settings update")

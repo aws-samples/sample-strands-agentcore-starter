@@ -21,6 +21,7 @@ class PromptTemplate:
         prompt_detail: The actual prompt text to insert
         created_at: ISO 8601 timestamp
         updated_at: ISO 8601 timestamp
+        sort_order: Integer for display ordering (lower = first)
     """
     template_id: str
     title: str
@@ -28,6 +29,7 @@ class PromptTemplate:
     prompt_detail: str
     created_at: str
     updated_at: str
+    sort_order: int = 0
     
     def to_dynamodb_item(self) -> Dict[str, Any]:
         """Convert to DynamoDB item format.
@@ -40,6 +42,7 @@ class PromptTemplate:
             "title": {"S": self.title},
             "description": {"S": self.description},
             "prompt_detail": {"S": self.prompt_detail},
+            "sort_order": {"N": str(self.sort_order)},
             "created_at": {"S": self.created_at},
             "updated_at": {"S": self.updated_at},
         }
@@ -59,6 +62,7 @@ class PromptTemplate:
             title=item.get("title", {}).get("S", ""),
             description=item.get("description", {}).get("S", ""),
             prompt_detail=item.get("prompt_detail", {}).get("S", ""),
+            sort_order=int(item.get("sort_order", {}).get("N", "0")),
             created_at=item.get("created_at", {}).get("S", ""),
             updated_at=item.get("updated_at", {}).get("S", ""),
         )
@@ -74,6 +78,7 @@ class PromptTemplate:
             "title": self.title,
             "description": self.description,
             "prompt_detail": self.prompt_detail,
+            "sort_order": self.sort_order,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }

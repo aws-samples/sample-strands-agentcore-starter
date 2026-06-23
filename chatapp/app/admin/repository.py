@@ -26,6 +26,22 @@ from app.admin.cost_calculator import CostCalculator
 
 logger = logging.getLogger(__name__)
 
+# Short-TTL cache for range fetches, shared across admin pages that request
+# the same window. Keyed by (table, start-minute, end-minute) so the "live"
+# range (end = now) still hits within the same minute.
+import time as _time
+
+_RECORDS_CACHE: Dict[tuple, tuple] = {}
+_RECORDS_CACHE_TTL_SECONDS = 60
+
+
+def _range_cache_key(table_name: str, start_time: datetime, end_time: datetime) -> tuple:
+    return (
+        table_name,
+        start_time.replace(second=0, microsecond=0).isoformat(),
+        end_time.replace(second=0, microsecond=0).isoformat(),
+    )
+
 
 class UsageRepository:
     """Repository for querying usage analytics data.
@@ -80,15 +96,47 @@ class UsageRepository:
         Returns:
             List of usage records within the time range
         """
+        # Serve from the short-TTL cache when possible.
+        cache_key = _range_cache_key(self.table_name, start_time, end_time)
+        cached = _RECORDS_CACHE.get(cache_key)
+        if cached is not None and cached[0] > _time.time():
+            return cached[1]
+
         try:
             loop = asyncio.get_event_loop()
-            items = await loop.run_in_executor(
-                None,
-                self._scan_by_time_range,
-                start_time.isoformat(),
-                end_time.isoformat(),
-            )
-            return [UsageRecord.from_dynamodb_item(item) for item in items]
+            # Prefer the time-based `date-index` GSI: Query a small set of day
+            # partitions for the range instead of scanning the whole table.
+            items: List[dict] = []
+            try:
+                items = await loop.run_in_executor(
+                    None,
+                    self._query_by_date_range,
+                    start_time,
+                    end_time,
+                )
+            except ClientError as gsi_err:
+                # The index may not exist yet (e.g. before the CDK stack is
+                # redeployed). Degrade gracefully to a scan instead of failing.
+                logger.warning(
+                    "date-index query failed; falling back to scan",
+                    extra={
+                        "error_code": gsi_err.response.get("Error", {}).get("Code"),
+                    },
+                )
+                items = []
+            # Fall back to a full scan when the index returns nothing, which
+            # also covers legacy records written before `date_partition`
+            # existed (a no-op extra call when the table is simply empty).
+            if not items:
+                items = await loop.run_in_executor(
+                    None,
+                    self._scan_by_time_range,
+                    start_time.isoformat(),
+                    end_time.isoformat(),
+                )
+            records = [UsageRecord.from_dynamodb_item(item) for item in items]
+            _RECORDS_CACHE[cache_key] = (_time.time() + _RECORDS_CACHE_TTL_SECONDS, records)
+            return records
         except ClientError as e:
             logger.error(
                 "Failed to scan usage records",
@@ -133,6 +181,54 @@ class UsageRepository:
         ):
             items.extend(page.get("Items", []))
         
+        return items
+
+    def _query_by_date_range(
+        self,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> List[dict]:
+        """Query the `date-index` GSI for each UTC day in the range.
+
+        Each day partition is queried with a timestamp BETWEEN condition so
+        the first/last days are trimmed to the exact range. This replaces a
+        full-table Scan with a bounded number of indexed Queries (one per day).
+
+        Args:
+            start_time: Start of the range (inclusive)
+            end_time: End of the range (inclusive)
+
+        Returns:
+            List of DynamoDB items across the day partitions
+        """
+        from datetime import timedelta
+
+        start_iso = start_time.isoformat()
+        end_iso = end_time.isoformat()
+        items: List[dict] = []
+        paginator = self._client.get_paginator("query")
+
+        cursor = start_time.date()
+        end_date = end_time.date()
+        # Safety cap mirrors compute_daily_series; avoids pathological ranges.
+        for _ in range(367):
+            if cursor > end_date:
+                break
+            day_key = cursor.isoformat()
+            for page in paginator.paginate(
+                TableName=self.table_name,
+                IndexName="date-index",
+                KeyConditionExpression="date_partition = :d AND #ts BETWEEN :start AND :end",
+                ExpressionAttributeNames={"#ts": "timestamp"},
+                ExpressionAttributeValues={
+                    ":d": {"S": day_key},
+                    ":start": {"S": start_iso},
+                    ":end": {"S": end_iso},
+                },
+            ):
+                items.extend(page.get("Items", []))
+            cursor += timedelta(days=1)
+
         return items
 
     def compute_aggregate_stats(
@@ -204,6 +300,61 @@ class UsageRepository:
         """
         records = await self.get_all_records(start_time, end_time)
         return self.compute_aggregate_stats(records, start_time, end_time)
+
+    def compute_daily_series(
+        self,
+        records: List[UsageRecord],
+        start_time: datetime,
+        end_time: datetime,
+    ) -> List[Dict[str, float]]:
+        """Bucket usage records into per-day totals for trend charts.
+
+        Computed from already-fetched records, so this adds no extra
+        DynamoDB queries to the page load.
+
+        Args:
+            records: Usage records to bucket (already fetched for the range)
+            start_time: Start of the range (inclusive)
+            end_time: End of the range (inclusive)
+
+        Returns:
+            Ordered list of dicts, one per calendar day in the range, each
+            with keys: date (YYYY-MM-DD), cost, tokens, invocations.
+        """
+        from datetime import timedelta
+
+        buckets: Dict[str, Dict[str, float]] = defaultdict(
+            lambda: {"cost": 0.0, "tokens": 0, "invocations": 0}
+        )
+        for r in records:
+            day = (r.timestamp or "")[:10]
+            if not day:
+                continue
+            bucket = buckets[day]
+            bucket["cost"] += self.cost_calculator.calculate_cost(
+                r.input_tokens, r.output_tokens, r.model_id
+            )
+            bucket["tokens"] += r.total_tokens
+            bucket["invocations"] += 1
+
+        series: List[Dict[str, float]] = []
+        cursor = start_time.date()
+        end_date = end_time.date()
+        # Safety cap to avoid pathological ranges blowing up the payload
+        for _ in range(367):
+            if cursor > end_date:
+                break
+            key = cursor.isoformat()
+            bucket = buckets.get(key, {"cost": 0.0, "tokens": 0, "invocations": 0})
+            series.append({
+                "date": key,
+                "cost": round(float(bucket["cost"]), 6),
+                "tokens": int(bucket["tokens"]),
+                "invocations": int(bucket["invocations"]),
+            })
+            cursor += timedelta(days=1)
+
+        return series
 
 
     def compute_stats_by_model(
@@ -449,6 +600,74 @@ class UsageRepository:
                 return user
         
         return None
+
+    async def get_records_by_user(
+        self,
+        user_id: str,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> List[UsageRecord]:
+        """Get a single user's records via a partition-key Query.
+
+        ``user_id`` is the table partition key and ``timestamp`` the sort key,
+        so this is a direct Query rather than a full-table Scan + Python filter.
+
+        Args:
+            user_id: The user ID (partition key) to query
+            start_time: Start of the time range (inclusive)
+            end_time: End of the time range (inclusive)
+
+        Returns:
+            List of usage records for the user within the range
+        """
+        try:
+            loop = asyncio.get_event_loop()
+            items = await loop.run_in_executor(
+                None,
+                self._query_by_user_sync,
+                user_id,
+                start_time.isoformat(),
+                end_time.isoformat(),
+            )
+            return [UsageRecord.from_dynamodb_item(item) for item in items]
+        except ClientError as e:
+            logger.error(
+                "Failed to query user records",
+                extra={
+                    "user_id": user_id,
+                    "error_code": e.response.get("Error", {}).get("Code"),
+                    "error_message": str(e),
+                },
+            )
+            return []
+        except Exception as e:
+            logger.error(
+                "Failed to query user records (unexpected error)",
+                extra={"user_id": user_id, "error": str(e)},
+            )
+            return []
+
+    def _query_by_user_sync(
+        self,
+        user_id: str,
+        start_time_iso: str,
+        end_time_iso: str,
+    ) -> List[dict]:
+        """Synchronous helper to query the main table by user_id partition key."""
+        items = []
+        paginator = self._client.get_paginator("query")
+        for page in paginator.paginate(
+            TableName=self.table_name,
+            KeyConditionExpression="user_id = :uid AND #ts BETWEEN :start AND :end",
+            ExpressionAttributeNames={"#ts": "timestamp"},
+            ExpressionAttributeValues={
+                ":uid": {"S": user_id},
+                ":start": {"S": start_time_iso},
+                ":end": {"S": end_time_iso},
+            },
+        ):
+            items.extend(page.get("Items", []))
+        return items
 
     async def get_session_records(
         self,

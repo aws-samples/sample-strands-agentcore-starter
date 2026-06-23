@@ -17,21 +17,24 @@
     {% include "components/header.html" %}
 
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <!-- Time Range Selector -->
-        <div class="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-            <div class="flex flex-wrap items-center gap-4">
-                <span class="text-sm font-medium text-gray-700">Time Range:</span>
-                <div class="flex gap-2" id="preset-buttons">
+        <!-- Heading + Time Range -->
+        <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-7">
+            <div>
+                <p class="text-xs font-mono uppercase tracking-[0.2em] mb-1" style="color: var(--text-subtle);">Safety</p>
+                <h1 class="font-display text-2xl sm:text-3xl font-bold" style="color: var(--text);">Guardrail Violations</h1>
+            </div>
+            <div class="card p-2 flex flex-wrap items-center gap-2">
+                <div class="flex gap-1" id="preset-buttons">
                     <button onclick="setTimeRange(1)" id="btn-1" class="px-3 py-1.5 text-sm rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">Today</button>
                     <button onclick="setTimeRange(7)" id="btn-7" class="px-3 py-1.5 text-sm rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">7 Days</button>
                     <button onclick="setTimeRange(30)" id="btn-30" class="px-3 py-1.5 text-sm rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors">30 Days</button>
                 </div>
-                <div class="flex items-center gap-2 ml-auto">
-                    <label class="text-xs text-gray-500">From:</label>
-                    <input type="date" id="start-date" class="px-2 py-1 text-sm border border-gray-300 rounded-md" value="{{ start_time[:10] }}">
-                    <label class="text-xs text-gray-500">To:</label>
-                    <input type="date" id="end-date" class="px-2 py-1 text-sm border border-gray-300 rounded-md" value="{{ end_time[:10] }}">
-                    <button onclick="applyCustomRange()" class="px-3 py-1.5 text-sm rounded-md bg-primary-600 hover:bg-primary-700 text-white transition-colors">Apply</button>
+                <div class="h-5 w-px" style="background: var(--border);"></div>
+                <div class="flex items-center gap-2">
+                    <input type="date" id="start-date" class="px-2 py-1 text-sm rounded-md font-mono" style="background: var(--surface-2); border: 1px solid var(--border); color: var(--text);" value="{{ start_time[:10] }}">
+                    <span class="text-xs" style="color: var(--text-subtle);">→</span>
+                    <input type="date" id="end-date" class="px-2 py-1 text-sm rounded-md font-mono" style="background: var(--surface-2); border: 1px solid var(--border); color: var(--text);" value="{{ end_time[:10] }}">
+                    <button onclick="applyCustomRange()" class="px-3 py-1.5 text-sm rounded-lg bg-primary-600 hover:bg-primary-700 text-white font-medium transition-colors">Apply</button>
                 </div>
             </div>
         </div>

@@ -32,7 +32,39 @@ class CostCalculator:
             pricing: Optional custom pricing dictionary. Defaults to MODEL_PRICING.
         """
         self.pricing = pricing or MODEL_PRICING
-    
+
+    def _resolve_rates(self, model_id: str) -> Dict[str, float]:
+        """Resolve pricing rates for a model id.
+
+        Handles both the short catalog ids used by the model selector
+        (e.g. ``anthropic.claude-haiku-4-5``) and fully-qualified Bedrock
+        model ids (e.g. ``global.anthropic.claude-haiku-4-5-20251001-v1:0``),
+        which embed a region prefix and version suffix. When there's no exact
+        match, the longest catalog id that appears within the given model id
+        wins, so a fully-qualified id still maps to the right pricing instead
+        of silently costing $0.
+
+        Args:
+            model_id: The model identifier to price
+
+        Returns:
+            The pricing dict for the model, or DEFAULT_PRICING if unknown.
+        """
+        if not model_id:
+            return DEFAULT_PRICING
+        # Exact match (the common case for catalog ids)
+        rates = self.pricing.get(model_id)
+        if rates is not None:
+            return rates
+        # Fall back to the longest catalog id contained in the model id
+        best_key = None
+        for key in self.pricing:
+            if key and key in model_id and (best_key is None or len(key) > len(best_key)):
+                best_key = key
+        if best_key is not None:
+            return self.pricing[best_key]
+        return DEFAULT_PRICING
+
     def calculate_cost(
         self,
         input_tokens: int,
@@ -52,7 +84,7 @@ class CostCalculator:
         Returns:
             Cost in USD
         """
-        rates = self.pricing.get(model_id, DEFAULT_PRICING)
+        rates = self._resolve_rates(model_id)
         
         input_cost = (input_tokens / 1_000_000) * rates["input"]
         output_cost = (output_tokens / 1_000_000) * rates["output"]
@@ -90,4 +122,4 @@ class CostCalculator:
         Returns:
             Dictionary with 'input' and 'output' rates per 1M tokens
         """
-        return self.pricing.get(model_id, DEFAULT_PRICING)
+        return self._resolve_rates(model_id)

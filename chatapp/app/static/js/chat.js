@@ -112,10 +112,56 @@ loadMemoryCacheFromStorage();
 // model, edit models.json. Pricing is USD per 1M tokens.
 const _MODEL_CATALOG = (typeof window !== 'undefined' && window.__MODEL_CATALOG__) || { default_model_id: '', models: [] };
 
+/**
+ * Display names for model providers, keyed by the model id prefix
+ * (e.g. "anthropic.claude-opus-4-8" -> "Anthropic"). Matches the provider
+ * grouping on the AWS Bedrock model cards page.
+ */
+const MODEL_PROVIDERS = {
+    anthropic: 'Anthropic',
+    deepseek: 'DeepSeek',
+    google: 'Google',
+    minimax: 'MiniMax',
+    mistral: 'Mistral AI',
+    moonshotai: 'Moonshot AI',
+    nvidia: 'NVIDIA',
+    openai: 'OpenAI',
+    qwen: 'Qwen',
+    writer: 'Writer',
+    xai: 'xAI',
+    zai: 'Z.AI'
+};
+
+/**
+ * Derive the provider display name from a model id prefix.
+ *
+ * @param {string} id - Model identifier (e.g. "google.gemma-4-31b")
+ * @returns {string} Provider display name, or '' if unknown
+ */
+function getModelProvider(id) {
+    const prefix = String(id || '').split('.')[0];
+    return MODEL_PROVIDERS[prefix] || '';
+}
+
+/**
+ * Derive the provider logo URL from a model id prefix. Logos are stored
+ * locally under /static/img/providers/<prefix>.png (sourced from the AWS
+ * Bedrock model cards page).
+ *
+ * @param {string} id - Model identifier (e.g. "nvidia.nemotron-nano-9b-v2")
+ * @returns {string} Logo URL, or '' if the provider is unknown
+ */
+function getModelLogo(id) {
+    const prefix = String(id || '').split('.')[0];
+    return MODEL_PROVIDERS[prefix] ? `/static/img/providers/${prefix}.png` : '';
+}
+
 const AVAILABLE_MODELS = (_MODEL_CATALOG.models || []).map(function (m) {
     return {
         id: m.id,
         name: m.name,
+        provider: getModelProvider(m.id),
+        logo: getModelLogo(m.id),
         description: "IN [$" + Number(m.input).toFixed(2) + "] - OUT [$" + Number(m.output).toFixed(2) + "]"
     };
 });
@@ -125,11 +171,11 @@ const AVAILABLE_MODELS = (_MODEL_CATALOG.models || []).map(function (m) {
  * 
  * Requirements: 10.8
  */
-const DEFAULT_MODEL_ID = _MODEL_CATALOG.default_model_id || "global.amazon.nova-2-lite-v1:0";
+const DEFAULT_MODEL_ID = _MODEL_CATALOG.default_model_id || "anthropic.claude-haiku-4-5";
 
 /**
  * Get the currently selected model from localStorage.
- * Returns the default model (Nova 2 Lite) if no selection is stored.
+ * Returns the catalog default model if no selection is stored.
  * 
  * @returns {Object} The selected model object with id, name, description
  * 
@@ -145,7 +191,7 @@ function getSelectedModel() {
         }
     }
     
-    // Return default model (Nova 2 Lite)
+    // Return catalog default model
     return AVAILABLE_MODELS.find(m => m.id === DEFAULT_MODEL_ID) || AVAILABLE_MODELS[0];
 }
 
@@ -235,36 +281,53 @@ function populateModelOptions() {
         
         const option = document.createElement('button');
         option.type = 'button';
-        option.className = `w-full px-3 py-2 text-left hover:bg-gray-50 transition-colors flex items-start gap-3 ${isSelected ? 'bg-primary-50' : ''}`;
+        // Selection is indicated by a subtle left accent border + tinted
+        // background. A transparent border on every row keeps widths aligned
+        // so there's no layout shift between selected/unselected rows.
+        option.className = `w-full pr-3 py-2 text-left hover:bg-gray-50 transition-colors flex items-center gap-3 border-l-2 ${isSelected ? 'bg-primary-50 border-primary-500 pl-2.5' : 'border-transparent pl-2.5'}`;
         option.onclick = () => selectModel(model.id);
-        
-        // Create checkmark indicator
-        const checkmark = document.createElement('div');
-        checkmark.className = 'w-5 h-5 flex-shrink-0 mt-0.5';
-        if (isSelected) {
-            checkmark.innerHTML = `
-                <svg class="w-5 h-5 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-            `;
-        }
-        
-        // Create model info
+
+        // Row layout: provider logo on the left, then a text column with the
+        // full-width model name on top and the provider + pricing sharing the
+        // line beneath it (so the name never needs to truncate).
         const info = document.createElement('div');
-        info.className = 'flex-1 min-w-0 flex items-center justify-between gap-2';
-        
-        const name = document.createElement('span');
+        info.className = 'flex-1 min-w-0 flex items-center gap-2.5';
+
+        if (model.logo) {
+            const logo = document.createElement('img');
+            logo.src = model.logo;
+            logo.alt = model.provider ? `${model.provider} logo` : '';
+            logo.className = 'w-6 h-6 flex-shrink-0 rounded object-contain';
+            // Hide gracefully if the logo asset is missing.
+            logo.onerror = () => { logo.style.display = 'none'; };
+            info.appendChild(logo);
+        }
+
+        const textCol = document.createElement('div');
+        textCol.className = 'flex-1 min-w-0';
+
+        const name = document.createElement('div');
         name.className = `text-sm font-medium ${isSelected ? 'text-primary-700' : 'text-gray-900'}`;
         name.textContent = model.name;
-        
+        textCol.appendChild(name);
+
+        // Provider (left) + pricing (right) share the second line.
+        const metaRow = document.createElement('div');
+        metaRow.className = 'flex items-center justify-between gap-2';
+
+        const provider = document.createElement('span');
+        provider.className = 'text-xs text-gray-500 truncate';
+        provider.textContent = model.provider || '';
+        metaRow.appendChild(provider);
+
         const cost = document.createElement('span');
-        cost.className = 'text-xs text-gray-400 whitespace-nowrap';
+        cost.className = 'text-xs text-gray-600 whitespace-nowrap';
         cost.textContent = model.description;
-        
-        info.appendChild(name);
-        info.appendChild(cost);
-        
-        option.appendChild(checkmark);
+        metaRow.appendChild(cost);
+
+        textCol.appendChild(metaRow);
+        info.appendChild(textCol);
+
         option.appendChild(info);
         optionsContainer.appendChild(option);
     });
@@ -323,6 +386,26 @@ function updateModelSelectorUI() {
     
     if (nameSpan) {
         nameSpan.textContent = selectedModel.name;
+    }
+
+    // Swap the generic AI icon for the selected model's provider logo.
+    const logoImg = document.getElementById('selected-model-logo');
+    const iconSvg = document.getElementById('selected-model-icon');
+    if (logoImg && iconSvg) {
+        if (selectedModel && selectedModel.logo) {
+            logoImg.src = selectedModel.logo;
+            logoImg.alt = selectedModel.provider ? `${selectedModel.provider} logo` : '';
+            logoImg.classList.remove('hidden');
+            iconSvg.classList.add('hidden');
+            // Fall back to the generic icon if the logo asset fails to load.
+            logoImg.onerror = () => {
+                logoImg.classList.add('hidden');
+                iconSvg.classList.remove('hidden');
+            };
+        } else {
+            logoImg.classList.add('hidden');
+            iconSvg.classList.remove('hidden');
+        }
     }
 }
 
@@ -630,6 +713,66 @@ function clearAndCreateNewSession() {
 }
 
 /**
+ * Build the chat empty-state element using safe DOM APIs.
+ *
+ * Single source of truth for the empty state shared between the
+ * server-rendered markup in chat.html and the JS-rendered "new chat"
+ * state, so the two stay visually identical in both light and dark themes.
+ *
+ * @returns {HTMLElement} The #empty-state element
+ */
+function buildChatEmptyState() {
+    const emptyState = document.createElement('div');
+    emptyState.id = 'empty-state';
+    emptyState.className = 'flex items-center justify-center h-full p-8';
+
+    const inner = document.createElement('div');
+    inner.className = 'text-center max-w-lg rise-in';
+
+    // Logo with soft glow
+    const logoContainer = document.createElement('div');
+    logoContainer.className = 'mb-7 flex justify-center';
+    const logoRelative = document.createElement('div');
+    logoRelative.className = 'relative';
+    const glow = document.createElement('div');
+    glow.className = 'absolute inset-0 blur-2xl opacity-40 rounded-full';
+    glow.style.background = 'radial-gradient(circle, var(--primary), transparent 70%)';
+    const logoImg = document.createElement('img');
+    logoImg.src = window.chatLogoUrl || '/static/chat-placeholder.svg';
+    logoImg.alt = 'Chat Logo';
+    logoImg.className = 'relative w-24 h-24 rounded-2xl shadow-lg';
+    logoRelative.appendChild(glow);
+    logoRelative.appendChild(logoImg);
+    logoContainer.appendChild(logoRelative);
+    inner.appendChild(logoContainer);
+
+    // Greeting (only when the user email is available)
+    if (window.userEmail) {
+        const eyebrow = document.createElement('p');
+        eyebrow.className = 'text-xs font-mono uppercase tracking-[0.2em] mb-3';
+        eyebrow.style.color = 'var(--text-subtle)';
+        eyebrow.textContent = 'Welcome back';
+        inner.appendChild(eyebrow);
+
+        const name = document.createElement('h2');
+        name.className = 'font-display text-2xl sm:text-3xl font-bold mb-3';
+        name.style.color = 'var(--text)';
+        name.textContent = String(window.userEmail).split('@')[0];
+        inner.appendChild(name);
+    }
+
+    // Instruction text (configurable welcome message)
+    const instructionP = document.createElement('p');
+    instructionP.className = 'text-base leading-relaxed';
+    instructionP.style.color = 'var(--text-muted)';
+    instructionP.textContent = window.welcomeMessage || 'Start a conversation by typing a message below';
+    inner.appendChild(instructionP);
+
+    emptyState.appendChild(inner);
+    return emptyState;
+}
+
+/**
  * Start a new chat conversation.
  * Clears the message history and generates a new session ID.
  * 
@@ -642,46 +785,11 @@ function startNewChat() {
     // Clear memory cache for new session
     clearMemoryCache();
     
-    // Clear message list using safe DOM manipulation (avoids innerHTML XSS risks)
+    // Clear message list and render the shared empty state
     const messageList = document.getElementById('message-list');
     if (messageList) {
-        // Clear existing content
         messageList.textContent = '';
-        
-        // Build empty state using DOM APIs
-        const emptyState = document.createElement('div');
-        emptyState.id = 'empty-state';
-        emptyState.className = 'flex items-center justify-center h-full p-10';
-        
-        const textCenter = document.createElement('div');
-        textCenter.className = 'text-center';
-        
-        // Add chat placeholder logo
-        const logoContainer = document.createElement('div');
-        logoContainer.className = 'mb-6 flex justify-center';
-        const logoImg = document.createElement('img');
-        logoImg.src = window.chatLogoUrl || '/static/chat-placeholder.svg';
-        logoImg.alt = 'Chat Logo';
-        logoImg.className = 'w-24 h-24 opacity-80 rounded-2xl';
-        logoContainer.appendChild(logoImg);
-        textCenter.appendChild(logoContainer);
-        
-        // Add welcome message if user email is available
-        if (window.userEmail) {
-            const welcomeP = document.createElement('p');
-            welcomeP.className = 'text-gray-700 text-lg font-medium mb-2';
-            welcomeP.textContent = `Welcome, ${window.userEmail}`;
-            textCenter.appendChild(welcomeP);
-        }
-        
-        // Add instruction text (use configurable welcome message)
-        const instructionP = document.createElement('p');
-        instructionP.className = 'text-gray-500 text-base';
-        instructionP.textContent = window.welcomeMessage || 'Start a conversation by typing a message below';
-        textCenter.appendChild(instructionP);
-        
-        emptyState.appendChild(textCenter);
-        messageList.appendChild(emptyState);
+        messageList.appendChild(buildChatEmptyState());
     }
     
     // Clear error

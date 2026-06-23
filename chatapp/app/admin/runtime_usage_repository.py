@@ -24,6 +24,28 @@ logger = logging.getLogger(__name__)
 VCPU_HOUR_RATE = Decimal("0.0895")  # per vCPU-hour
 MEMORY_GB_HOUR_RATE = Decimal("0.00945")  # per GB-hour
 
+# Number of parallel segments used when scanning the (potentially large)
+# runtime usage table. Keep <= the boto3 connection pool size below.
+_SCAN_SEGMENTS = 16
+
+# Short-TTL cache for range scans of the runtime table. The admin pages
+# (dashboard, history, users) all fetch the same range and are navigated
+# between frequently, so caching the parsed records for a minute turns repeat
+# loads into instant responses. Keyed by (table, start-minute, end-minute).
+import time as _time
+
+_RECORDS_CACHE: Dict[tuple, tuple] = {}
+_RECORDS_CACHE_TTL_SECONDS = 60
+
+
+def _range_cache_key(table_name: str, start_time: datetime, end_time: datetime) -> tuple:
+    """Build a minute-rounded cache key so 'live' ranges (end = now) still hit."""
+    return (
+        table_name,
+        start_time.replace(second=0, microsecond=0).isoformat(),
+        end_time.replace(second=0, microsecond=0).isoformat(),
+    )
+
 
 @dataclass
 class RuntimeUsageRecord:
@@ -131,6 +153,8 @@ class RuntimeUsageRepository:
         boto_config = Config(
             region_name=self.region,
             retries={"max_attempts": 3, "mode": "adaptive"},
+            # Allow enough pooled connections for the parallel segmented scan.
+            max_pool_connections=_SCAN_SEGMENTS + 2,
         )
         
         self._client = boto3.client("dynamodb", config=boto_config)
@@ -159,23 +183,48 @@ class RuntimeUsageRepository:
         end_time: datetime,
     ) -> List[RuntimeUsageRecord]:
         """Get all runtime usage records within a time range.
-        
+
+        The runtime table can hold tens of thousands of fine-grained records,
+        so this uses a parallel segmented Scan with a projection that fetches
+        only the fields needed for cost/usage aggregation. That turns a single
+        ~15s full scan into several concurrent segment scans of a much smaller
+        payload.
+
         Args:
             start_time: Start of the time range (inclusive)
             end_time: End of the time range (inclusive)
-            
+
         Returns:
             List of runtime usage records
         """
+        # Serve from the short-TTL cache when possible (shared across the
+        # admin pages that scan the same range).
+        cache_key = _range_cache_key(self.table_name, start_time, end_time)
+        cached = _RECORDS_CACHE.get(cache_key)
+        if cached and cached[0] > _time.time():
+            return cached[1]
+
         try:
+            start_ms = int(start_time.timestamp() * 1000)
+            end_ms = int(end_time.timestamp() * 1000)
             loop = asyncio.get_event_loop()
-            items = await loop.run_in_executor(
-                None,
-                self._scan_by_time_range,
-                int(start_time.timestamp() * 1000),
-                int(end_time.timestamp() * 1000),
+            segment_results = await asyncio.gather(
+                *[
+                    loop.run_in_executor(
+                        None,
+                        self._scan_segment,
+                        start_ms,
+                        end_ms,
+                        seg,
+                        _SCAN_SEGMENTS,
+                    )
+                    for seg in range(_SCAN_SEGMENTS)
+                ]
             )
-            return [RuntimeUsageRecord.from_dynamodb_item(item) for item in items]
+            items = [item for segment in segment_results for item in segment]
+            records = [RuntimeUsageRecord.from_dynamodb_item(item) for item in items]
+            _RECORDS_CACHE[cache_key] = (_time.time() + _RECORDS_CACHE_TTL_SECONDS, records)
+            return records
         except ClientError as e:
             logger.error(
                 "Failed to scan runtime usage records",
@@ -191,13 +240,46 @@ class RuntimeUsageRepository:
                 extra={"error": str(e)},
             )
             return []
-    
+
+    def _scan_segment(
+        self,
+        start_timestamp_ms: int,
+        end_timestamp_ms: int,
+        segment: int,
+        total_segments: int,
+    ) -> List[dict]:
+        """Synchronous helper: scan one parallel segment of the table.
+
+        Uses a ProjectionExpression so only the attributes required for
+        aggregation are returned (not the full item), cutting network transfer
+        and deserialization cost substantially on a large table.
+        """
+        items = []
+        paginator = self._client.get_paginator("scan")
+
+        for page in paginator.paginate(
+            TableName=self.table_name,
+            FilterExpression="#ts BETWEEN :start AND :end",
+            ProjectionExpression="session_id, vcpu_hours, memory_gb_hours, time_elapsed_seconds, #ts",
+            ExpressionAttributeNames={"#ts": "timestamp"},
+            ExpressionAttributeValues={
+                ":start": {"N": str(start_timestamp_ms)},
+                ":end": {"N": str(end_timestamp_ms)},
+            },
+            Segment=segment,
+            TotalSegments=total_segments,
+        ):
+            items.extend(page.get("Items", []))
+
+        return items
+
     def _scan_by_time_range(
         self,
         start_timestamp_ms: int,
         end_timestamp_ms: int,
     ) -> List[dict]:
-        """Synchronous helper to scan by time range."""
+        """Synchronous single-threaded scan by time range (kept for callers
+        that need it; get_all_records uses the parallel segmented variant)."""
         items = []
         paginator = self._client.get_paginator("scan")
         
@@ -384,22 +466,48 @@ class RuntimeUsageRepository:
         session_ids: List[str],
     ) -> Dict[str, Decimal]:
         """Get runtime costs for multiple sessions.
-        
+
+        Note: prefer ``get_runtime_costs_in_range`` when a time range is known.
+        That performs a single scan instead of one query per session (this
+        method issues a query per session and is kept for callers that only
+        have a set of session ids).
+
         Args:
             session_ids: List of session IDs to query
-            
+
         Returns:
             Dictionary mapping session_id to runtime_cost
         """
         if not session_ids:
             return {}
-        
-        costs = {}
-        for session_id in session_ids:
-            stats = await self.get_session_runtime_stats(session_id)
-            if stats:
-                costs[session_id] = stats.runtime_cost
-            else:
-                costs[session_id] = Decimal("0")
-        
+
+        # Look the sessions up concurrently rather than sequentially.
+        results = await asyncio.gather(
+            *[self.get_session_runtime_stats(sid) for sid in session_ids]
+        )
+        costs: Dict[str, Decimal] = {}
+        for session_id, stats in zip(session_ids, results):
+            costs[session_id] = stats.runtime_cost if stats else Decimal("0")
         return costs
+
+    async def get_runtime_costs_in_range(
+        self,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> Dict[str, Decimal]:
+        """Get per-session runtime costs for a time range in a single scan.
+
+        This replaces the N+1 pattern of querying the runtime table once per
+        session. It scans the range once and aggregates cost per session,
+        returning a dict mapping session_id -> runtime_cost.
+
+        Args:
+            start_time: Start of the time range (inclusive)
+            end_time: End of the time range (inclusive)
+
+        Returns:
+            Dictionary mapping session_id to runtime_cost (Decimal)
+        """
+        records = await self.get_all_records(start_time, end_time)
+        stats_list = self.compute_stats_by_session(records)
+        return {s.session_id: s.runtime_cost for s in stats_list}

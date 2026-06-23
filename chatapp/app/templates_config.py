@@ -35,6 +35,20 @@ def _model_display_name(model_id: str) -> str:
 templates.env.filters["model_name"] = _model_display_name
 
 
+def _asset_version() -> str:
+    """Cache-busting token: current UTC time to the second (YYYYMMDDHHMMSS).
+
+    Evaluated at render time, so every page load gets a fresh value and the
+    browser always fetches the latest static assets (handy during active
+    development / local testing).
+    """
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+
+
+templates.env.globals["asset_version"] = _asset_version
+
+
 async def init_template_globals():
     """Initialize template global variables with app settings.
     
