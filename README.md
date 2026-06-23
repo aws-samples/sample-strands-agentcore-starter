@@ -31,6 +31,7 @@ Skip weeks of infrastructure setup and go straight to validating your agentic AI
 
 **Agent Capabilities**
 - 🧠 **Amazon Bedrock AgentCore** with Strands Agents SDK
+- 🌐 **Amazon Bedrock Mantle** - OpenAI-compatible endpoint with 30+ models across Anthropic, OpenAI, Google, Mistral, DeepSeek, Qwen, and more
 - 📚 **Knowledge Base integration** for semantic search over your documents (S3 Vectors)
 - 🛠️ **Pre-built tools** - web search, URL fetcher, weather, calculator, current time
 
@@ -192,7 +193,7 @@ The application supports two ingress modes for the FastAPI application: ECS Expr
         │                        │  Transform  │                   ▼      │      ▼
         │                        └─────────────┘           ┌───────────┐  │  ┌───────────┐
         │                               ▲                  │  Bedrock  │  │  │ AgentCore │
-        │                        ┌──────┴──────┐           │   LLM     │  │  │  Memory   │
+        │                        ┌──────┴──────┐           │  Mantle   │  │  │  Memory   │
         │                        │  Firehose   │           └───────────┘  │  └───────────┘
         ▼                        └─────────────┘                          │
 ┌─────────────────┐                     ▲                                 │
@@ -429,7 +430,11 @@ Options:
 | Variable | Description |
 |----------|-------------|
 | `BEDROCK_AGENTCORE_MEMORY_ID` | AgentCore Memory ID |
-| `AWS_REGION` | AWS region |
+| `AWS_REGION` | AWS region (also the app deployment region) |
+| `MANTLE_REGION` | Region for Mantle inference; defaults to `AWS_REGION`. Set to a region with broader model availability (e.g. `us-east-1`) for cross-region inference |
+| `OPENAI_BASE_URL` | Optional Mantle endpoint override; derived from `MANTLE_REGION` as `https://bedrock-mantle.<region>.api.aws/v1` when unset |
+| `MANTLE_PROJECT` | Mantle project identifier (default: `default`) |
+| `OPENAI_API_KEY` | Optional Mantle token override for local/advanced use; when unset the agent mints a short-term token from the runtime's AWS credentials |
 
 ## ChatApp
 | Variable | Required | Description |
@@ -452,7 +457,7 @@ Options:
 | `EVALUATIONS_ENABLED` | No | Enable/disable automated evaluations (default: true) |
 | `EVALUATIONS_JUDGE_MODEL` | No | Bedrock model ID for LLM-as-judge evaluators |
 | `EVALUATIONS_LLM_SAMPLE_RATE` | No | Fraction of turns (0.0-1.0) to run LLM judges on (default: 1.0) |
-| `EVALUATIONS_MAX_CONTEXT_LENGTH` | No | Max chars of source context sent to the faithfulness judge (default: 20000) |
+| `EVALUATIONS_MAX_CONTEXT_LENGTH` | No | Max chars of source context sent to the faithfulness judge (default: 100000) |
 | `EVALUATIONS_DISABLED` | No | Comma-separated evaluators to disable (answer_quality, faithfulness, tool_selection) |
 | `APP_URL` | No | Application URL for callbacks |
 | `AWS_REGION` | Yes | AWS region |
@@ -508,14 +513,28 @@ _**Note:** Telemetry data is provided for monitoring purposes. Actual billing is
 - **Tool Usage**: Call counts, success/error rates per tool
 - **Guardrails Violations**: Per filter type, user, and session
 
-## Default Models and Costs
-| Model | Input Tokens (per 1M) | Output Tokens (per 1M) |
-|-------|---------------|-----------------|
-| Amazon Nova 2 Lite | $0.30 | $2.50 |
-| Amazon Nova Pro | $0.80 | $3.20 |
+## Models
+
+Models are served through the **Amazon Bedrock Mantle** OpenAI-compatible endpoint. The catalog is defined in `chatapp/app/static/models.json` — the single source of truth shared by both the front-end and the Python backend. Each entry declares which Mantle API it uses:
+
+- **`chat`** — OpenAI Chat Completions (`/v1`) — the majority of models (DeepSeek, Mistral, Qwen, Gemma 3, MiniMax, Kimi, GLM, etc.)
+- **`responses`** — OpenAI Responses API (`/openai/v1`) — GPT-5.x, Gemma 4, Grok 4.3
+- **`messages`** — Anthropic Messages API (`/v1`) — Claude models
+
+The agent (`agent/my_agent.py`) reads the `modelApi` field per request and routes to the matching Strands provider (`OpenAIModel`, `OpenAIResponsesModel`, or `AnthropicModel`). The default model is **Claude Haiku 4.5** (`anthropic.claude-haiku-4-5`).
+
+A sample of available models and pricing (per 1M tokens):
+
+| Model | Input | Output |
+|-------|-------|--------|
 | Anthropic Claude Haiku 4.5 | $1.00 | $5.00 |
-| Anthropic Claude Sonnet 4.5 | $3.00 | $15.00 |
-| Anthropic Claude Opus 4.5 | $5.00 | $25.00 |
+| Anthropic Claude Opus 4.8 | $5.00 | $25.00 |
+| OpenAI GPT OSS 120B | $0.15 | $0.60 |
+| DeepSeek V3.2 | $0.62 | $1.85 |
+| Qwen3 235B | $0.22 | $0.88 |
+| Z.AI GLM 5 | $1.00 | $3.20 |
+
+See `models.json` for the full list. Pricing should be confirmed against the [Amazon Bedrock pricing page](https://aws.amazon.com/bedrock/pricing/).
 
 ## Monthly Projections
 The dashboard calculates projected monthly costs using:
@@ -556,7 +575,7 @@ The dashboard shows:
 Add tools in `agent/tools/` and register them in `my_agent.py`.
 
 ## Changing Models
-Update the model ID in `chatapp/app/static/js/chat.js` and add pricing to `chatapp/app/admin/cost_calculator.py`.
+Edit `chatapp/app/static/models.json` — the single source of truth for model IDs, display names, pricing, and the `api` field (`chat`, `responses`, or `messages`). Both the front-end model selector and the Python cost calculator read from this file, so no code changes are needed to add, remove, or reprice a model. Ensure the model ID matches a Mantle model ID (see the `/v1/models` endpoint) and that the `api` field reflects which Mantle API the model supports.
 
 ## Extending Analytics
 The `UsageRepository` class in `chatapp/app/admin/repository.py` provides query methods that can be extended for custom analytics.
