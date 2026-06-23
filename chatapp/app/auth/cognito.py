@@ -4,6 +4,7 @@ This module provides the CognitoAuth class for handling authentication
 with AWS Cognito using the InitiateAuth API (no hosted UI required).
 """
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -428,42 +429,92 @@ def is_admin(groups: list[str]) -> bool:
     return "Admin" in groups
 
 
+# Module-level cache for Cognito sub -> email lookups. Emails rarely change,
+# so a short TTL avoids repeated (and previously N+1, sequential) list_users
+# calls on every admin page load.
+_EMAIL_CACHE: dict[str, str] = {}
+_EMAIL_CACHE_EXPIRES: dict[str, float] = {}
+_EMAIL_CACHE_TTL_SECONDS = 600  # 10 minutes
+
+
+def _email_cache_get(user_id: str) -> Optional[str]:
+    """Return a cached email if present and not expired, else None."""
+    import time
+    expires = _EMAIL_CACHE_EXPIRES.get(user_id, 0)
+    if expires > time.time():
+        return _EMAIL_CACHE.get(user_id)
+    return None
+
+
+def _email_cache_put(user_id: str, email: Optional[str]) -> None:
+    """Cache an email (or empty string sentinel) for a user id."""
+    import time
+    _EMAIL_CACHE[user_id] = email or ""
+    _EMAIL_CACHE_EXPIRES[user_id] = time.time() + _EMAIL_CACHE_TTL_SECONDS
+
+
 async def get_user_emails_by_ids(user_ids: list[str]) -> dict[str, str]:
     """Look up user emails from Cognito by user IDs (sub).
-    
+
+    Optimized vs. the original sequential implementation:
+    - Results are cached per user id with a short TTL, so repeated admin page
+      loads don't re-query Cognito for the same users.
+    - Uncached ids are looked up concurrently in a thread pool instead of one
+      blocking ``list_users`` call after another.
+
     Args:
         user_ids: List of user IDs (Cognito sub UUIDs)
-        
+
     Returns:
         Dictionary mapping user_id to email address
     """
     if not user_ids:
         return {}
-    
+
+    # De-duplicate while preserving determinism
+    unique_ids = list(dict.fromkeys(user_ids))
+
+    email_map: dict[str, str] = {}
+    to_fetch: list[str] = []
+    for user_id in unique_ids:
+        cached = _email_cache_get(user_id)
+        if cached is not None:
+            if cached:  # skip empty-string "known missing" sentinel
+                email_map[user_id] = cached
+        else:
+            to_fetch.append(user_id)
+
+    if not to_fetch:
+        return email_map
+
     config = get_config()
     client = boto3.client('cognito-idp', region_name=config.aws_region)
-    
-    email_map = {}
-    
-    for user_id in user_ids:
+
+    def _lookup_one(user_id: str) -> tuple[str, Optional[str]]:
         try:
-            # Use admin_get_user with filter by sub
             response = client.list_users(
                 UserPoolId=config.cognito_user_pool_id,
                 Filter=f'sub = "{user_id}"',
                 Limit=1,
             )
-            
             users = response.get('Users', [])
             if users:
-                user = users[0]
-                # Extract email from attributes
-                for attr in user.get('Attributes', []):
+                for attr in users[0].get('Attributes', []):
                     if attr['Name'] == 'email':
-                        email_map[user_id] = attr['Value']
-                        break
+                        return user_id, attr['Value']
         except ClientError:
-            # Skip users that can't be looked up
-            continue
-    
+            pass
+        return user_id, None
+
+    # Run the blocking boto3 lookups concurrently in the default executor.
+    loop = asyncio.get_event_loop()
+    results = await asyncio.gather(
+        *[loop.run_in_executor(None, _lookup_one, uid) for uid in to_fetch]
+    )
+
+    for user_id, email in results:
+        _email_cache_put(user_id, email)
+        if email:
+            email_map[user_id] = email
+
     return email_map

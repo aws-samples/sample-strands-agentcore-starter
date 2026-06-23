@@ -90,6 +90,10 @@ class UsageRecord:
             "total_tokens": {"N": str(self.total_tokens)},
             "latency_ms": {"N": str(self.latency_ms)},
             "tool_usage": {"S": tool_usage_json},
+            # Partition key for the `date-index` GSI: a UTC day bucket
+            # ("YYYY-MM-DD") so analytics can Query a small set of day
+            # partitions for a time range instead of scanning the whole table.
+            "date_partition": {"S": (self.timestamp or "")[:10]},
         }
         
         if self.user_email:

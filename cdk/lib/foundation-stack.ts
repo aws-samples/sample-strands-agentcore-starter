@@ -247,6 +247,25 @@ export class FoundationStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
+    // Time-based GSI: partition by UTC day ("YYYY-MM-DD") with a timestamp
+    // sort key. Analytics queries (dashboard, history, users) cover a date
+    // range, so they can Query a handful of day partitions instead of doing
+    // a full-table Scan. Records written without `date_partition` (e.g. from
+    // before this index existed) won't appear in this index; the repository
+    // falls back to a Scan when the index returns no rows for a range.
+    this.usageTable.addGlobalSecondaryIndex({
+      indexName: 'date-index',
+      partitionKey: {
+        name: 'date_partition',
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'timestamp',
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
     // Feedback table
     this.feedbackTable = new dynamodb.Table(this, 'FeedbackTable', {
       tableName: config.feedbackTableName,

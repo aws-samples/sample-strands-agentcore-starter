@@ -130,13 +130,37 @@ def generate_color_palette(hex_color: str) -> Dict[str, str]:
     return palette
 
 
+# Short-TTL cache for resolved app settings. The /chat page (the hottest
+# page) previously scanned the app-settings table on every request; this
+# caches the resolved dict for a few seconds. The settings-update route calls
+# invalidate_settings_cache() so admin edits show up immediately.
+_SETTINGS_CACHE: Dict[str, Any] = {}
+_SETTINGS_CACHE_EXPIRES: float = 0.0
+_SETTINGS_CACHE_TTL_SECONDS = 30
+
+
+def invalidate_settings_cache() -> None:
+    """Clear the cached app settings (call after a settings update)."""
+    global _SETTINGS_CACHE, _SETTINGS_CACHE_EXPIRES
+    _SETTINGS_CACHE = {}
+    _SETTINGS_CACHE_EXPIRES = 0.0
+
+
 async def get_app_settings() -> Dict[str, Any]:
     """Load app settings from DynamoDB with defaults.
-    
+
+    Cached for a short TTL to avoid re-scanning the settings table on every
+    page render. Use invalidate_settings_cache() to force a refresh.
+
     Returns:
         Dictionary with app_title, app_subtitle, logo_url, chat_logo_url,
         and theme color settings with generated palettes
     """
+    import time as _time
+    global _SETTINGS_CACHE, _SETTINGS_CACHE_EXPIRES
+    if _SETTINGS_CACHE and _SETTINGS_CACHE_EXPIRES > _time.time():
+        return _SETTINGS_CACHE
+
     storage = AppSettingsStorageService()
     settings = await storage.get_all_settings()
     
@@ -148,7 +172,7 @@ async def get_app_settings() -> Dict[str, Any]:
     primary_palette = generate_color_palette(primary_color)
     secondary_palette = generate_color_palette(secondary_color)
     
-    return {
+    resolved = {
         "app_title": settings.get("app_title").setting_value if "app_title" in settings else DEFAULT_APP_TITLE,
         "app_subtitle": settings.get("app_subtitle").setting_value if "app_subtitle" in settings else DEFAULT_APP_SUBTITLE,
         "logo_url": settings.get("logo_url").setting_value if "logo_url" in settings else DEFAULT_LOGO_URL,
@@ -163,3 +187,7 @@ async def get_app_settings() -> Dict[str, Any]:
         "secondary_palette": secondary_palette,
         "color_presets": COLOR_PRESETS,
     }
+
+    _SETTINGS_CACHE = resolved
+    _SETTINGS_CACHE_EXPIRES = _time.time() + _SETTINGS_CACHE_TTL_SECONDS
+    return resolved
