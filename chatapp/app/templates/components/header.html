@@ -3,25 +3,42 @@
 <!-- show_menu: the hamburger nav menu renders on any screen where the user is an admin
      (show_admin_btn is true on chat for admins) or on admin pages (breadcrumbs set). -->
 {% set show_menu = show_admin_btn or breadcrumbs %}
-<header class="border-b border-gray-700 bg-gray-900 px-3 sm:px-4 md:px-6 py-1 md:py-2 shadow-sm">
+
+<style>
+    /* Theme toggle icon visibility (pure CSS, no flash) */
+    html[data-theme="dark"] .theme-icon-moon { display: none; }
+    html:not([data-theme="dark"]) .theme-icon-sun { display: none; }
+    .app-header-btn {
+        background: var(--header-btn-bg);
+        color: var(--header-text-muted);
+        transition: background-color .2s ease, color .2s ease, transform .12s ease;
+    }
+    .app-header-btn:hover { background: var(--header-btn-hover); color: var(--header-text); }
+    .app-header-btn:active { transform: scale(0.95); }
+</style>
+
+<header class="sticky top-0 z-40 px-3 sm:px-4 md:px-6 py-2 md:py-2.5 backdrop-blur-md"
+        style="background: color-mix(in srgb, var(--header-bg) 88%, transparent); border-bottom: 1px solid var(--header-border);">
     <div class="max-w-7xl mx-auto flex items-center justify-between gap-2">
         <!-- Title section -->
         <div class="min-w-0 shrink flex items-center gap-3">
             <!-- Logo (links to main chat page) -->
             <a href="/chat" class="flex items-center gap-3 min-w-0 group" aria-label="Go to chat" title="Go to chat">
-                <div class="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0">
+                <div class="w-9 h-9 sm:w-10 sm:h-10 flex-shrink-0 rounded-xl flex items-center justify-center overflow-hidden ring-1 ring-white/10"
+                     style="background: linear-gradient(135deg, rgba(var(--primary-rgb),0.25), rgba(var(--secondary-rgb),0.18));">
                     <img
                         src="{{ logo_url if logo_url is defined else '/static/favicon.svg' }}"
                         alt="Logo"
-                        class="w-full h-full object-contain"
+                        class="w-full h-full object-contain p-1"
                     />
                 </div>
                 <!-- Title and subtitle -->
                 <div class="min-w-0">
-                    <h1 class="text-base sm:text-lg md:text-xl font-semibold text-white truncate group-hover:text-primary-300 transition-colors">
+                    <h1 class="font-display text-base sm:text-lg md:text-xl font-700 truncate transition-colors"
+                        style="color: var(--header-text);">
                         {{ app_title if app_title is defined else 'Chat Agent' }}
                     </h1>
-                    <h2 class="text-xs font-mono text-white truncate">
+                    <h2 class="text-[11px] sm:text-xs font-mono truncate" style="color: var(--header-text-muted);">
                         {{ app_subtitle if app_subtitle is defined else 'Bedrock AgentCore + Strands Agents SDK' }}
                     </h2>
                 </div>
@@ -29,16 +46,30 @@
         </div>
 
         <!-- Actions section -->
-        <div class="flex items-center gap-2 sm:gap-3 md:gap-4 shrink-0">
+        <div class="flex items-center gap-1.5 sm:gap-2 md:gap-2.5 shrink-0">
+            <!-- Theme toggle (per-user, persisted in localStorage) -->
+            <button
+                type="button"
+                onclick="toggleAppTheme()"
+                class="app-header-btn p-1.5 sm:p-2 rounded-lg flex items-center justify-center"
+                aria-label="Toggle light/dark theme"
+                title="Toggle light/dark theme"
+            >
+                <svg class="theme-icon-moon w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                </svg>
+                <svg class="theme-icon-sun w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+            </button>
+
             {% if show_menu %}
             <!-- Hamburger navigation menu (available on all screens for admins) -->
             <div class="relative flex-shrink-0" x-data="{ open: false }" @click.outside="open = false">
                 <button
                     @click="open = !open"
                     type="button"
-                    class="p-1.5 sm:p-2 text-xs sm:text-sm font-medium rounded-lg
-                           transition-all duration-200 flex items-center gap-1.5
-                           bg-gray-700 text-gray-300 hover:bg-gray-600 active:scale-95"
+                    class="app-header-btn p-1.5 sm:p-2 text-xs sm:text-sm font-medium rounded-lg flex items-center gap-1.5"
                     aria-label="Menu"
                     title="Menu"
                 >
@@ -58,72 +89,73 @@
                     x-transition:leave="transition ease-in duration-75"
                     x-transition:leave-start="transform opacity-100 scale-100"
                     x-transition:leave-end="transform opacity-0 scale-95"
-                    class="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50"
+                    class="absolute right-0 mt-2 w-56 rounded-xl shadow-xl py-1 z-50 overflow-hidden"
+                    style="background: var(--surface); border: 1px solid var(--border);"
                 >
-                    <a href="/chat" class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                        <svg class="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <a href="/chat" class="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors" style="color: var(--text-muted);">
+                        <svg class="w-4 h-4 flex-shrink-0" style="color: var(--text-subtle);" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                         </svg>
                         <span>Chat</span>
                     </a>
-                    <div class="border-t border-gray-100 my-1"></div>
-                    <a href="/admin" class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                        <svg class="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <div class="my-1" style="border-top: 1px solid var(--border);"></div>
+                    <a href="/admin" class="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors" style="color: var(--text-muted);">
+                        <svg class="w-4 h-4 flex-shrink-0" style="color: var(--text-subtle);" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
                         </svg>
                         <span>Dashboard</span>
                     </a>
-                    <a href="/admin/history" class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                        <svg class="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <a href="/admin/history" class="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors" style="color: var(--text-muted);">
+                        <svg class="w-4 h-4 flex-shrink-0" style="color: var(--text-subtle);" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                         <span>Chat History</span>
                     </a>
-                    <a href="/admin/users" class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                        <svg class="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <a href="/admin/users" class="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors" style="color: var(--text-muted);">
+                        <svg class="w-4 h-4 flex-shrink-0" style="color: var(--text-subtle);" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                         </svg>
                         <span>User Sessions</span>
                     </a>
-                    <a href="/admin/tokens" class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                        <svg class="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <a href="/admin/tokens" class="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors" style="color: var(--text-muted);">
+                        <svg class="w-4 h-4 flex-shrink-0" style="color: var(--text-subtle);" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
                         </svg>
                         <span>Token Usage</span>
                     </a>
-                    <a href="/admin/guardrails" class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                        <svg class="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <a href="/admin/guardrails" class="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors" style="color: var(--text-muted);">
+                        <svg class="w-4 h-4 flex-shrink-0" style="color: var(--text-subtle);" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                         </svg>
                         <span>Guardrails Violations</span>
                     </a>
-                    <a href="/admin/evaluations" class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                        <svg class="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <a href="/admin/evaluations" class="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors" style="color: var(--text-muted);">
+                        <svg class="w-4 h-4 flex-shrink-0" style="color: var(--text-subtle);" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                         </svg>
                         <span>Evaluations</span>
                     </a>
-                    <a href="/admin/feedback" class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                        <svg class="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <a href="/admin/feedback" class="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors" style="color: var(--text-muted);">
+                        <svg class="w-4 h-4 flex-shrink-0" style="color: var(--text-subtle);" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                         </svg>
                         <span>User Feedback</span>
                     </a>
-                    <a href="/admin/tools" class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                        <svg class="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <a href="/admin/tools" class="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors" style="color: var(--text-muted);">
+                        <svg class="w-4 h-4 flex-shrink-0" style="color: var(--text-subtle);" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z" />
                         </svg>
                         <span>Tool Usage</span>
                     </a>
-                    <div class="border-t border-gray-100 my-1"></div>
-                    <a href="/admin/templates" class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                        <svg class="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <div class="my-1" style="border-top: 1px solid var(--border);"></div>
+                    <a href="/admin/templates" class="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors" style="color: var(--text-muted);">
+                        <svg class="w-4 h-4 flex-shrink-0" style="color: var(--text-subtle);" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
                         <span>Prompt Templates</span>
                     </a>
-                    <a href="/admin/settings" class="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                        <svg class="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <a href="/admin/settings" class="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors" style="color: var(--text-muted);">
+                        <svg class="w-4 h-4 flex-shrink-0" style="color: var(--text-subtle);" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
@@ -140,13 +172,14 @@
                 type="button"
                 id="new-chat-btn"
                 onclick="startNewChat()"
-                class="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-lg
+                class="px-2.5 sm:px-3 md:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-lg
                        transition-all duration-200 flex items-center gap-1 sm:gap-1.5
-                       bg-primary-600 text-white hover:bg-primary-700 active:scale-95"
+                       bg-primary-600 text-white hover:bg-primary-700 active:scale-95
+                       shadow-lg shadow-primary-600/25"
                 aria-label="Start new chat"
                 title="Start new chat"
             >
-                <svg class="w-3 h-3 sm:w-4 sm:h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                 </svg>
                 <span class="hidden sm:inline">New Chat</span>
@@ -154,13 +187,14 @@
             {% elif primary_action.type == 'back_to_chat' %}
             <a
                 href="/chat"
-                class="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-lg
+                class="px-2.5 sm:px-3 md:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-lg
                        transition-all duration-200 flex items-center gap-1 sm:gap-1.5
-                       bg-primary-600 text-white hover:bg-primary-700 active:scale-95"
+                       bg-primary-600 text-white hover:bg-primary-700 active:scale-95
+                       shadow-lg shadow-primary-600/25"
                 aria-label="Back to chat"
                 title="Back to chat"
             >
-                <svg class="w-3 h-3 sm:w-4 sm:h-4" fill="currentColor" viewBox="0 0 24 24">
+                <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M4.913 2.658c2.075-.27 4.19-.408 6.337-.408 2.147 0 4.262.139 6.337.408 1.922.25 3.291 1.861 3.405 3.727a4.403 4.403 0 00-1.032-.211 50.89 50.89 0 00-8.42 0c-2.358.196-4.04 2.19-4.04 4.434v4.286a4.47 4.47 0 002.433 3.984L7.28 21.53A.75.75 0 016 21v-4.03a48.527 48.527 0 01-1.087-.128C2.905 16.58 1.5 14.833 1.5 12.862V6.638c0-1.97 1.405-3.718 3.413-3.979z" />
                     <path d="M15.75 7.5c-1.376 0-2.739.057-4.086.169C10.124 7.797 9 9.103 9 10.609v4.285c0 1.507 1.128 2.814 2.67 2.94 1.243.102 2.5.157 3.768.165l2.782 2.781a.75.75 0 001.28-.53v-2.39l.33-.026c1.542-.125 2.67-1.433 2.67-2.94v-4.286c0-1.505-1.125-2.811-2.664-2.94A49.392 49.392 0 0015.75 7.5z" />
                 </svg>
@@ -168,18 +202,17 @@
             </a>
             {% endif %}
             {% endif %}
-            
+
             <!-- Logout button -->
             <form action="/auth/logout" method="POST">
                 <button
                     type="submit"
-                    class="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-lg
-                           transition-all duration-200 flex items-center gap-1 sm:gap-1.5
-                           bg-gray-700 text-gray-300 hover:bg-gray-600 active:scale-95"
+                    class="app-header-btn px-2.5 sm:px-3 md:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-lg
+                           flex items-center gap-1 sm:gap-1.5"
                     aria-label="Sign out"
                     title="Sign out"
                 >
-                    <svg class="w-3 h-3 sm:w-4 sm:h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
                     </svg>
                     <span class="hidden sm:inline">Logout</span>
@@ -191,20 +224,20 @@
 
 <!-- Breadcrumb Navigation (Admin only) -->
 {% if breadcrumbs %}
-<nav class="bg-white border-b border-gray-200 px-3 sm:px-4 md:px-6 py-1.5">
+<nav class="px-3 sm:px-4 md:px-6 py-2" style="background: var(--surface); border-bottom: 1px solid var(--border);">
     <div class="max-w-7xl mx-auto">
-        <ol class="flex items-center space-x-2 text-sm min-w-0">
+        <ol class="flex items-center space-x-1 text-sm min-w-0">
             {% for crumb in breadcrumbs %}
             <li class="flex items-center min-w-0">
                 {% if not loop.first %}
-                <svg class="w-4 h-4 text-gray-400 mx-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg class="w-4 h-4 mx-1.5 flex-shrink-0" style="color: var(--text-subtle);" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
                 </svg>
                 {% endif %}
                 {% if crumb.url and not loop.last %}
                 <a href="{{ crumb.url }}" class="text-primary-600 hover:text-primary-800 font-medium truncate">{{ crumb.label }}</a>
                 {% else %}
-                <span class="text-gray-500 truncate">{{ crumb.label }}</span>
+                <span class="truncate" style="color: var(--text-subtle);">{{ crumb.label }}</span>
                 {% endif %}
             </li>
             {% endfor %}
@@ -213,8 +246,9 @@
 </nav>
 {% endif %}
 
+<!-- toggleAppTheme() is defined globally in base.html (available on every page). -->
+
 <!-- Alpine.js + x-cloak for the header navigation menu dropdown -->
 {% if show_menu %}
-<style>[x-cloak] { display: none !important; }</style>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js"></script>
 {% endif %}
