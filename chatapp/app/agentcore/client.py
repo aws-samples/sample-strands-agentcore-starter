@@ -211,6 +211,16 @@ class AgentCoreClient:
             
             data: Dict[str, Any] = json.loads(json_str)
             
+            # Handle error events emitted by the agent entrypoint
+            # (e.g. {"error": True, "message": "..."}). Without this branch the
+            # agent's failure is silently dropped and the user just sees an
+            # empty response with no explanation.
+            if data.get('error'):
+                return ErrorEvent(
+                    message=data.get('message') or 'The agent failed to generate a response',
+                    details=data.get('details'),
+                )
+            
             # Handle reasoningContent streaming events (thinking models)
             reasoning_delta = data.get('event', {}).get('contentBlockDelta', {}).get('delta', {}).get('reasoningContent')
             if reasoning_delta:
@@ -335,7 +345,7 @@ class AgentCoreClient:
         session_id: str,
         user_id: str,
         model_id: str = "anthropic.claude-haiku-4-5",
-        model_api: str = "chat",
+        model_api: str = "messages",
     ) -> AsyncGenerator[SSEEvent, None]:
         """Invoke AgentCore Runtime and stream the response.
         

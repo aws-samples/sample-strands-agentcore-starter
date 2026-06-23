@@ -125,11 +125,11 @@ const AVAILABLE_MODELS = (_MODEL_CATALOG.models || []).map(function (m) {
  * 
  * Requirements: 10.8
  */
-const DEFAULT_MODEL_ID = _MODEL_CATALOG.default_model_id || "global.amazon.nova-2-lite-v1:0";
+const DEFAULT_MODEL_ID = _MODEL_CATALOG.default_model_id || "anthropic.claude-haiku-4-5";
 
 /**
  * Get the currently selected model from localStorage.
- * Returns the default model (Nova 2 Lite) if no selection is stored.
+ * Returns the catalog default model if no selection is stored.
  * 
  * @returns {Object} The selected model object with id, name, description
  * 
@@ -145,7 +145,7 @@ function getSelectedModel() {
         }
     }
     
-    // Return default model (Nova 2 Lite)
+    // Return catalog default model
     return AVAILABLE_MODELS.find(m => m.id === DEFAULT_MODEL_ID) || AVAILABLE_MODELS[0];
 }
 

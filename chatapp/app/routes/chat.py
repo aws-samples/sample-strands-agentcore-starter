@@ -40,7 +40,7 @@ class ChatRequest(BaseModel):
     prompt: str = Field(..., min_length=1, description="User message")
     session_id: str = Field(..., min_length=1, description="Session ID")
     model_id: Optional[str] = Field(
-        default="global.anthropic.claude-haiku-4-5-20251001-v1:0",
+        default="anthropic.claude-haiku-4-5",
         description="Model identifier for LLM selection"
     )
 
@@ -122,7 +122,7 @@ async def _stream_chat_response(
     session_id: str,
     user_id: str,
     model_id: str = "anthropic.claude-haiku-4-5",
-    model_api: str = "chat",
+    model_api: str = "messages",
     user_email: str | None = None,
 ):
     """Generate SSE stream from AgentCore response.

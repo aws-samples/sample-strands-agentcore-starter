@@ -276,7 +276,9 @@ async def invoke(payload, context):
     
     # Get model ID and API type from payload with default fallback
     model_id = payload.get("modelId") or DEFAULT_MODEL_ID
-    model_api = payload.get("modelApi", "chat")  # "chat", "responses", or "messages"
+    # Default API must match DEFAULT_MODEL_ID's catalog entry. The default model
+    # (anthropic.claude-haiku-4-5) is served via the Anthropic Messages API.
+    model_api = payload.get("modelApi", "messages")  # "chat", "responses", or "messages"
     log.info(f"Using model: {model_id} (api: {model_api})")
     
     # Mint a fresh short-term Bedrock token for THIS invocation.
@@ -300,13 +302,31 @@ async def invoke(payload, context):
     mantle_base = config.openai_base_url.rstrip('/')  # e.g. https://bedrock-mantle.us-east-1.api.aws/v1
 
     if model_api == "messages":
-        # Anthropic models use the Messages API
-        # AnthropicModel expects base_url pointing to the messages endpoint
+        # Anthropic models use the Messages API.
+        #
+        # Base URL: Mantle serves the Anthropic Messages API under the
+        # "/anthropic" prefix (analogous to "/openai/v1" for the Responses API).
+        # The Anthropic SDK appends "/v1/messages" to its base_url itself, so
+        # the base must end at ".../anthropic" to produce the working endpoint
+        # ".../anthropic/v1/messages". `mantle_base` ends in "/v1" (the
+        # OpenAI-style base), so strip that and append "/anthropic".
+        # Verified: POST .../anthropic/v1/messages returns 200; .../v1/messages
+        # and .../v1/v1/messages both 404.
+        anthropic_base = mantle_base
+        if anthropic_base.endswith("/v1"):
+            anthropic_base = anthropic_base[: -len("/v1")]
+        anthropic_base = anthropic_base.rstrip("/") + "/anthropic"
+        #
+        # Auth: Mantle authenticates with `Authorization: Bearer <token>` (the
+        # same scheme the OpenAI-compatible client uses). The Anthropic SDK
+        # sends `api_key` as the `x-api-key` header instead, which Mantle
+        # rejects. Passing the minted token as `auth_token` makes the SDK send
+        # it as a Bearer token.
         model = AnthropicModel(
             model_id=model_id,
             client_args={
-                "api_key": api_key,
-                "base_url": mantle_base,
+                "auth_token": api_key,
+                "base_url": anthropic_base,
             },
             max_tokens=4096,
         )
