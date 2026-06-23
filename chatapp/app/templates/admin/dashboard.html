@@ -436,6 +436,14 @@ function renderTrendChart() {
     const svg = host.querySelector('svg');
     const tip = host.querySelector('#trend-tooltip');
     const capture = host.querySelector('#trend-capture');
+    // Build the tooltip structure once and update via textContent on move.
+    // Avoids assigning innerHTML from chart data (js/xss-through-dom).
+    const tipDate = document.createElement('span');
+    tipDate.style.color = 'var(--text-subtle)';
+    const tipVal = document.createElement('strong');
+    tip.appendChild(tipDate);
+    tip.appendChild(document.createTextNode('\u00A0\u00A0'));
+    tip.appendChild(tipVal);
     function onMove(evt) {
         const rect = host.getBoundingClientRect();
         const relX = (evt.clientX - rect.left) / rect.width * W;
@@ -446,7 +454,8 @@ function renderTrendChart() {
         tip.style.left = cxPx + 'px';
         tip.style.top = cyPx + 'px';
         tip.style.opacity = '1';
-        tip.innerHTML = '<span style="color: var(--text-subtle);">' + data[idx].date + '</span> &nbsp;<strong>' + meta.fmt(vals[idx]) + '</strong>';
+        tipDate.textContent = data[idx].date;
+        tipVal.textContent = meta.fmt(vals[idx]);
         host.querySelectorAll('.trend-dot').forEach(c => c.setAttribute('r', c.dataset.i == idx ? '5' : '3'));
     }
     capture.addEventListener('mousemove', onMove);
