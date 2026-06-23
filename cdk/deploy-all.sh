@@ -7,6 +7,7 @@
 #   --region <region>    AWS region (default: us-east-1)
 #   --profile <profile>  AWS CLI profile to use
 #   --ingress <mode>     Ingress mode: ecs, furl, or both (default: ecs)
+#   --skip-chatapp       Deploy Foundation + Bedrock + Agent only (skip ChatApp)
 #   --dry-run            Show what would be deployed without deploying
 #   -h, --help           Show this help message
 
@@ -30,6 +31,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 AWS_PROFILE=""
 INGRESS_MODE="furl"
+SKIP_CHATAPP=false
 DRY_RUN=false
 
 # Parse arguments
@@ -52,6 +54,10 @@ while [[ $# -gt 0 ]]; do
             fi
             shift 2
             ;;
+        --skip-chatapp)
+            SKIP_CHATAPP=true
+            shift
+            ;;
         --dry-run)
             DRY_RUN=true
             shift
@@ -63,6 +69,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --region <region>    AWS region (default: us-east-1)"
             echo "  --profile <profile>  AWS CLI profile to use"
             echo "  --ingress <mode>     Ingress mode: ecs, furl, or both (default: ecs)"
+            echo "  --skip-chatapp       Deploy Foundation + Bedrock + Agent only (skip ChatApp)"
             echo "  --dry-run            Show what would be deployed without deploying"
             echo "  -h, --help           Show this help message"
             echo ""
@@ -106,6 +113,7 @@ echo -e "${YELLOW}Configuration:${NC}"
 echo "  AWS Account: $AWS_ACCOUNT_ID"
 echo "  AWS Region: $AWS_REGION"
 echo "  Ingress Mode: $INGRESS_MODE"
+echo "  Skip ChatApp: $SKIP_CHATAPP"
 echo "  Dry Run: $DRY_RUN"
 echo ""
 
@@ -235,13 +243,137 @@ else
     echo -e "${YELLOW}Deploying all stacks...${NC}"
     echo ""
     
-    npx cdk deploy \
-        "${APP_NAME}-ChatApp" \
-        --context ingress="$INGRESS_MODE" \
-        --require-approval never \
-        --outputs-file cdk-outputs.json 
+    if [ "$SKIP_CHATAPP" = true ]; then
+        # Deploy Agent stack (pulls in Foundation + Bedrock as dependencies)
+        npx cdk deploy \
+            "${APP_NAME}-Agent" \
+            --context ingress="$INGRESS_MODE" \
+            --require-approval never \
+            --outputs-file cdk-outputs.json
+    else
+        npx cdk deploy \
+            "${APP_NAME}-ChatApp" \
+            --context ingress="$INGRESS_MODE" \
+            --require-approval never \
+            --outputs-file cdk-outputs.json
+    fi
     
     echo -e "${GREEN}All stacks deployed${NC}"
+fi
+
+# ============================================================================
+# STEP 4.5: Rebuild agent container and refresh AgentCore Runtime
+# ----------------------------------------------------------------------------
+# CDK's custom resource for triggering CodeBuild only fires when CloudFormation
+# detects a property change (which doesn't happen when only S3 content changes).
+# This step explicitly triggers CodeBuild, waits for it, then forces the
+# AgentCore Runtime to re-pull the new :latest image.
+# ============================================================================
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}Step 4.5: Rebuild agent & refresh AgentCore Runtime${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+if [ "$DRY_RUN" = true ]; then
+    echo -e "${CYAN}[DRY RUN] Would trigger CodeBuild and UpdateAgentRuntime${NC}"
+else
+    # --- Trigger CodeBuild directly ---
+    BUILD_PROJECT="${APP_NAME}-agent-build"
+    SOURCE_BUCKET="${APP_NAME}-build-source-${AWS_ACCOUNT_ID}-${AWS_REGION}"
+
+    echo -e "${YELLOW}Triggering agent CodeBuild: ${BUILD_PROJECT}${NC}"
+    BUILD_ID=$(aws codebuild start-build \
+        --project-name "$BUILD_PROJECT" \
+        --source-type-override S3 \
+        --source-location-override "${SOURCE_BUCKET}/agent-source/" \
+        --region "$AWS_REGION" \
+        --query 'build.id' \
+        --output text 2>&1)
+
+    if [ $? -ne 0 ] || [ -z "$BUILD_ID" ] || [ "$BUILD_ID" = "None" ]; then
+        echo -e "${RED}Failed to start CodeBuild: ${BUILD_ID}${NC}"
+    else
+        echo -e "${GREEN}CodeBuild started: ${BUILD_ID}${NC}"
+        echo -e "${YELLOW}Waiting for build to complete...${NC}"
+
+        # Wait for build (up to 10 minutes)
+        for i in {1..40}; do
+            BUILD_STATUS=$(aws codebuild batch-get-builds \
+                --ids "$BUILD_ID" \
+                --region "$AWS_REGION" \
+                --query 'builds[0].buildStatus' \
+                --output text 2>/dev/null)
+
+            case "$BUILD_STATUS" in
+                SUCCEEDED)
+                    echo -e "\n${GREEN}Agent build SUCCEEDED${NC}"
+                    break
+                    ;;
+                FAILED|FAULT|STOPPED|TIMED_OUT)
+                    echo -e "\n${RED}Agent build ${BUILD_STATUS}${NC}"
+                    echo -e "${RED}Check CodeBuild logs for details${NC}"
+                    break
+                    ;;
+                *)
+                    echo -n "."
+                    sleep 15
+                    ;;
+            esac
+        done
+
+        if [ "$BUILD_STATUS" = "IN_PROGRESS" ]; then
+            echo -e "\n${YELLOW}Build still in progress after 10 minutes — continuing without waiting${NC}"
+        fi
+    fi
+
+    # --- Force AgentCore Runtime re-pull ---
+    AGENT_STACK_KEY="${APP_NAME}-agent"
+    RUNTIME_ARN=$(jq -r --arg key "$AGENT_STACK_KEY" '.[$key].AgentRuntimeArn // ""' cdk-outputs.json 2>/dev/null)
+
+    if [ -z "$RUNTIME_ARN" ] || [ "$RUNTIME_ARN" = "null" ]; then
+        echo -e "${YELLOW}AgentCore Runtime ARN not found in cdk-outputs.json — skipping refresh${NC}"
+    elif [ "$BUILD_STATUS" = "SUCCEEDED" ]; then
+        RUNTIME_ID="${RUNTIME_ARN##*/}"
+        echo -e "${YELLOW}Refreshing AgentCore Runtime: ${RUNTIME_ID}${NC}"
+
+        EXISTING=$(aws bedrock-agentcore-control get-agent-runtime \
+            --agent-runtime-id "$RUNTIME_ID" \
+            --region "$AWS_REGION" \
+            --output json 2>/dev/null)
+
+        if [ -n "$EXISTING" ]; then
+            ROLE_ARN=$(echo "$EXISTING" | jq -r '.roleArn // ""')
+            NETWORK_CFG=$(echo "$EXISTING" | jq -c '.networkConfiguration // {"networkMode":"PUBLIC"}')
+            PROTOCOL_CFG=$(echo "$EXISTING" | jq -c '.protocolConfiguration // {"serverProtocol":"HTTP"}')
+            ENV_VARS=$(echo "$EXISTING" | jq -c '.environmentVariables // {}')
+            CONTAINER_URI=$(echo "$EXISTING" | jq -r '.agentRuntimeArtifact.containerConfiguration.containerUri // ""')
+
+            if [ -n "$CONTAINER_URI" ] && [ "$CONTAINER_URI" != "null" ]; then
+                ARTIFACT=$(jq -n --arg uri "$CONTAINER_URI" '{containerConfiguration:{containerUri:$uri}}')
+
+                UPDATE_OUTPUT=$(aws bedrock-agentcore-control update-agent-runtime \
+                    --agent-runtime-id "$RUNTIME_ID" \
+                    --agent-runtime-artifact "$ARTIFACT" \
+                    --role-arn "$ROLE_ARN" \
+                    --network-configuration "$NETWORK_CFG" \
+                    --protocol-configuration "$PROTOCOL_CFG" \
+                    --environment-variables "$ENV_VARS" \
+                    --region "$AWS_REGION" \
+                    --query 'agentRuntimeVersion' \
+                    --output text 2>&1)
+
+                if [ $? -eq 0 ]; then
+                    echo -e "${GREEN}AgentCore Runtime updated to version ${UPDATE_OUTPUT} (image re-pull triggered)${NC}"
+                else
+                    echo -e "${RED}UpdateAgentRuntime failed: ${UPDATE_OUTPUT}${NC}"
+                fi
+            fi
+        else
+            echo -e "${RED}Failed to fetch runtime config — skipping refresh${NC}"
+        fi
+    else
+        echo -e "${YELLOW}Skipping runtime refresh (build did not succeed)${NC}"
+    fi
 fi
 
 # ============================================================================
@@ -252,7 +384,9 @@ echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━�
 echo -e "${BLUE}Step 5: Check ECS deployment${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
-if [ "$INGRESS_MODE" = "furl" ]; then
+if [ "$SKIP_CHATAPP" = true ]; then
+    echo -e "${GREEN}Skipping ECS deployment check (--skip-chatapp)${NC}"
+elif [ "$INGRESS_MODE" = "furl" ]; then
     echo -e "${GREEN}Skipping ECS deployment check (ingress mode: furl)${NC}"
 elif [ "$DRY_RUN" != true ]; then
     # Force ECS to pull the new image (if not already deploying)
@@ -301,7 +435,9 @@ if [ "$DRY_RUN" != true ]; then
     echo "  1. ${APP_NAME}-Foundation (Cognito, DynamoDB, IAM, Secrets)"
     echo "  2. ${APP_NAME}-Bedrock (Guardrail, Knowledge Base, Memory)"
     echo "  3. ${APP_NAME}-Agent (ECR, CodeBuild, Runtime, Observability)"
-    if [ "$INGRESS_MODE" = "ecs" ]; then
+    if [ "$SKIP_CHATAPP" = true ]; then
+        echo -e "  ${YELLOW}4. ${APP_NAME}-ChatApp (skipped)${NC}"
+    elif [ "$INGRESS_MODE" = "ecs" ]; then
         echo "  4. ${APP_NAME}-ChatApp (ECS Express Mode)"
     elif [ "$INGRESS_MODE" = "furl" ]; then
         echo "  4. ${APP_NAME}-ChatApp (Lambda Function URL)"
@@ -312,67 +448,76 @@ if [ "$DRY_RUN" != true ]; then
     echo ""
     echo -e "${BLUE}Application Endpoints:${NC}"
     
-    # Handle ECS Express Mode URL (for 'ecs' or 'both' modes)
-    if [ "$INGRESS_MODE" = "ecs" ] || [ "$INGRESS_MODE" = "both" ]; then
-        ECS_SERVICE_NAME="htmx-chatapp-express"
-        SERVICE_URL=""
-        
-        echo -e "${YELLOW}Fetching ECS Express Mode service URL...${NC}"
-        
-        # Get the service ARN first
-        SERVICE_ARN=$(aws ecs list-services \
-            --cluster default \
-            --region "$AWS_REGION" \
-            --query "serviceArns[?contains(@, '${ECS_SERVICE_NAME}')]" \
-            --output text 2>/dev/null | head -1 || echo "")
-        
-        # Use describe-express-gateway-service to get the actual endpoint URL
-        if [ -n "$SERVICE_ARN" ] && [ "$SERVICE_ARN" != "None" ]; then
-            # Wait for URL to be available (up to 60 seconds)
-            for i in {1..12}; do
-                SERVICE_INFO=$(aws ecs describe-express-gateway-service \
-                    --service-arn "$SERVICE_ARN" \
-                    --region "$AWS_REGION" 2>/dev/null || echo "")
-                
-                if [ -n "$SERVICE_INFO" ]; then
-                    SERVICE_URL=$(echo "$SERVICE_INFO" | jq -r '.service.activeConfigurations[0].ingressPaths[0].endpoint // empty' 2>/dev/null || echo "")
+    if [ "$SKIP_CHATAPP" = true ]; then
+        echo -e "${YELLOW}ChatApp was skipped — no application endpoints to display${NC}"
+        echo ""
+        echo -e "${YELLOW}AgentCore Runtime ARN:${NC}"
+        AGENT_STACK_KEY="${APP_NAME}-agent"
+        RUNTIME_ARN_DISPLAY=$(jq -r --arg key "$AGENT_STACK_KEY" '.[$key].AgentRuntimeArn // "N/A"' cdk-outputs.json 2>/dev/null)
+        echo "  $RUNTIME_ARN_DISPLAY"
+    else
+        # Handle ECS Express Mode URL (for 'ecs' or 'both' modes)
+        if [ "$INGRESS_MODE" = "ecs" ] || [ "$INGRESS_MODE" = "both" ]; then
+            ECS_SERVICE_NAME="htmx-chatapp-express"
+            SERVICE_URL=""
+            
+            echo -e "${YELLOW}Fetching ECS Express Mode service URL...${NC}"
+            
+            # Get the service ARN first
+            SERVICE_ARN=$(aws ecs list-services \
+                --cluster default \
+                --region "$AWS_REGION" \
+                --query "serviceArns[?contains(@, '${ECS_SERVICE_NAME}')]" \
+                --output text 2>/dev/null | head -1 || echo "")
+            
+            # Use describe-express-gateway-service to get the actual endpoint URL
+            if [ -n "$SERVICE_ARN" ] && [ "$SERVICE_ARN" != "None" ]; then
+                # Wait for URL to be available (up to 60 seconds)
+                for i in {1..12}; do
+                    SERVICE_INFO=$(aws ecs describe-express-gateway-service \
+                        --service-arn "$SERVICE_ARN" \
+                        --region "$AWS_REGION" 2>/dev/null || echo "")
                     
-                    if [ -n "$SERVICE_URL" ]; then
-                        break
+                    if [ -n "$SERVICE_INFO" ]; then
+                        SERVICE_URL=$(echo "$SERVICE_INFO" | jq -r '.service.activeConfigurations[0].ingressPaths[0].endpoint // empty' 2>/dev/null || echo "")
+                        
+                        if [ -n "$SERVICE_URL" ]; then
+                            break
+                        fi
                     fi
-                fi
-                echo -n "."
-                sleep 5
-            done
-        fi
-        
-        # Display URL or fallback message
-        if [ -n "$SERVICE_URL" ]; then
-            echo -e "${GREEN}Application URL:${NC} https://$SERVICE_URL"
-        else
-            echo -e "${YELLOW}ECS Express Mode: URL not yet available (service may still be initializing)${NC}"
-            if [ -n "$SERVICE_ARN" ]; then
-                echo -e "${YELLOW}Get URL with:${NC} aws ecs describe-express-gateway-service --service-arn \"$SERVICE_ARN\" --region $AWS_REGION --query 'service.activeConfigurations[0].ingressPaths[0].endpoint' --output text"
+                    echo -n "."
+                    sleep 5
+                done
             fi
+            
+            # Display URL or fallback message
+            if [ -n "$SERVICE_URL" ]; then
+                echo -e "${GREEN}Application URL:${NC} https://$SERVICE_URL"
+            else
+                echo -e "${YELLOW}ECS Express Mode: URL not yet available (service may still be initializing)${NC}"
+                if [ -n "$SERVICE_ARN" ]; then
+                    echo -e "${YELLOW}Get URL with:${NC} aws ecs describe-express-gateway-service --service-arn \"$SERVICE_ARN\" --region $AWS_REGION --query 'service.activeConfigurations[0].ingressPaths[0].endpoint' --output text"
+                fi
+            fi
+            echo ""
         fi
-        echo ""
-    fi
-    
-    # Handle Lambda Function URL (for 'furl' or 'both' modes)
-    if [ "$INGRESS_MODE" = "furl" ] || [ "$INGRESS_MODE" = "both" ]; then
-        echo -e "${YELLOW}Fetching CloudFront URL...${NC}"
         
-        # Get Lambda Function URL from CDK outputs
-        STACK_KEY="${APP_NAME}-chatapp"
-        LAMBDA_URL=$(jq -r --arg key "$STACK_KEY" '.[$key].LambdaFunctionUrl // ""' cdk-outputs.json 2>/dev/null)
-        
-        if [ -n "$LAMBDA_URL" ] && [ "$LAMBDA_URL" != "null" ]; then
-            echo -e "${GREEN}Application URL:${NC} $LAMBDA_URL"
-        else
-            echo -e "${YELLOW}  Lambda Function URL: Unable to retrieve from outputs${NC}"
-            echo -e "${YELLOW}  Check cdk-outputs.json or AWS Console for the Function URL${NC}"
+        # Handle Lambda Function URL (for 'furl' or 'both' modes)
+        if [ "$INGRESS_MODE" = "furl" ] || [ "$INGRESS_MODE" = "both" ]; then
+            echo -e "${YELLOW}Fetching CloudFront URL...${NC}"
+            
+            # Get Lambda Function URL from CDK outputs
+            STACK_KEY="${APP_NAME}-chatapp"
+            LAMBDA_URL=$(jq -r --arg key "$STACK_KEY" '.[$key].LambdaFunctionUrl // ""' cdk-outputs.json 2>/dev/null)
+            
+            if [ -n "$LAMBDA_URL" ] && [ "$LAMBDA_URL" != "null" ]; then
+                echo -e "${GREEN}Application URL:${NC} $LAMBDA_URL"
+            else
+                echo -e "${YELLOW}  Lambda Function URL: Unable to retrieve from outputs${NC}"
+                echo -e "${YELLOW}  Check cdk-outputs.json or AWS Console for the Function URL${NC}"
+            fi
+            echo ""
         fi
-        echo ""
     fi
     
     echo ""
@@ -381,8 +526,13 @@ if [ "$DRY_RUN" != true ]; then
     echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "${YELLOW}Next Steps:${NC}"
-    echo "  1. Create a user: cd ../chatapp/scripts && ./create-user.sh <email> <password> --admin"
-    echo "  2. Access the application using the URL(s) shown above"
+    if [ "$SKIP_CHATAPP" = true ]; then
+        echo "  1. Deploy the ChatApp later: ./deploy-all.sh --region $AWS_REGION"
+        echo "  2. Or invoke the agent directly via AgentCore Runtime API"
+    else
+        echo "  1. Create a user: cd ../chatapp/scripts && ./create-user.sh <email> <password> --admin"
+        echo "  2. Access the application using the URL(s) shown above"
+    fi
     echo ""
     echo -e "${YELLOW}Useful Commands:${NC}"
     echo "  View stack outputs:  cat cdk-outputs.json"

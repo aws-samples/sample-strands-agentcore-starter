@@ -6,7 +6,11 @@ from bedrock_agentcore import BedrockAgentCoreApp
 from bedrock_agentcore.memory import MemoryClient
 from strands import Agent
 from strands.hooks import AgentInitializedEvent, HookProvider, HookRegistry, MessageAddedEvent
+from strands.models.openai import OpenAIModel
+from strands.models.openai_responses import OpenAIResponsesModel
+from strands.models.anthropic import AnthropicModel
 from strands_tools import calculator, current_time
+from aws_bedrock_token_generator import provide_token
 
 from config import AgentConfig
 from guardrails import NotifyOnlyGuardrailsHook
@@ -18,6 +22,26 @@ from tools.weather import get_current_weather
 from tools.web_search import ddg_web_search
 
 app = BedrockAgentCoreApp()
+
+# Generic reasoning-delimiter stripping (provider-agnostic)
+REASONING_DELIMITERS = [("<thinking>", "</thinking>")]
+
+
+def strip_reasoning(text: str) -> str:
+    """Remove reasoning content wrapped in known delimiter tags.
+
+    Generic delimiter stripping for any model that emits reasoning wrapped in
+    tags. Not tied to any specific provider.
+    """
+    import re
+    for open_tag, close_tag in REASONING_DELIMITERS:
+        pattern = re.escape(open_tag) + r"[\s\S]*?" + re.escape(close_tag) + r"\s*"
+        text = re.sub(pattern, "", text)
+    return text.strip()
+
+# Default model when no modelId is supplied in the payload.
+# Must match `default_model_id` in chatapp/app/static/models.json.
+DEFAULT_MODEL_ID = "anthropic.claude-haiku-4-5"
 
 # Global config and logger - will be initialized on first invoke
 _config = None
@@ -173,9 +197,8 @@ class MemoryHook(HookProvider):
             else:
                 text_content = str(content)
             
-            # Remove <thinking> tags from Nova Pro responses before saving to memory
-            import re
-            text_content = re.sub(r'<thinking>[\s\S]*?</thinking>\s*', '', text_content).strip()
+            # Strip reasoning delimiters from model responses before saving to memory
+            text_content = strip_reasoning(text_content)
             
             # Skip if text is empty after cleaning
             if not text_content:
@@ -251,9 +274,63 @@ async def invoke(payload, context):
     user_id = payload.get("userId", "anonymous")
     log.info(f"Using user ID: {user_id}")
     
-    # Get model ID from payload with default fallback (Requirement 10.7)
-    model_id = payload.get("modelId", "global.amazon.nova-2-lite-v1:0")
-    log.info(f"Using model: {model_id}")
+    # Get model ID and API type from payload with default fallback
+    model_id = payload.get("modelId") or DEFAULT_MODEL_ID
+    model_api = payload.get("modelApi", "chat")  # "chat", "responses", or "messages"
+    log.info(f"Using model: {model_id} (api: {model_api})")
+    
+    # Mint a fresh short-term Bedrock token for THIS invocation.
+    # The optional config override short-circuits token generation for local/advanced use.
+    try:
+        api_key = config.openai_api_key or provide_token(region=config.mantle_region)
+    except Exception as e:
+        raise ValueError(
+            "Failed to mint a Bedrock Mantle token. Verify AWS credentials are "
+            "available to the AgentCore Runtime role."
+        ) from e
+    
+    # NOTE: The token (valid ≤12h) must be refreshed if the model/agent is ever
+    # cached across requests. Currently, the model is constructed per invoke so
+    # every request gets a fresh token.
+    #
+    # Provider routing based on the model's supported API:
+    # - "messages" → AnthropicModel (Anthropic Messages API at /v1)
+    # - "responses" → OpenAIResponsesModel (Responses API at /openai/v1)
+    # - "chat" → OpenAIModel (Chat Completions at /v1)
+    mantle_base = config.openai_base_url.rstrip('/')  # e.g. https://bedrock-mantle.us-east-1.api.aws/v1
+
+    if model_api == "messages":
+        # Anthropic models use the Messages API
+        # AnthropicModel expects base_url pointing to the messages endpoint
+        model = AnthropicModel(
+            model_id=model_id,
+            client_args={
+                "api_key": api_key,
+                "base_url": mantle_base,
+            },
+            max_tokens=4096,
+        )
+    elif model_api == "responses":
+        # GPT-5.x, Gemma 4, Grok use the Responses API on /openai/v1 path
+        responses_base = mantle_base.replace("/v1", "/openai/v1")
+        model = OpenAIResponsesModel(
+            model_id=model_id,
+            client_args={
+                "api_key": api_key,
+                "base_url": responses_base,
+                "project": config.mantle_project,
+            },
+        )
+    else:
+        # Default: Chat Completions API (majority of models)
+        model = OpenAIModel(
+            client_args={
+                "api_key": api_key,
+                "base_url": mantle_base,
+                "project": config.mantle_project,
+            },
+            model_id=model_id,
+        )
     
     # Get guardrail config from payload (passed from chatapp) or fall back to env/config
     guardrail_id = payload.get("guardrailId") or config.guardrail_id
@@ -300,7 +377,7 @@ async def invoke(payload, context):
     )
     
     agent = Agent(
-        model=model_id,
+        model=model,
         system_prompt=system_prompt,
         hooks=hooks,
         tools=tools,

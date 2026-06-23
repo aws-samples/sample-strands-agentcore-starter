@@ -16,6 +16,9 @@ export interface AppConfig {
   
   /** AWS region for deployment */
   region: string;
+
+  /** AWS region for Mantle inference (may differ from deployment region for broader model availability) */
+  mantleRegion: string;
   
   /** AWS account ID */
   account: string;
@@ -136,6 +139,7 @@ export const config: AppConfig = {
   appName,
   region: getEnvOrDefault('AWS_REGION', getEnvOrDefault('CDK_DEFAULT_REGION', 'us-east-1')),
   account: getEnvOrDefault('AWS_ACCOUNT_ID', getEnvOrDefault('CDK_DEFAULT_ACCOUNT', '')),
+  mantleRegion: getEnvOrDefault('MANTLE_REGION', 'us-east-1'),
   
   // Deployment mode (set from CDK context via setDeploymentMode function)
   deploymentMode: 'ecs',

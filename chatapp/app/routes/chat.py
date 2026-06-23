@@ -15,7 +15,8 @@ from pydantic import BaseModel, Field
 from app.auth.cognito import extract_user_id, TokenValidationError
 from app.auth.middleware import SESSION_COOKIE_NAME
 from app.agentcore.client import AgentCoreClient
-from app.models.events import MessageEvent, MetadataEvent, ToolUseEvent, ToolResultEvent, GuardrailEvent
+from app.helpers.model_catalog import get_model_api
+from app.models.events import MessageEvent, MetadataEvent, ToolUseEvent, ToolResultEvent, GuardrailEvent, ReasoningEvent
 from app.models.guardrail import GuardrailRecord
 from app.models.usage import UsageRecord, ToolUsageRecord
 from app.storage.guardrail import GuardrailStorageService
@@ -39,7 +40,7 @@ class ChatRequest(BaseModel):
     prompt: str = Field(..., min_length=1, description="User message")
     session_id: str = Field(..., min_length=1, description="Session ID")
     model_id: Optional[str] = Field(
-        default="global.amazon.nova-2-lite-v1:0",
+        default="global.anthropic.claude-haiku-4-5-20251001-v1:0",
         description="Model identifier for LLM selection"
     )
 
@@ -120,7 +121,8 @@ async def _stream_chat_response(
     prompt: str,
     session_id: str,
     user_id: str,
-    model_id: str = "global.amazon.nova-2-lite-v1:0",
+    model_id: str = "anthropic.claude-haiku-4-5",
+    model_api: str = "chat",
     user_email: str | None = None,
 ):
     """Generate SSE stream from AgentCore response.
@@ -143,6 +145,10 @@ async def _stream_chat_response(
         SSE formatted event strings
     """
     client = AgentCoreClient()
+
+    # Track wall-clock latency since the new providers don't report it
+    import time as _time
+    _stream_start = _time.time()
 
     # Accumulate metrics during stream
     accumulated_metrics: Dict[str, Any] = {}
@@ -178,6 +184,7 @@ async def _stream_chat_response(
                 session_id=session_id,
                 user_id=user_id,
                 model_id=model_id,
+                model_api=model_api,
             ):
                 await queue.put(ev)
         except Exception as exc:
@@ -206,6 +213,10 @@ async def _stream_chat_response(
         # Tool/text separation (line breaks) is handled client-side in chat.js.
         if isinstance(event, MessageEvent) and event.content:
             accumulated_output.append(event.content)
+
+        # Track reasoning events but don't include in evaluation output
+        if isinstance(event, ReasoningEvent):
+            pass  # Just pass through to SSE, don't accumulate for eval
 
         # Track tool usage from ToolUseEvent
         if isinstance(event, ToolUseEvent):
@@ -261,6 +272,9 @@ async def _stream_chat_response(
         # Capture metrics from MetadataEvent
         if isinstance(event, MetadataEvent) and event.data:
             accumulated_metrics = event.data
+            # Inject wall-clock latency if not provided by the model
+            if not accumulated_metrics.get('latencyMs'):
+                accumulated_metrics['latencyMs'] = int((_time.time() - _stream_start) * 1000)
 
         # Store guardrail violations asynchronously (fire-and-forget) so
         # violation capture never blocks the streamed response.
@@ -566,6 +580,7 @@ async def chat(request: Request, body: ChatRequest):
             session_id=body.session_id,
             user_id=user_id,
             model_id=body.model_id,
+            model_api=get_model_api(body.model_id),
             user_email=user_email,
         ),
         media_type="text/event-stream",

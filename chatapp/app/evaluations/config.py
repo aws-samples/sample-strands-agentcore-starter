@@ -36,8 +36,8 @@ class EvalConfig:
         "tool_selection",
     ])
     llm_sample_rate: float = 1.0
-    max_output_length: int = 4000
-    max_context_length: int = 20000
+    max_output_length: int = 16000
+    max_context_length: int = 100000
     max_reason_length: int = 2000
 
     @classmethod

@@ -181,6 +181,12 @@ function toggleModelDropdown() {
     if (isHidden) {
         // Populate options before showing
         populateModelOptions();
+        // Clear and focus search input
+        const searchInput = document.getElementById('model-search');
+        if (searchInput) {
+            searchInput.value = '';
+            setTimeout(() => searchInput.focus(), 50);
+        }
         dropdown.classList.remove('hidden');
         
         // Add click outside listener to close dropdown
@@ -245,22 +251,42 @@ function populateModelOptions() {
         
         // Create model info
         const info = document.createElement('div');
-        info.className = 'flex-1 min-w-0';
+        info.className = 'flex-1 min-w-0 flex items-center justify-between gap-2';
         
-        const name = document.createElement('div');
+        const name = document.createElement('span');
         name.className = `text-sm font-medium ${isSelected ? 'text-primary-700' : 'text-gray-900'}`;
         name.textContent = model.name;
         
-        const description = document.createElement('div');
-        description.className = 'text-xs text-gray-500 truncate';
-        description.textContent = model.description;
+        const cost = document.createElement('span');
+        cost.className = 'text-xs text-gray-400 whitespace-nowrap';
+        cost.textContent = model.description;
         
         info.appendChild(name);
-        info.appendChild(description);
+        info.appendChild(cost);
         
         option.appendChild(checkmark);
         option.appendChild(info);
         optionsContainer.appendChild(option);
+    });
+}
+
+/**
+ * Filter model options based on search input.
+ * 
+ * @param {string} query - Search query string
+ */
+function filterModels(query) {
+    const optionsContainer = document.getElementById('model-options');
+    if (!optionsContainer) return;
+    const normalizedQuery = query.toLowerCase().trim();
+    const buttons = optionsContainer.querySelectorAll('button');
+    buttons.forEach(button => {
+        const modelName = button.textContent.toLowerCase();
+        if (normalizedQuery === '' || modelName.includes(normalizedQuery)) {
+            button.style.display = '';
+        } else {
+            button.style.display = 'none';
+        }
     });
 }
 
@@ -719,6 +745,13 @@ async function sendMessage(event) {
         // Includes session_id per Requirement 3.3
         // Includes model_id per Requirement 10.5
         const selectedModel = getSelectedModel();
+
+        // Store the model name on the message element for display after finalization
+        const assistantMsgEl = document.getElementById(assistantMsgId);
+        if (assistantMsgEl) {
+            assistantMsgEl.dataset.modelName = selectedModel.name;
+        }
+
         const response = await fetch('/api/chat', {
             method: 'POST',
             headers: {
@@ -807,6 +840,28 @@ async function sendMessage(event) {
             // Add assistant message to memory cache
             if (typeof addMessageToEventCache === 'function') {
                 addMessageToEventCache('assistant', fullContent);
+            }
+        }
+        
+        // Handle empty response - agent returned nothing (likely an error upstream)
+        if (!hasReceivedContent) {
+            const msgEl = document.getElementById(assistantMsgId);
+            if (msgEl) {
+                const contentDiv = msgEl.querySelector('.message-content');
+                // Only show error if there's genuinely no content rendered
+                const hasRenderedContent = contentDiv && (contentDiv.textContent.trim().length > 0 || contentDiv.querySelector('.reasoning-block'));
+                if (!hasRenderedContent) {
+                    if (contentDiv) {
+                        contentDiv.innerHTML = '<span class="text-red-500 text-sm">No response from the model. Check agent logs for details.</span>';
+                    }
+                    // Remove streaming state
+                    const bubble = msgEl.querySelector('.message-assistant');
+                    if (bubble) bubble.classList.remove('streaming-pulse');
+                    const progressBar = msgEl.querySelector('.streaming-progress-bar');
+                    if (progressBar) progressBar.remove();
+                    const cursor = msgEl.querySelector('.streaming-cursor');
+                    if (cursor) cursor.remove();
+                }
             }
         }
         
@@ -1183,6 +1238,31 @@ function handleSSEEvent(event, msgId, currentContent) {
             // Handle guardrail violation events (Requirements 4.1, 4.2)
             // Store guardrail data on the appropriate message element
             handleGuardrailEvent(event, msgId);
+            break;
+
+        case 'reasoning':
+            // Append reasoning content to a collapsible details element
+            if (event.content) {
+                const msgEl = document.getElementById(msgId);
+                if (msgEl) {
+                    const reasoningContentDiv = msgEl.querySelector('.message-content');
+                    if (reasoningContentDiv) {
+                        // Find or create the reasoning details element
+                        let reasoningEl = reasoningContentDiv.querySelector('.reasoning-block');
+                        if (!reasoningEl) {
+                            reasoningEl = document.createElement('details');
+                            reasoningEl.className = 'reasoning-block mb-2 text-xs text-gray-400 border border-gray-200 rounded-lg p-2 bg-gray-50';
+                            reasoningEl.innerHTML = '<summary class="cursor-pointer font-medium text-gray-500">Thinking...</summary><pre class="mt-1 whitespace-pre-wrap text-gray-400 overflow-x-auto"></pre>';
+                            // Insert BEFORE the main content (at the top of the message)
+                            reasoningContentDiv.insertBefore(reasoningEl, reasoningContentDiv.firstChild);
+                        }
+                        const pre = reasoningEl.querySelector('pre');
+                        if (pre) {
+                            pre.textContent += event.content;
+                        }
+                    }
+                }
+            }
             break;
     }
     
@@ -1689,10 +1769,29 @@ function finalizeMessage(msgId, content) {
         // Clear existing content
         footer.textContent = '';
         
-        // Add timestamp on left
+        // Left group: timestamp · model name
+        const leftGroup = document.createElement('span');
+        leftGroup.className = 'flex items-center gap-0';
+        
         const timestamp = document.createElement('span');
         timestamp.textContent = new Date().toLocaleTimeString();
-        footer.appendChild(timestamp);
+        leftGroup.appendChild(timestamp);
+        
+        // Add model name after timestamp with bullet separator
+        const modelName = msgElement.dataset.modelName;
+        if (modelName) {
+            const separator = document.createElement('span');
+            separator.className = 'text-gray-300 mx-1';
+            separator.textContent = '·';
+            leftGroup.appendChild(separator);
+            
+            const modelSpan = document.createElement('span');
+            modelSpan.className = 'text-gray-400';
+            modelSpan.textContent = modelName;
+            leftGroup.appendChild(modelSpan);
+        }
+        
+        footer.appendChild(leftGroup);
         
         // Add metrics on right if available
         const tokenUsage = msgElement.dataset.tokenUsage;

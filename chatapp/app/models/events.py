@@ -51,6 +51,24 @@ class MessageEvent(SSEEvent):
 
 
 @dataclass
+class ReasoningEvent(SSEEvent):
+    """Event containing reasoning/thinking content from the model.
+    
+    Emitted when a model uses chain-of-thought reasoning (e.g., DeepSeek,
+    Qwen3, Mistral, etc.). The frontend can choose to show/hide this content.
+    
+    Attributes:
+        type: Always "reasoning"
+        content: The reasoning text chunk
+    """
+    content: str
+    type: str = field(default="reasoning", init=False)
+    
+    def __post_init__(self):
+        self.type = "reasoning"
+
+
+@dataclass
 class ToolUseEvent(SSEEvent):
     """Event indicating the agent is using a tool.
     
@@ -185,6 +203,9 @@ def parse_event_from_dict(data: Dict[str, Any]) -> Optional[SSEEvent]:
     
     if event_type == "message":
         return MessageEvent(content=data.get("content", ""))
+    
+    elif event_type == "reasoning":
+        return ReasoningEvent(content=data.get("content", ""))
     
     elif event_type == "tool_use":
         return ToolUseEvent(

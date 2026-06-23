@@ -267,6 +267,22 @@ export class AgentStack extends cdk.Stack {
       })
     );
 
+    // Bedrock Mantle inference permissions (required for token-based Mantle access)
+    this.agentRuntimeRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'BedrockMantleAccess',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'bedrock-mantle:CreateInference',
+          'bedrock-mantle:CallWithBearerToken',
+          'bedrock-mantle:GetProject',
+          'bedrock-mantle:ListProjects',
+          'bedrock-mantle:ListTagsForResources',
+        ],
+        resources: ['*'],
+      })
+    );
+
     // Bedrock Guardrails permissions
     this.agentRuntimeRole.addToPolicy(
       new iam.PolicyStatement({
@@ -504,6 +520,12 @@ def handler(event, context):
         GUARDRAIL_ID: guardrailId,
         GUARDRAIL_VERSION: guardrailVersion,
         KB_ID: knowledgeBaseId,
+        // Mantle inference region — defaults to us-east-1 for broadest model availability.
+        // Override via MANTLE_REGION env var at CDK synth time.
+        MANTLE_REGION: config.mantleRegion,
+        OPENAI_BASE_URL: `https://bedrock-mantle.${config.mantleRegion}.api.aws/v1`,
+        MANTLE_PROJECT: 'default',
+        // NOTE: no OPENAI_API_KEY — auth uses a runtime-minted token (Req 6.2)
       },
       tags: {
         Application: config.appName,
