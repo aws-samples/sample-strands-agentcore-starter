@@ -4,6 +4,11 @@ import os
 from typing import Optional
 
 
+def derive_mantle_base_url(region: str) -> str:
+    """Build the Mantle endpoint base URL for a region."""
+    return f"https://bedrock-mantle.{region}.api.aws/v1"
+
+
 @dataclass
 class AgentConfig:
     """Configuration for the AgentCore agent.
@@ -21,6 +26,10 @@ class AgentConfig:
         kb_id: Bedrock Knowledge Base ID (required)
         kb_max_results: Maximum number of KB search results to return
         kb_min_score: Minimum relevance score threshold for KB results
+        mantle_region: AWS region for Mantle inference (may differ from aws_region)
+        openai_base_url: Mantle endpoint base URL (region-derived when unset)
+        openai_api_key: Optional Mantle token override for local/advanced use
+        mantle_project: Mantle project identifier (default "default")
     """
     # Required fields (no defaults) must come first
     memory_id: str
@@ -36,6 +45,10 @@ class AgentConfig:
     guardrail_enabled: bool = True
     kb_max_results: int = 5
     kb_min_score: float = 0.5
+    mantle_region: str = "us-east-1"  # resolved in from_env
+    openai_base_url: Optional[str] = None
+    openai_api_key: Optional[str] = None
+    mantle_project: str = "default"
     
     @classmethod
     def from_env(cls) -> "AgentConfig":
@@ -84,6 +97,24 @@ class AgentConfig:
         kb_max_results = int(os.getenv("KB_MAX_RESULTS", "5"))
         kb_min_score = float(os.getenv("KB_MIN_SCORE", "0.5"))
         
+        # Mantle inference region — can differ from app deployment region for
+        # broader model availability (e.g., us-east-1 has more models than us-west-2)
+        mantle_region = os.getenv("MANTLE_REGION", "").strip() or aws_region
+
+        # Mantle endpoint base URL — explicit override or derived from mantle_region
+        openai_base_url = os.getenv("OPENAI_BASE_URL", "").strip() or derive_mantle_base_url(mantle_region)
+        
+        # Optional Mantle token override (advanced/local). When unset, the agent
+        # mints a short-term token at invoke time via provide_token().
+        openai_api_key = os.getenv("OPENAI_API_KEY", "").strip() or None
+        
+        # Mantle project identifier
+        mantle_project = (
+            os.getenv("MANTLE_PROJECT")
+            or os.getenv("OPENAI_PROJECT")
+            or "default"
+        )
+        
         return cls(
             memory_id=memory_id,
             aws_region=aws_region,
@@ -96,5 +127,9 @@ class AgentConfig:
             guardrail_enabled=guardrail_enabled,
             kb_id=kb_id,
             kb_max_results=kb_max_results,
-            kb_min_score=kb_min_score
+            kb_min_score=kb_min_score,
+            mantle_region=mantle_region,
+            openai_base_url=openai_base_url,
+            openai_api_key=openai_api_key,
+            mantle_project=mantle_project,
         )

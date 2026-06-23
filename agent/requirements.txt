@@ -1,6 +1,7 @@
 bedrock-agentcore
 bedrock-agentcore-starter-toolkit
-strands-agents[otel]
+strands-agents[otel,openai,anthropic]
+aws-bedrock-token-generator
 strands-agents-tools
 aws-opentelemetry-distro
 psutil
