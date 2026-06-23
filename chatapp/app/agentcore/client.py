@@ -15,6 +15,7 @@ from app.config import get_config
 from app.models.events import (
     SSEEvent,
     MessageEvent,
+    ReasoningEvent,
     ToolUseEvent,
     ToolResultEvent,
     ErrorEvent,
@@ -210,6 +211,14 @@ class AgentCoreClient:
             
             data: Dict[str, Any] = json.loads(json_str)
             
+            # Handle reasoningContent streaming events (thinking models)
+            reasoning_delta = data.get('event', {}).get('contentBlockDelta', {}).get('delta', {}).get('reasoningContent')
+            if reasoning_delta:
+                reasoning_text = reasoning_delta.get('text', '')
+                if reasoning_text:
+                    return ReasoningEvent(content=reasoning_text)
+                return None
+            
             # Handle contentBlockDelta streaming events
             if data.get('event', {}).get('contentBlockDelta', {}).get('delta', {}).get('text'):
                 text = data['event']['contentBlockDelta']['delta']['text']
@@ -325,7 +334,8 @@ class AgentCoreClient:
         prompt: str,
         session_id: str,
         user_id: str,
-        model_id: str = "global.amazon.nova-2-lite-v1:0",
+        model_id: str = "anthropic.claude-haiku-4-5",
+        model_api: str = "chat",
     ) -> AsyncGenerator[SSEEvent, None]:
         """Invoke AgentCore Runtime and stream the response.
         
@@ -354,6 +364,7 @@ class AgentCoreClient:
                 'userId': user_id,
                 'sessionId': session_id,  # Include session ID in payload for usage logs
                 'modelId': model_id,
+                'modelApi': model_api,
                 'guardrailId': config.guardrail_id,
                 'guardrailVersion': config.guardrail_version,
                 'guardrailEnabled': config.guardrail_enabled,

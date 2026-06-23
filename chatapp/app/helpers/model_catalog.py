@@ -62,3 +62,14 @@ def model_name(model_id: str) -> str:
         if m.get("id") == model_id:
             return m.get("name", model_id)
     return model_id
+
+
+def get_model_api(model_id: str) -> str:
+    """Get the API type for a model ('chat', 'responses', or 'messages').
+    
+    Returns 'chat' as default if model not found or api field missing.
+    """
+    for m in get_models():
+        if m.get("id") == model_id:
+            return m.get("api", "chat")
+    return "chat"
