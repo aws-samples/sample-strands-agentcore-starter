@@ -127,7 +127,7 @@ async def list_documents() -> dict[str, Any]:
         docs = await loop.run_in_executor(None, _list_objects_sync, bucket, _DOC_PREFIX)
     except Exception as e:  # noqa: BLE001
         logger.warning("KB list failed: %s", e)
-        return {"documents": [], "error": f"Could not list documents: {e}"}
+        return {"documents": [], "error": "Could not list documents. Check the server logs for details."}
 
     docs.sort(key=lambda d: d["name"].lower())
     return {"documents": docs, "bucket": bucket}
@@ -168,7 +168,7 @@ async def get_document(key: str) -> dict[str, Any]:
         content = await loop.run_in_executor(None, _get_object_text_sync, bucket, key)
     except Exception as e:  # noqa: BLE001
         logger.warning("KB get_object failed (%s): %s", key, e)
-        return {"error": f"Could not read document: {e}"}
+        return {"error": "Could not read document. Check the server logs for details."}
     return {"key": key, "name": name, "readable": True, "content": content}
 
 
@@ -203,7 +203,7 @@ async def search(query: str, n: int = 5) -> dict[str, Any]:
         )
     except Exception as e:  # noqa: BLE001
         logger.warning("KB retrieve failed: %s", e)
-        return {"results": [], "error": f"Retrieval failed: {e}"}
+        return {"results": [], "error": "Retrieval failed. Check the server logs for details."}
     return {"results": results}
 
 
@@ -262,7 +262,7 @@ async def upload_document(filename: str, data: bytes, content_type: str = "") ->
         )
     except Exception as e:  # noqa: BLE001
         logger.warning("KB upload put_object failed (%s): %s", key, e)
-        return {"error": f"Upload failed: {e}"}
+        return {"error": "Upload failed. Check the server logs for details."}
 
     # Best-effort ingestion trigger — the file is stored even if this fails.
     job_id: Optional[str] = None
@@ -271,7 +271,7 @@ async def upload_document(filename: str, data: bytes, content_type: str = "") ->
         job_id = await loop.run_in_executor(None, _start_ingestion_sync, kb_id)
     except Exception as e:  # noqa: BLE001
         logger.warning("KB start_ingestion_job failed: %s", e)
-        ingestion_error = str(e)
+        ingestion_error = "Ingestion could not be started. Check the server logs for details."
 
     return {
         "key": key,
