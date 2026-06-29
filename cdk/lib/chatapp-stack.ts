@@ -618,6 +618,12 @@ def handler(event, context):
             name: 'LOG_LEVEL',
             value: 'INFO',
           },
+          {
+            // KB source bucket (deterministic name from Bedrock stack) so the
+            // Knowledge Base Explorer can list/read/upload source documents.
+            name: 'KB_SOURCE_BUCKET',
+            value: `${config.appName}-kb-${this.account}-${this.region}`,
+          },
         ],
       },
     });
@@ -960,6 +966,9 @@ def handler(event, context):
         'LOG_LEVEL': 'INFO',
         'AWS_LWA_INVOKE_MODE': 'response_stream',  // Enable SSE streaming
         'AWS_LWA_PORT': '8080',
+        // KB source bucket (deterministic name from Bedrock stack) so the
+        // Knowledge Base Explorer can list/read/upload source documents.
+        'KB_SOURCE_BUCKET': `${config.appName}-kb-${this.account}-${this.region}`,
       },
     });
     
