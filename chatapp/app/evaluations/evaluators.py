@@ -20,11 +20,20 @@ class EvalResult:
         passed: Whether the evaluation passed
         label: Human-readable label
         reason: Explanation of the score
+        judge_model_id: Model that produced the judgment (LLM judges only;
+            empty for programmatic evaluators)
+        input_tokens: Judge prompt tokens (0 for programmatic evaluators)
+        output_tokens: Judge response tokens (0 for programmatic evaluators)
+        cost: USD cost of the judge call (0.0 for programmatic evaluators)
     """
     score: float
     passed: bool
     label: str
     reason: str
+    judge_model_id: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost: float = 0.0
 
 
 class ToolSelectionEvaluator:

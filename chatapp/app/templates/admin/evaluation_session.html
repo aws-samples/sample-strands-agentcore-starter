@@ -54,6 +54,11 @@
                         {% endif %}
                     </div>
                     <div class="flex items-center gap-2">
+                        {% if turn.cost and turn.cost > 0 %}
+                        <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-purple-50 text-purple-700" title="LLM judge cost for this turn">
+                            ${{ "%.4f"|format(turn.cost) }}
+                        </span>
+                        {% endif %}
                         <span class="inline-block px-2 py-0.5 rounded text-xs font-medium
                             {% if turn.avg_score >= 0.7 %}bg-green-100 text-green-700
                             {% elif turn.avg_score >= 0.5 %}bg-yellow-100 text-yellow-700
@@ -93,6 +98,11 @@
                         </div>
                         {% if ev.reason %}
                         <p class="mt-1 text-xs text-gray-600">{{ ev.reason }}</p>
+                        {% endif %}
+                        {% if ev.eval_type == 'llm_judge' and (ev.input_tokens or ev.output_tokens) %}
+                        <p class="mt-1 text-[11px] text-gray-400 font-mono">
+                            {{ "{:,}".format(ev.input_tokens) }} in / {{ "{:,}".format(ev.output_tokens) }} out · ${{ "%.4f"|format(ev.cost) }}
+                        </p>
                         {% endif %}
                     </div>
                     {% endfor %}

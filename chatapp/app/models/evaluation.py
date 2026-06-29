@@ -29,6 +29,11 @@ class EvaluationRecord:
         eval_type: "llm_judge" or "programmatic"
         latency_ms: How long the evaluation took in milliseconds
         model_id: The model that was evaluated (agent model, not judge model)
+        judge_model_id: The model that performed the evaluation (LLM judge).
+            Empty for programmatic evaluators.
+        input_tokens: Judge prompt tokens consumed (0 for programmatic evaluators)
+        output_tokens: Judge response tokens generated (0 for programmatic evaluators)
+        cost: USD cost of this judge call (0.0 for programmatic evaluators)
     """
     session_id: str
     timestamp: str
@@ -42,6 +47,10 @@ class EvaluationRecord:
     latency_ms: int
     model_id: str
     user_input: str = ""
+    judge_model_id: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost: float = 0.0
 
     def to_dynamodb_item(self) -> Dict[str, Any]:
         """Convert to DynamoDB item format."""
@@ -58,6 +67,10 @@ class EvaluationRecord:
             "latency_ms": {"N": str(self.latency_ms)},
             "model_id": {"S": self.model_id},
             "user_input": {"S": self.user_input[:1000]},  # Truncate long questions
+            "judge_model_id": {"S": self.judge_model_id},
+            "input_tokens": {"N": str(self.input_tokens)},
+            "output_tokens": {"N": str(self.output_tokens)},
+            "cost": {"N": str(self.cost)},
         }
 
     @classmethod
@@ -76,6 +89,10 @@ class EvaluationRecord:
             latency_ms=int(item.get("latency_ms", {}).get("N", "0")),
             model_id=item.get("model_id", {}).get("S", ""),
             user_input=item.get("user_input", {}).get("S", ""),
+            judge_model_id=item.get("judge_model_id", {}).get("S", ""),
+            input_tokens=int(item.get("input_tokens", {}).get("N", "0")),
+            output_tokens=int(item.get("output_tokens", {}).get("N", "0")),
+            cost=float(item.get("cost", {}).get("N", "0")),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -97,6 +114,7 @@ class EvaluationAggregateStats:
     total_evaluations: int = 0
     total_messages_evaluated: int = 0
     total_failed: int = 0
+    total_cost: float = 0.0
     avg_scores: Dict[str, float] = None
     pass_rates: Dict[str, float] = None
     eval_counts: Dict[str, int] = None
@@ -115,6 +133,7 @@ class EvaluationAggregateStats:
             "total_evaluations": self.total_evaluations,
             "total_messages_evaluated": self.total_messages_evaluated,
             "total_failed": self.total_failed,
+            "total_cost": self.total_cost,
             "avg_scores": self.avg_scores,
             "pass_rates": self.pass_rates,
             "eval_counts": self.eval_counts,
