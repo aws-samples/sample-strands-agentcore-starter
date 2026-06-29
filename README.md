@@ -1,6 +1,6 @@
 # AgentCore + Strands Agents Starter Application
 
-A full-stack conversational AI starter kit built with Amazon Bedrock AgentCore, Strands Agents SDK, FastAPI, and htmx. This project is used for rapid prototyping of agentic applications. It accelerates proof-of-concept development with built-in telemetry capture, usage analytics, and cost projections.
+A full-stack conversational AI starter kit built with Amazon Bedrock AgentCore, Amazon Bedrock Mantle, Strands Agents SDK, FastAPI, and htmx. This project is used for rapid prototyping of agentic applications. It accelerates proof-of-concept development with built-in telemetry capture, usage analytics, evaluations, and cost projections.
 
 ![Agent Chat UI](/assets/starter.png?raw=true "Agent Chat UI")
 
@@ -8,142 +8,40 @@ A full-stack conversational AI starter kit built with Amazon Bedrock AgentCore, 
 
 Skip weeks of infrastructure setup and go straight to validating your agentic AI use case. This starter provides everything you need to move from idea to production-ready POC:
 
-- **Production-grade infrastructure in minutes** — Deploy a complete agentic AI stack (auth, memory, guardrails, knowledge base, analytics) with a single CDK command, eliminating weeks of boilerplate development
-- **Built-in cost intelligence** — Track token usage, runtime costs, and tool invocations with projections to forecast production spending before you scale
-- **Flexible deployment options** — Choose between always-on ECS (\~$46/mo) or serverless [Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter) (\~$12/mo) based on your traffic patterns and budget
-- **Extensible agent framework** — Add custom tools, swap models, integrate your own knowledge base, and customize the UI without rebuilding core infrastructure
+- **Production-grade infrastructure in minutes** - Deploy a complete agentic AI stack (auth, memory, guardrails, knowledge base, evaluations) eliminating weeks of boilerplate development
+- **Built-in cost intelligence** - Track token usage, runtime costs, and tool invocations with projections to forecast production spending before you scale
+- **Flexible deployment options** - Choose between always-on ECS (\~$46/mo) or serverless [Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter) (\~$12/mo) based on your traffic patterns and budget
+- **Extensible agent framework** - Add custom tools, swap models, integrate your own knowledge base, and customize the UI without rebuilding core infrastructure
 
 ## Key Features
 
-**Chat Experience**
+**User Experience**
 - 🤖 **AI-powered conversational agent** with short-term (STM) and long-term memory (LTM)
 - ⚡ **Real-time streaming** with token-by-token SSE responses and embedded memory viewer
 - 📝 **Prompt templates** for quick access to pre-defined prompts
 - 🎨 **Customizable branding** - title, logos, and theme colors
 
+**Agent Capabilities**
+- 🧠 **Amazon Bedrock AgentCore** with Strands Agents SDK
+- 🌐 **Amazon Bedrock Mantle** for an OpenAI-compatible endpoint with 30+ models across Anthropic, OpenAI, Google, Mistral, DeepSeek, Qwen, and more
+- 📚 **Knowledge Base integration** for semantic search over your documents (S3 Vectors)
+- 🗂️ **Knowledge Base Explorer** to browse source documents, run the agent's semantic search, read contents, and upload new files (auto-ingested)
+- 🛠️ **Pre-built tools** - web search, URL fetcher, weather, calculator, current time
+- 🔬 **Strands Evaluation** is run for every response using LLM-as-a-judge to measure and improve the system
+
 **POC Analytics & Insights**
-- 📊 **Admin dashboard** with usage analytics and cost tracking
-- 💰 **Cost projections** based on actual usage patterns (token + runtime costs)
+- 📊 **Admin dashboard** with usage analytics - cost breakdown by model plus top users and tools
+- 💰 **Cost & token analytics** - per-model token usage and monthly projections (token + runtime costs)
+- 💬 **Chat history & session details** - browse sessions with time filtering and drill into per-session token/runtime cost and tools invoked
 - 👍 **User feedback capture** with sentiment ratings and comments
 - 🛡️ **Guardrails analytics** with violation tracking and content filtering
 - 🔧 **Tool usage analytics** with per-tool invocation metrics and success rates
-- 🔬 **Automated evaluations** of every response (answer quality, faithfulness, tool selection) with CloudWatch trace deep links
-
-**Agent Capabilities**
-- 🧠 **Amazon Bedrock AgentCore** with Strands Agents SDK
-- 🌐 **Amazon Bedrock Mantle** - OpenAI-compatible endpoint with 30+ models across Anthropic, OpenAI, Google, Mistral, DeepSeek, Qwen, and more
-- 📚 **Knowledge Base integration** for semantic search over your documents (S3 Vectors)
-- 🛠️ **Pre-built tools** - web search, URL fetcher, weather, calculator, current time
 
 **Infrastructure**
 - ☁️ **Flexible deployment options** - ECS Express Mode or CloudFront + Lambda Web Adapter
 - 💸 **Cost-optimized** - Serverless options with pay-per-use pricing
 - 🔐 **Cognito authentication** with secure token management
 - 📡 **OpenTelemetry and Bedrock AgentCore Observability** with logs, traces, and metrics
-
-## Admin Dashboard
-
-The built-in admin dashboard (`/admin`) provides comprehensive usage analytics:
-
-<table width="100%">
-<tr>
-<td width="50%" valign="top">
-
-**📊 Dashboard Overview** `/admin`
-- Total cost breakdown (token cost + runtime cost)
-- Top users and tools by usage
-- Model breakdown with per-model costs
-
-</td>
-<td width="50%" valign="top">
-
-**🔢 Token Usage** `/admin/tokens`
-- Token usage breakdown by model
-- Input vs output distribution
-- Monthly projections
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-**💬 Chat History** `/admin/history`
-- Browse all chat sessions with time filtering
-- Token cost vs runtime cost breakdown
-
-</td>
-<td width="50%" valign="top">
-
-**📋 Session Details** `/admin/sessions/{id}`
-- Complete session token and runtime usage
-- Tools invoked with success/error rates
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-**👍 Feedback Analytics** `/admin/feedback`
-- User sentiment and comments capture
-- Review related conversation context
-
-</td>
-<td width="50%" valign="top">
-
-**👥 User Analytics** `/admin/users`
-- Per-user token usage and session counts
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-**🛡️ Guardrails Analytics** `/admin/guardrails`
-- Violation tracking by filter type
-- Filter strength and confidence levels
-
-</td>
-<td width="50%" valign="top">
-
-**🔧 Tool Analytics** `/admin/tools`
-- Call counts per tool with success/error rates
-- Average execution times
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-**📝 Prompt Templates** `/admin/templates`
-- Create reusable prompt templates that appear in chat UI dropdown
-- Edit title, description, and prompt text
-
-</td>
-<td width="50%" valign="top">
-
-**🎨 Application Settings** `/admin/settings`
-- Customize app title, subtitle, and welcome message
-- Set app theme including color and custom logos
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-**🔬 Evaluations** `/admin/evaluations`
-- Per-evaluator pass rates, failed counts, and daily trends
-- Recent sessions with drill-down to per-turn results
-
-</td>
-<td width="50%" valign="top">
-
-**🔎 Session Evaluations** `/admin/evaluations/session/{id}`
-- Each turn's question and evaluator pass/fail with reasons
-- Deep link to the full trace in CloudWatch GenAI Observability
-
-</td>
-</tr>
-</table>
 
 ![Usage Dashboard](/assets/usage.png?raw=true "Usage Dashboard")
 
@@ -152,11 +50,11 @@ The built-in admin dashboard (`/admin`) provides comprehensive usage analytics:
 Every chat response is scored automatically (fire-and-forget, after the SSE stream completes) and the results surface in the admin dashboard at `/admin/evaluations`. Results are stored in DynamoDB; the original message content and full execution trace are linked out to CloudWatch GenAI Observability rather than duplicated into the app.
 
 **Evaluators**
-- **Answer Quality** (LLM judge, binary pass/fail) — does the response directly, completely, and relevantly address the question?
-- **Faithfulness** (LLM judge, binary pass/fail) — is the response grounded in the retrieved tool/Knowledge Base context? Only runs when the turn used tools, so there is source material to check against.
-- **Tool Selection** (programmatic, runs every turn) — did the agent pick appropriate tools for the query?
+- **Answer Quality** (LLM judge, binary pass/fail) - does the response directly, completely, and relevantly address the question?
+- **Faithfulness** (LLM judge, binary pass/fail) - is the response grounded in the retrieved tool/Knowledge Base context? Only runs when the turn used tools, so there is source material to check against.
+- **Tool Selection** (programmatic, runs every turn) - did the agent pick appropriate tools for the query?
 
-LLM judges can be sampled to control cost via `EVALUATIONS_LLM_SAMPLE_RATE` (programmatic evaluators always run). Content safety is intentionally **not** an evaluator here — Amazon Bedrock Guardrails covers that and is tracked separately.
+LLM judges can be sampled to control cost via `EVALUATIONS_LLM_SAMPLE_RATE` (programmatic evaluators always run). Content safety is intentionally **not** an evaluator here - Amazon Bedrock Guardrails covers that and is tracked separately.
 
 ### Known Limitations / Future Work
 
@@ -515,11 +413,11 @@ _**Note:** Telemetry data is provided for monitoring purposes. Actual billing is
 
 ## Models
 
-Models are served through the **Amazon Bedrock Mantle** OpenAI-compatible endpoint. The catalog is defined in `chatapp/app/static/models.json` — the single source of truth shared by both the front-end and the Python backend. Each entry declares which Mantle API it uses:
+Models are served through the **Amazon Bedrock Mantle** OpenAI-compatible endpoint. The catalog is defined in `chatapp/app/static/models.json` - the single source of truth shared by both the front-end and the Python backend. Each entry declares which Mantle API it uses:
 
-- **`chat`** — OpenAI Chat Completions (`/v1`) — the majority of models (DeepSeek, Mistral, Qwen, Gemma 3, MiniMax, Kimi, GLM, etc.)
-- **`responses`** — OpenAI Responses API (`/openai/v1`) — GPT-5.x, Gemma 4, Grok 4.3
-- **`messages`** — Anthropic Messages API (`/v1`) — Claude models
+- **`chat`** - OpenAI Chat Completions (`/v1`) - the majority of models (DeepSeek, Mistral, Qwen, Gemma 3, MiniMax, Kimi, GLM, etc.)
+- **`responses`** - OpenAI Responses API (`/openai/v1`) - GPT-5.x, Gemma 4, Grok 4.3
+- **`messages`** - Anthropic Messages API (`/v1`) - Claude models
 
 The agent (`agent/my_agent.py`) reads the `modelApi` field per request and routes to the matching Strands provider (`OpenAIModel`, `OpenAIResponsesModel`, or `AnthropicModel`). The default model is **Claude Haiku 4.5** (`anthropic.claude-haiku-4-5`).
 
@@ -575,7 +473,7 @@ The dashboard shows:
 Add tools in `agent/tools/` and register them in `my_agent.py`.
 
 ## Changing Models
-Edit `chatapp/app/static/models.json` — the single source of truth for model IDs, display names, pricing, and the `api` field (`chat`, `responses`, or `messages`). Both the front-end model selector and the Python cost calculator read from this file, so no code changes are needed to add, remove, or reprice a model. Ensure the model ID matches a Mantle model ID (see the `/v1/models` endpoint) and that the `api` field reflects which Mantle API the model supports.
+Edit `chatapp/app/static/models.json` - the single source of truth for model IDs, display names, pricing, and the `api` field (`chat`, `responses`, or `messages`). Both the front-end model selector and the Python cost calculator read from this file, so no code changes are needed to add, remove, or reprice a model. Ensure the model ID matches a Mantle model ID (see the `/v1/models` endpoint) and that the `api` field reflects which Mantle API the model supports.
 
 ## Extending Analytics
 The `UsageRepository` class in `chatapp/app/admin/repository.py` provides query methods that can be extended for custom analytics.
@@ -592,7 +490,28 @@ The Knowledge Base is automatically created during CDK deployment. It creates:
 - Bedrock Knowledge Base with Titan Embed Text v2
 - Data source connecting the KB to the S3 bucket
 
-## Adding Documents to the Knowledge Base
+A default article describing this application (`about-agentcore-chat-app.md`) is seeded into
+the `documents/` prefix and ingested automatically on deploy, so the agent has retrievable
+content and the Knowledge Base Explorer has a document to show out of the box.
+
+## Knowledge Base Explorer
+
+The Knowledge Base Explorer (`/admin/kb`, in the admin menu) is the easiest way to work with
+the Knowledge Base from the UI:
+
+- **Browse** every source document as a flat list (no scopes).
+- **Search** with the same semantic retrieval the agent uses, to validate what it sees.
+- **Read** text-based documents (Markdown, TXT, JSON, CSV, YAML, HTML, XML) inline.
+- **Upload** a new document - it is written to `documents/uploads/` and an ingestion job
+  starts automatically, so new content is retrievable within a few minutes.
+
+The Explorer requires `KB_ID` and `KB_SOURCE_BUCKET` to be set for the chat application (both
+are wired automatically by CDK). Uploads are admin-only.
+
+## Adding Documents to the Knowledge Base (CLI)
+
+> You can also upload and ingest documents directly from the Knowledge Base Explorer; the
+> steps below are the manual CLI equivalent.
 
 1. **Upload documents to S3**:
    ```bash
