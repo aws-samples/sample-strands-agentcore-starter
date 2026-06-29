@@ -156,15 +156,32 @@ function getModelLogo(id) {
     return MODEL_PROVIDERS[prefix] ? `/static/img/providers/${prefix}.png` : '';
 }
 
-const AVAILABLE_MODELS = (_MODEL_CATALOG.models || []).map(function (m) {
-    return {
-        id: m.id,
-        name: m.name,
-        provider: getModelProvider(m.id),
-        logo: getModelLogo(m.id),
-        description: "IN [$" + Number(m.input).toFixed(2) + "] - OUT [$" + Number(m.output).toFixed(2) + "]"
-    };
-});
+// Tier metadata for grouping the dropdown. Order + labels come from the
+// catalog (models.json); the fallback keeps things working if absent.
+const MODEL_TIERS = (_MODEL_CATALOG.tiers && _MODEL_CATALOG.tiers.length)
+    ? _MODEL_CATALOG.tiers
+    : [
+        { id: 'frontier', label: 'Frontier' },
+        { id: 'strong', label: 'Strong / Near-Frontier' },
+        { id: 'efficient', label: 'Efficient / Mid-Size' },
+        { id: 'fast', label: 'Small / Fast' }
+    ];
+
+// Only models that aren't explicitly disabled in models.json are selectable.
+// Disabled models stay in the catalog so historical usage still resolves
+// pricing (see app/admin/cost_calculator.py) but never appear in the dropdown.
+const AVAILABLE_MODELS = (_MODEL_CATALOG.models || [])
+    .filter(function (m) { return m.enabled !== false; })
+    .map(function (m) {
+        return {
+            id: m.id,
+            name: m.name,
+            tier: m.tier || '',
+            provider: getModelProvider(m.id),
+            logo: getModelLogo(m.id),
+            description: "IN [$" + Number(m.input).toFixed(2) + "] - OUT [$" + Number(m.output).toFixed(2) + "]"
+        };
+    });
 
 /**
  * Default model ID when no selection is stored.
@@ -269,68 +286,112 @@ function closeModelDropdownOnClickOutside(event) {
 function populateModelOptions() {
     const optionsContainer = document.getElementById('model-options');
     if (!optionsContainer) return;
-    
+
     const selectedModel = getSelectedModel();
-    
+
     // Clear existing options
     optionsContainer.innerHTML = '';
-    
-    // Add each model as an option
-    AVAILABLE_MODELS.forEach(model => {
-        const isSelected = model.id === selectedModel.id;
-        
-        const option = document.createElement('button');
-        option.type = 'button';
-        // Selection is indicated by a subtle left accent border + tinted
-        // background. A transparent border on every row keeps widths aligned
-        // so there's no layout shift between selected/unselected rows.
-        option.className = `w-full pr-3 py-2 text-left hover:bg-gray-50 transition-colors flex items-center gap-3 border-l-2 ${isSelected ? 'bg-primary-50 border-primary-500 pl-2.5' : 'border-transparent pl-2.5'}`;
-        option.onclick = () => selectModel(model.id);
 
-        // Row layout: provider logo on the left, then a text column with the
-        // full-width model name on top and the provider + pricing sharing the
-        // line beneath it (so the name never needs to truncate).
-        const info = document.createElement('div');
-        info.className = 'flex-1 min-w-0 flex items-center gap-2.5';
-
-        if (model.logo) {
-            const logo = document.createElement('img');
-            logo.src = model.logo;
-            logo.alt = model.provider ? `${model.provider} logo` : '';
-            logo.className = 'w-6 h-6 flex-shrink-0 rounded object-contain';
-            // Hide gracefully if the logo asset is missing.
-            logo.onerror = () => { logo.style.display = 'none'; };
-            info.appendChild(logo);
-        }
-
-        const textCol = document.createElement('div');
-        textCol.className = 'flex-1 min-w-0';
-
-        const name = document.createElement('div');
-        name.className = `text-sm font-medium ${isSelected ? 'text-primary-700' : 'text-gray-900'}`;
-        name.textContent = model.name;
-        textCol.appendChild(name);
-
-        // Provider (left) + pricing (right) share the second line.
-        const metaRow = document.createElement('div');
-        metaRow.className = 'flex items-center justify-between gap-2';
-
-        const provider = document.createElement('span');
-        provider.className = 'text-xs text-gray-500 truncate';
-        provider.textContent = model.provider || '';
-        metaRow.appendChild(provider);
-
-        const cost = document.createElement('span');
-        cost.className = 'text-xs text-gray-600 whitespace-nowrap';
-        cost.textContent = model.description;
-        metaRow.appendChild(cost);
-
-        textCol.appendChild(metaRow);
-        info.appendChild(textCol);
-
-        option.appendChild(info);
-        optionsContainer.appendChild(option);
+    // Group models by tier, rendering a header before each non-empty group.
+    // Any models without a recognized tier are shown last under "Other".
+    const seen = new Set();
+    MODEL_TIERS.forEach(tier => {
+        const groupModels = AVAILABLE_MODELS.filter(m => m.tier === tier.id);
+        if (!groupModels.length) return;
+        optionsContainer.appendChild(createTierHeader(tier.label));
+        groupModels.forEach(model => {
+            seen.add(model.id);
+            optionsContainer.appendChild(createModelOption(model, selectedModel));
+        });
     });
+
+    const untiered = AVAILABLE_MODELS.filter(m => !seen.has(m.id));
+    if (untiered.length) {
+        optionsContainer.appendChild(createTierHeader('Other'));
+        untiered.forEach(model => {
+            optionsContainer.appendChild(createModelOption(model, selectedModel));
+        });
+    }
+}
+
+/**
+ * Build a non-interactive section header row for a model tier group.
+ *
+ * @param {string} label - Tier display label (e.g. "Frontier")
+ * @returns {HTMLElement} The header element
+ */
+function createTierHeader(label) {
+    const header = document.createElement('div');
+    header.className = 'model-tier-header px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wide sticky top-0 z-10';
+    // Opaque, themed background so scrolled rows never show through the pinned
+    // header (var(--surface) matches the dropdown in light and dark themes).
+    header.style.background = 'var(--surface)';
+    header.style.color = 'var(--text-muted, #9ca3af)';
+    header.textContent = label;
+    return header;
+}
+
+/**
+ * Build a single selectable model option row.
+ *
+ * @param {Object} model - Model object with id, name, provider, logo, description
+ * @param {Object} selectedModel - Currently selected model object
+ * @returns {HTMLElement} The option button element
+ */
+function createModelOption(model, selectedModel) {
+    const isSelected = model.id === selectedModel.id;
+
+    const option = document.createElement('button');
+    option.type = 'button';
+    // Selection is indicated by a subtle left accent border + tinted
+    // background. A transparent border on every row keeps widths aligned
+    // so there's no layout shift between selected/unselected rows.
+    option.className = `w-full pr-3 py-2 text-left hover:bg-gray-50 transition-colors flex items-center gap-3 border-l-2 ${isSelected ? 'bg-primary-50 border-primary-500 pl-2.5' : 'border-transparent pl-2.5'}`;
+    option.onclick = () => selectModel(model.id);
+
+    // Row layout: provider logo on the left, then a text column with the
+    // full-width model name on top and the provider + pricing sharing the
+    // line beneath it (so the name never needs to truncate).
+    const info = document.createElement('div');
+    info.className = 'flex-1 min-w-0 flex items-center gap-2.5';
+
+    if (model.logo) {
+        const logo = document.createElement('img');
+        logo.src = model.logo;
+        logo.alt = model.provider ? `${model.provider} logo` : '';
+        logo.className = 'w-6 h-6 flex-shrink-0 rounded object-contain';
+        // Hide gracefully if the logo asset is missing.
+        logo.onerror = () => { logo.style.display = 'none'; };
+        info.appendChild(logo);
+    }
+
+    const textCol = document.createElement('div');
+    textCol.className = 'flex-1 min-w-0';
+
+    const name = document.createElement('div');
+    name.className = `text-sm font-medium ${isSelected ? 'text-primary-700' : 'text-gray-900'}`;
+    name.textContent = model.name;
+    textCol.appendChild(name);
+
+    // Provider (left) + pricing (right) share the second line.
+    const metaRow = document.createElement('div');
+    metaRow.className = 'flex items-center justify-between gap-2';
+
+    const provider = document.createElement('span');
+    provider.className = 'text-xs text-gray-500 truncate';
+    provider.textContent = model.provider || '';
+    metaRow.appendChild(provider);
+
+    const cost = document.createElement('span');
+    cost.className = 'text-xs text-gray-600 whitespace-nowrap';
+    cost.textContent = model.description;
+    metaRow.appendChild(cost);
+
+    textCol.appendChild(metaRow);
+    info.appendChild(textCol);
+
+    option.appendChild(info);
+    return option;
 }
 
 /**
@@ -342,15 +403,32 @@ function filterModels(query) {
     const optionsContainer = document.getElementById('model-options');
     if (!optionsContainer) return;
     const normalizedQuery = query.toLowerCase().trim();
-    const buttons = optionsContainer.querySelectorAll('button');
-    buttons.forEach(button => {
-        const modelName = button.textContent.toLowerCase();
-        if (normalizedQuery === '' || modelName.includes(normalizedQuery)) {
-            button.style.display = '';
-        } else {
-            button.style.display = 'none';
+
+    // Walk children in order, tracking the current tier header so we can hide
+    // any header whose entire group is filtered out.
+    let currentHeader = null;
+    let headerHasMatch = false;
+
+    const finalizeHeader = () => {
+        if (currentHeader) {
+            currentHeader.style.display = headerHasMatch ? '' : 'none';
         }
+    };
+
+    Array.from(optionsContainer.children).forEach(child => {
+        if (child.classList.contains('model-tier-header')) {
+            finalizeHeader();
+            currentHeader = child;
+            headerHasMatch = false;
+            return;
+        }
+        // Model option button
+        const modelName = child.textContent.toLowerCase();
+        const matches = normalizedQuery === '' || modelName.includes(normalizedQuery);
+        child.style.display = matches ? '' : 'none';
+        if (matches) headerHasMatch = true;
     });
+    finalizeHeader();
 }
 
 /**
@@ -956,8 +1034,10 @@ async function sendMessage(event) {
             const msgEl = document.getElementById(assistantMsgId);
             if (msgEl) {
                 const contentDiv = msgEl.querySelector('.message-content');
-                // Only show error if there's genuinely no content rendered
-                const hasRenderedContent = contentDiv && (contentDiv.textContent.trim().length > 0 || contentDiv.querySelector('.reasoning-block'));
+                // Only show error if there's genuinely no content rendered.
+                // The reasoning block now lives in the bubble (above tools), so
+                // check the whole message element for it, not just contentDiv.
+                const hasRenderedContent = (contentDiv && contentDiv.textContent.trim().length > 0) || !!msgEl.querySelector('.reasoning-block');
                 if (!hasRenderedContent) {
                     if (contentDiv) {
                         contentDiv.innerHTML = '<span class="text-red-500 text-sm">No response from the model. Check agent logs for details.</span>';
@@ -1120,19 +1200,29 @@ function handleSSEEvent(event, msgId, currentContent) {
             }
             currentContent += content;
             
-            // Render markdown (Requirement 2.3 - render message content incrementally)
-            // Content is sanitized by DOMPurify before rendering to prevent XSS
-            // The content comes from our trusted AgentCore backend, not direct user input
+            // Render markdown into a dedicated text element (Requirement 2.3 -
+            // render message content incrementally). Using a child element
+            // instead of overwriting all of .message-content means a streamed
+            // reasoning/"Thinking..." block (a sibling here) is preserved across
+            // re-renders instead of being wiped on the first answer token.
+            // Content is sanitized by DOMPurify before rendering to prevent XSS.
+            // The content comes from our trusted AgentCore backend, not direct user input.
+            let assistantTextEl = contentDiv.querySelector('.assistant-text');
+            if (!assistantTextEl) {
+                assistantTextEl = document.createElement('div');
+                assistantTextEl.className = 'assistant-text';
+                contentDiv.appendChild(assistantTextEl);
+            }
             if (typeof marked !== 'undefined') {
                 // nosemgrep: insecure-innerhtml
-                contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(currentContent));
+                assistantTextEl.innerHTML = DOMPurify.sanitize(marked.parse(currentContent));
             } else {
-                contentDiv.textContent = currentContent;
+                assistantTextEl.textContent = currentContent;
             }
             contentDiv.classList.add('markdown-content');
             
-            // Add streaming cursor at the end while still streaming
-            // Remove any existing cursor first to avoid duplicates
+            // Keep a single streaming cursor at the very end of the message.
+            // Remove any existing cursor first to avoid duplicates.
             const existingCursor = contentDiv.querySelector('.streaming-cursor');
             if (existingCursor) existingCursor.remove();
             const cursor = document.createElement('span');
@@ -1349,20 +1439,31 @@ function handleSSEEvent(event, msgId, currentContent) {
             break;
 
         case 'reasoning':
-            // Append reasoning content to a collapsible details element
+            // Append reasoning content to a collapsible details element placed
+            // at the very top of the message bubble — above the tool calls and
+            // the answer — so the model's "Thinking..." precedes what it did.
             if (event.content) {
                 const msgEl = document.getElementById(msgId);
                 if (msgEl) {
-                    const reasoningContentDiv = msgEl.querySelector('.message-content');
-                    if (reasoningContentDiv) {
+                    // Prefer the bubble so the block is a sibling sitting above
+                    // .tools-container; fall back to message-content if absent.
+                    const bubble = msgEl.querySelector('.message-bubble') || msgEl.querySelector('.message-assistant');
+                    const toolsContainer = msgEl.querySelector('.tools-container');
+                    const host = bubble || msgEl.querySelector('.message-content');
+                    if (host) {
                         // Find or create the reasoning details element
-                        let reasoningEl = reasoningContentDiv.querySelector('.reasoning-block');
+                        let reasoningEl = host.querySelector('.reasoning-block');
                         if (!reasoningEl) {
                             reasoningEl = document.createElement('details');
                             reasoningEl.className = 'reasoning-block mb-2 text-xs text-gray-400 border border-gray-200 rounded-lg p-2 bg-gray-50';
                             reasoningEl.innerHTML = '<summary class="cursor-pointer font-medium text-gray-500">Thinking...</summary><pre class="mt-1 whitespace-pre-wrap text-gray-400 overflow-x-auto"></pre>';
-                            // Insert BEFORE the main content (at the top of the message)
-                            reasoningContentDiv.insertBefore(reasoningEl, reasoningContentDiv.firstChild);
+                            // Place it directly above the tool calls when present,
+                            // otherwise at the top of the host container.
+                            if (toolsContainer && toolsContainer.parentNode === host) {
+                                host.insertBefore(reasoningEl, toolsContainer);
+                            } else {
+                                host.insertBefore(reasoningEl, host.firstChild);
+                            }
                         }
                         const pre = reasoningEl.querySelector('pre');
                         if (pre) {
@@ -1860,9 +1961,12 @@ function finalizeMessage(msgId, content) {
         if (copyBtn) {
             copyBtn.style.display = '';
             copyBtn.onclick = () => {
-                // Get the text content from the message (excluding tool displays)
+                // Copy the answer text only. Prefer the dedicated .assistant-text
+                // element so the reasoning/"Thinking..." block isn't included.
                 const contentDiv = bubble.querySelector('.message-content');
-                const textContent = contentDiv ? contentDiv.textContent : content;
+                const textEl = contentDiv ? contentDiv.querySelector('.assistant-text') : null;
+                const source = textEl || contentDiv;
+                const textContent = source ? source.textContent : content;
                 copyToClipboard(copyBtn, textContent);
             };
         }
