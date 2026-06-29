@@ -15,6 +15,7 @@
 import * as cdk from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as bedrock from 'aws-cdk-lib/aws-bedrock';
@@ -22,8 +23,9 @@ import * as bedrockagentcore from 'aws-cdk-lib/aws-bedrockagentcore';
 import * as cr from 'aws-cdk-lib/custom-resources';
 import { NagSuppressions } from 'cdk-nag';
 import { Construct } from 'constructs';
+import * as path from 'path';
 import { config, exportNames } from './config';
-import { applyCommonSuppressions } from './nag-suppressions';
+import { applyCommonSuppressions, applyBucketDeploymentSuppressions, applyCustomResourceSuppressions } from './nag-suppressions';
 
 export class BedrockStack extends cdk.Stack {
   // Guardrail resources
@@ -320,6 +322,62 @@ export class BedrockStack extends cdk.Stack {
     // Ensure data source is created after KB
     this.dataSource.addDependency(this.knowledgeBase);
 
+    // ========================================================================
+    // SEED DOCUMENT + DEFAULT INGESTION
+    // ========================================================================
+    // Seed a default Knowledge Base article (about this application) into the
+    // source bucket under the documents/ prefix, then start an ingestion job so
+    // the agent has retrievable content and the KB Explorer has a document to
+    // display out of the box.
+
+    const seedDeployment = new s3deploy.BucketDeployment(this, 'KbSeedDeployment', {
+      sources: [s3deploy.Source.asset(path.join(__dirname, '../assets/kb-seed'))],
+      destinationBucket: this.sourceBucket,
+      destinationKeyPrefix: 'documents/',
+      prune: false, // never delete agent/admin-uploaded documents in this prefix
+      retainOnDelete: false,
+      memoryLimit: 256,
+    });
+
+    // Start an ingestion job on deploy so the seeded (and any pre-existing)
+    // documents are embedded into the vector index automatically. The timestamp
+    // forces the job to re-run on each deploy, keeping the index in sync.
+    const ingestionTimestamp = new Date().toISOString();
+    const startIngestion = new cr.AwsCustomResource(this, 'StartKbIngestion', {
+      onCreate: {
+        service: 'bedrock-agent',
+        action: 'startIngestionJob',
+        parameters: {
+          knowledgeBaseId: this.knowledgeBase.attrKnowledgeBaseId,
+          dataSourceId: this.dataSource.attrDataSourceId,
+          description: 'Initial ingestion of seeded Knowledge Base documents',
+        },
+        physicalResourceId: cr.PhysicalResourceId.of(`${config.appName}-kb-seed-ingestion`),
+      },
+      onUpdate: {
+        service: 'bedrock-agent',
+        action: 'startIngestionJob',
+        parameters: {
+          knowledgeBaseId: this.knowledgeBase.attrKnowledgeBaseId,
+          dataSourceId: this.dataSource.attrDataSourceId,
+          description: 'Re-ingestion of seeded Knowledge Base documents',
+          clientToken: ingestionTimestamp.replace(/[^a-zA-Z0-9]/g, '').substring(0, 32),
+        },
+        physicalResourceId: cr.PhysicalResourceId.of(`${config.appName}-kb-seed-ingestion`),
+      },
+      policy: cr.AwsCustomResourcePolicy.fromStatements([
+        new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: ['bedrock:StartIngestionJob'],
+          resources: [this.knowledgeBase.attrKnowledgeBaseArn],
+        }),
+      ]),
+    });
+
+    // Ingestion must wait for the documents to land and the data source to exist.
+    startIngestion.node.addDependency(seedDeployment);
+    startIngestion.node.addDependency(this.dataSource);
+
 
     // ========================================================================
     // MEMORY SECTION
@@ -555,6 +613,8 @@ def handler(event, context):
     // ========================================================================
     
     applyCommonSuppressions(this);
+    applyBucketDeploymentSuppressions(this);
+    applyCustomResourceSuppressions(this);
 
     // Suppress S3 vectors custom resource wildcards
     NagSuppressions.addResourceSuppressionsByPath(

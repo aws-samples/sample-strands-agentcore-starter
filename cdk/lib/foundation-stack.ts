@@ -642,6 +642,46 @@ export class FoundationStack extends cdk.Stack {
       })
     );
 
+    // Knowledge Base access for the Knowledge Base Explorer:
+    // - Retrieve: run the same semantic search the agent uses.
+    // - ListDataSources / StartIngestionJob / GetIngestionJob: trigger and
+    //   track ingestion after a document is uploaded through the Explorer.
+    this.taskRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'KnowledgeBaseExplorerAccess',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'bedrock:Retrieve',
+          'bedrock:ListDataSources',
+          'bedrock:StartIngestionJob',
+          'bedrock:GetIngestionJob',
+        ],
+        resources: [
+          `arn:aws:bedrock:${this.region}:${this.account}:knowledge-base/*`,
+        ],
+      })
+    );
+
+    // KB source bucket access for the Explorer: list documents, read text
+    // documents, and upload new ones under the documents/ prefix. The bucket
+    // name is deterministic (see Bedrock stack SourceBucket).
+    const kbSourceBucketArn = `arn:aws:s3:::${config.appName}-kb-${this.account}-${this.region}`;
+    this.taskRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'KnowledgeBaseSourceBucketAccess',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          's3:ListBucket',
+          's3:GetObject',
+          's3:PutObject',
+        ],
+        resources: [
+          kbSourceBucketArn,
+          `${kbSourceBucketArn}/documents/*`,
+        ],
+      })
+    );
+
     // CloudWatch Logs permissions
     this.taskRole.addToPolicy(
       new iam.PolicyStatement({
@@ -961,6 +1001,16 @@ export class FoundationStack extends cdk.Stack {
           id: 'AwsSolutions-IAM5',
           reason: 'CloudWatch log group name includes dynamic service name. Scoped to app-specific log groups.',
           appliesTo: [`Resource::arn:aws:logs:${this.region}:${this.account}:log-group:/ecs/${config.appName}*`],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'Knowledge Base Explorer needs Retrieve and ingestion actions. The KB ID is created in the Bedrock stack and not known here, so the resource is scoped to knowledge bases in this account/region.',
+          appliesTo: [`Resource::arn:aws:bedrock:${this.region}:${this.account}:knowledge-base/*`],
+        },
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'Knowledge Base Explorer reads/writes source documents under the documents/ prefix of the KB source bucket. Object keys are not known at synthesis time.',
+          appliesTo: [`Resource::arn:aws:s3:::${config.appName}-kb-${this.account}-${this.region}/documents/*`],
         },
         {
           id: 'AwsSolutions-IAM5',
