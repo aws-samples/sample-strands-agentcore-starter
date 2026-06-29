@@ -114,6 +114,21 @@ GUARDRAIL_ID=$(echo "$SECRET_VALUE" | jq -r '.guardrail_id // empty')
 GUARDRAIL_VERSION=$(echo "$SECRET_VALUE" | jq -r '.guardrail_version // empty')
 KB_ID=$(echo "$SECRET_VALUE" | jq -r '.kb_id // empty')
 
+# KB_SOURCE_BUCKET is not stored in the secret — it has a deterministic name
+# (${APP_NAME}-kb-${ACCOUNT}-${REGION}, see cdk/lib/bedrock-stack.ts SourceBucket).
+# Resolve the account ID so the Knowledge Base Explorer can list/read/upload
+# documents during local development.
+KB_SOURCE_BUCKET=$(echo "$SECRET_VALUE" | jq -r '.kb_source_bucket // empty')
+if [ -z "$KB_SOURCE_BUCKET" ]; then
+    ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text --region "$AWS_REGION" 2>/dev/null || true)
+    if [ -n "$ACCOUNT_ID" ]; then
+        KB_SOURCE_BUCKET="${APP_NAME}-kb-${ACCOUNT_ID}-${AWS_REGION}"
+    else
+        echo -e "${YELLOW}Warning: could not resolve AWS account ID; KB_SOURCE_BUCKET left blank.${NC}"
+        echo -e "${YELLOW}The Knowledge Base Explorer's document browsing/upload will be disabled locally.${NC}"
+    fi
+fi
+
 # Validate required values
 if [ -z "$AGENTCORE_RUNTIME_ARN" ]; then
     echo -e "${RED}Error: AGENTCORE_RUNTIME_ARN is empty. Agent stack may not be fully deployed.${NC}"
@@ -169,6 +184,7 @@ GUARDRAIL_ENABLED=true
 
 # Knowledge Base Configuration
 KB_ID=$KB_ID
+KB_SOURCE_BUCKET=$KB_SOURCE_BUCKET
 
 # Application Configuration
 APP_URL=http://localhost:8080
