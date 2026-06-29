@@ -396,7 +396,7 @@ export class FoundationStack extends cdk.Stack {
                 PutRequest: {
                   Item: {
                     setting_key: { S: 'app_subtitle' },
-                    setting_value: { S: 'Mantle | AgentCore | Strands' },
+                    setting_value: { S: 'Bedrock Mantle | AgentCore | Strands' },
                     setting_type: { S: 'text' },
                     description: { S: 'Application subtitle displayed in header' },
                     updated_at: { S: new Date().toISOString() },

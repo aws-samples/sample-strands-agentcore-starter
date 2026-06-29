@@ -73,7 +73,7 @@ async def init_template_globals():
         default_palette = generate_color_palette(DEFAULT_PRIMARY_COLOR)
         templates.env.globals.update({
             "app_title": "Chat Agent",
-            "app_subtitle": "Mantle | AgentCore | Strands",
+            "app_subtitle": "Bedrock Mantle | AgentCore | Strands",
             "logo_url": "/static/favicon.svg",
             "chat_logo_url": "/static/chat-placeholder.svg",
             "primary_color": DEFAULT_PRIMARY_COLOR,
