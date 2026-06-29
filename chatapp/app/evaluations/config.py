@@ -21,9 +21,11 @@ class EvalConfig:
         llm_sample_rate: Fraction of turns (0.0-1.0) on which to run LLM judges.
             Programmatic evaluators always run. Defaults to 1.0 (every turn);
             lower it to control cost in higher-traffic deployments.
-        max_output_length: Max chars of agent output to send to judge (cost control)
+        max_output_length: Max chars of agent output to send to judge. 0 (default)
+            means no truncation — send the full response.
         max_context_length: Max chars of retrieved source context to send to the
-            faithfulness judge (larger than output so grounding is not truncated)
+            faithfulness judge. 0 (default) means no truncation — send the full
+            source material so grounding is never cut.
         max_reason_length: Max chars to store for evaluation reasons
     """
     enabled: bool = True
@@ -36,8 +38,13 @@ class EvalConfig:
         "tool_selection",
     ])
     llm_sample_rate: float = 1.0
-    max_output_length: int = 16000
-    max_context_length: int = 100000
+    # 0 (or any non-positive value) means "no truncation" — send the full agent
+    # output and full source context to the judge. Truncating either causes
+    # faithfulness/quality false negatives because the judge can't see the
+    # content the response is actually grounded in. Set a positive limit only if
+    # you explicitly need to cap cost.
+    max_output_length: int = 0
+    max_context_length: int = 0
     max_reason_length: int = 2000
 
     @classmethod
@@ -70,10 +77,16 @@ class EvalConfig:
             sample_rate = 1.0
         sample_rate = max(0.0, min(1.0, sample_rate))
 
+        # 0 = no truncation (default). Only a positive value imposes a cap.
         try:
-            max_context = int(os.environ.get("EVALUATIONS_MAX_CONTEXT_LENGTH", "20000"))
+            max_context = int(os.environ.get("EVALUATIONS_MAX_CONTEXT_LENGTH", "0"))
         except ValueError:
-            max_context = 20000
+            max_context = 0
+
+        try:
+            max_output = int(os.environ.get("EVALUATIONS_MAX_OUTPUT_LENGTH", "0"))
+        except ValueError:
+            max_output = 0
 
         return cls(
             enabled=enabled,
@@ -82,4 +95,5 @@ class EvalConfig:
             programmatic_evaluators=prog_evals,
             llm_sample_rate=sample_rate,
             max_context_length=max_context,
+            max_output_length=max_output,
         )

@@ -94,7 +94,8 @@ def _run_binary_judge(
         rubric: Binary pass/fail rubric for the judge
         judge_input: The input shown to the judge (question, plus context for
             faithfulness)
-        agent_output: The agent's response (truncated for cost control)
+        agent_output: The agent's full response (sent untruncated unless a
+            positive config.max_output_length is explicitly set)
         config: Evaluation configuration
 
     Returns:
@@ -102,25 +103,48 @@ def _run_binary_judge(
         or None if evaluation fails or the SDK is unavailable.
     """
     try:
-        from strands_evals.evaluators import OutputEvaluator
+        from strands import Agent
         from strands_evals.types import EvaluationData
-
-        truncated_output = agent_output[:config.max_output_length]
-
-        evaluator = OutputEvaluator(
-            rubric=rubric,
-            include_inputs=True,
-            model=config.judge_model_id,
+        from strands_evals.types.evaluation import EvaluationOutput
+        from strands_evals.evaluators.prompt_templates.case_prompt_template import (
+            compose_test_prompt,
         )
-        result = evaluator.evaluate(EvaluationData(
-            input=judge_input,
-            actual_output=truncated_output,
-        ))
+        from strands_evals.evaluators.prompt_templates.prompt_templates import (
+            judge_output_template,
+        )
 
-        if isinstance(result, list):
-            result = result[0] if result else None
+        # Send the full response by default. Truncating the agent output starves
+        # the judge of the very content it must assess, producing false
+        # negatives. Only cap when a positive limit is explicitly configured.
+        judge_output = (
+            agent_output[:config.max_output_length]
+            if config.max_output_length and config.max_output_length > 0
+            else agent_output
+        )
+
+        # Run the judge with the SDK's own prompt composition (identical to
+        # OutputEvaluator) but invoke the agent directly so we can capture the
+        # judge call's token usage — OutputEvaluator.evaluate() discards it.
+        evaluation_case = EvaluationData(input=judge_input, actual_output=judge_output)
+        judge_prompt = compose_test_prompt(
+            evaluation_case=evaluation_case, rubric=rubric, include_inputs=True
+        )
+        judge_agent = Agent(
+            model=config.judge_model_id,
+            system_prompt=judge_output_template,
+            callback_handler=None,
+        )
+        agent_result = judge_agent(judge_prompt, structured_output_model=EvaluationOutput)
+        result = agent_result.structured_output
         if result is None:
             return None
+
+        # Capture judge token usage and price it. accumulated_usage is a dict
+        # {inputTokens, outputTokens, totalTokens}; missing/zero on failure.
+        usage = getattr(agent_result.metrics, "accumulated_usage", None) or {}
+        input_tokens = int(usage.get("inputTokens", 0) or 0)
+        output_tokens = int(usage.get("outputTokens", 0) or 0)
+        cost = _judge_cost(input_tokens, output_tokens, config.judge_model_id)
 
         passed = bool(result.test_pass)
         return EvalResult(
@@ -128,6 +152,10 @@ def _run_binary_judge(
             passed=passed,
             label="Pass" if passed else "Fail",
             reason=(result.reason or "")[:config.max_reason_length],
+            judge_model_id=config.judge_model_id,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost=cost,
         )
 
     except ImportError:
@@ -136,6 +164,22 @@ def _run_binary_judge(
     except Exception as e:
         logger.error("LLM evaluation failed", extra={"error": str(e)})
         return None
+
+
+def _judge_cost(input_tokens: int, output_tokens: int, judge_model_id: str) -> float:
+    """Price a judge call using the shared CostCalculator / model catalog.
+
+    The CostCalculator resolves fully-qualified Bedrock ids (e.g.
+    ``global.anthropic.claude-haiku-4-5-20251001-v1:0``) to the catalog entry
+    (``anthropic.claude-haiku-4-5``), so judge pricing comes from the same
+    single source of truth (models.json) as agent inference pricing.
+    """
+    try:
+        from app.admin.cost_calculator import CostCalculator
+        return CostCalculator().calculate_cost(input_tokens, output_tokens, judge_model_id)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Failed to compute judge cost: %s", e)
+        return 0.0
 
 
 def _build_grounded_context(context_items: List[str], max_total: int) -> str:
@@ -155,6 +199,12 @@ def _build_grounded_context(context_items: List[str], max_total: int) -> str:
     items = [i for i in context_items if i and i.strip()]
     if not items:
         return ""
+
+    # No budget (<= 0) means send all source material in full. The faithfulness
+    # judge can only verify grounding against complete tool/KB results, so any
+    # truncation here risks false negatives.
+    if not max_total or max_total <= 0:
+        return "\n\n".join(items)
 
     budgets = [0] * len(items)
     remaining = max_total
@@ -361,4 +411,8 @@ def _make_record(
         latency_ms=latency_ms,
         model_id=model_id,
         user_input=user_input,
+        judge_model_id=getattr(result, "judge_model_id", ""),
+        input_tokens=getattr(result, "input_tokens", 0),
+        output_tokens=getattr(result, "output_tokens", 0),
+        cost=getattr(result, "cost", 0.0),
     )

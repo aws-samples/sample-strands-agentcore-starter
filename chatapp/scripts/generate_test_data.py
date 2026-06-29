@@ -426,11 +426,29 @@ def generate_all_data(
                     # Generate evaluation records for this turn (one per evaluator)
                     turn_question = random.choice(USER_MESSAGES)
                     for evaluator in EVALUATORS:
+                        # Judge token usage + cost (llm_judge only; programmatic
+                        # evaluators are zero-cost in-process checks).
+                        judge_model_id = ""
+                        input_tokens = 0
+                        output_tokens = 0
+                        cost = 0.0
                         if evaluator["type"] == "llm_judge":
                             # Binary judges: mostly pass for a working agent
                             passed = random.random() < 0.85
                             score = 1.0 if passed else 0.0
                             label = "Pass" if passed else "Fail"
+                            # Faithfulness sends full source context, so it tends
+                            # to be the larger prompt; both judges emit a short
+                            # structured verdict.
+                            judge_model_id = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+                            input_tokens = random.randint(3000, 14000)
+                            output_tokens = random.randint(40, 200)
+                            # Haiku 4.5: $1.00 in / $5.00 out per 1M tokens
+                            cost = round(
+                                (input_tokens / 1_000_000) * 1.00
+                                + (output_tokens / 1_000_000) * 5.00,
+                                6,
+                            )
                         else:
                             # Programmatic tool_selection: continuous, biased high
                             score = round(random.triangular(0.4, 1.0, 0.85), 3)
@@ -452,6 +470,10 @@ def generate_all_data(
                             "latency_ms": {"N": str(latency)},
                             "model_id": {"S": random.choice(MODELS)},
                             "user_input": {"S": turn_question},
+                            "judge_model_id": {"S": judge_model_id},
+                            "input_tokens": {"N": str(input_tokens)},
+                            "output_tokens": {"N": str(output_tokens)},
+                            "cost": {"N": str(cost)},
                         }
                         evaluation_records.append(eval_record)
                     

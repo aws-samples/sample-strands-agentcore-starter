@@ -69,11 +69,14 @@ class EvaluationRepository:
         num_evaluators = len(scores_by_eval)
         approx_messages = total_evals // max(num_evaluators, 1)
         total_failed = sum(1 for r in records if not r.passed)
+        # Sum the cost of the LLM-judge calls (programmatic evaluators are 0).
+        total_cost = round(sum(r.cost for r in records), 6)
 
         return EvaluationAggregateStats(
             total_evaluations=total_evals,
             total_messages_evaluated=approx_messages,
             total_failed=total_failed,
+            total_cost=total_cost,
             avg_scores=avg_scores,
             pass_rates=pass_rates,
             eval_counts=eval_counts,
@@ -230,6 +233,10 @@ class EvaluationRepository:
                 "label": record.label,
                 "reason": record.reason,
                 "latency_ms": record.latency_ms,
+                "judge_model_id": record.judge_model_id,
+                "input_tokens": record.input_tokens,
+                "output_tokens": record.output_tokens,
+                "cost": record.cost,
             })
 
         result = []
@@ -239,6 +246,7 @@ class EvaluationRepository:
             scores = [e["score"] for e in evals]
             turn["avg_score"] = round(sum(scores) / len(scores), 3) if scores else 0.0
             turn["all_passed"] = all(e["passed"] for e in evals) if evals else False
+            turn["cost"] = round(sum(e.get("cost", 0.0) for e in evals), 6)
             # Stable ordering of evaluators within a turn
             turn["evaluations"] = sorted(evals, key=lambda e: e["evaluator_name"])
             result.append(turn)
