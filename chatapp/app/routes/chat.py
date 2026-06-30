@@ -16,7 +16,7 @@ from app.auth.cognito import extract_user_id, TokenValidationError
 from app.auth.middleware import SESSION_COOKIE_NAME
 from app.agentcore.client import AgentCoreClient
 from app.helpers.model_catalog import get_model_api
-from app.models.events import MessageEvent, MetadataEvent, ToolUseEvent, ToolResultEvent, GuardrailEvent, ReasoningEvent
+from app.models.events import MessageEvent, MetadataEvent, ToolUseEvent, ToolResultEvent, GuardrailEvent, ReasoningEvent, DoneEvent
 from app.models.guardrail import GuardrailRecord
 from app.models.usage import UsageRecord, ToolUsageRecord
 from app.storage.guardrail import GuardrailStorageService
@@ -149,6 +149,12 @@ async def _stream_chat_response(
     # Track wall-clock latency since the new providers don't report it
     import time as _time
     _stream_start = _time.time()
+    # Server-measured time-to-first-token (ms). Set when the first answer token
+    # (MessageEvent) arrives. Measured the SAME way for every model so the
+    # per-lane footer in compare mode is an apples-to-apples comparison —
+    # provider self-reported latency is inconsistent (some report
+    # generation-only, some omit it and we'd fall back to wall-clock).
+    _first_token_ms = None
 
     # Accumulate metrics during stream
     accumulated_metrics: Dict[str, Any] = {}
@@ -213,6 +219,8 @@ async def _stream_chat_response(
         # Tool/text separation (line breaks) is handled client-side in chat.js.
         if isinstance(event, MessageEvent) and event.content:
             accumulated_output.append(event.content)
+            if _first_token_ms is None:
+                _first_token_ms = int((_time.time() - _stream_start) * 1000)
 
         # Track reasoning events but don't include in evaluation output
         if isinstance(event, ReasoningEvent):
@@ -282,6 +290,26 @@ async def _stream_chat_response(
             asyncio.create_task(
                 _store_guardrail_violation(event, session_id, user_id)
             )
+
+        # Right before the terminal [DONE], emit one authoritative,
+        # server-measured timing event so every lane's footer uses the SAME
+        # clock. `ttftMs` = time to first answer token; `totalMs` = full
+        # wall-clock. Both are measured identically for every model, unlike the
+        # provider-reported `latencyMs`. We also set `latencyMs = totalMs` for
+        # back-compat with any consumer still reading the old field.
+        if isinstance(event, DoneEvent):
+            total_ms = int((_time.time() - _stream_start) * 1000)
+            ttft_ms = _first_token_ms if _first_token_ms is not None else total_ms
+            timing = {'ttftMs': ttft_ms, 'totalMs': total_ms, 'latencyMs': total_ms}
+            # Always send the timing to the client (drives the footer), even
+            # when the model reported no token metrics.
+            yield MetadataEvent(data={**(accumulated_metrics or {}), **timing}).to_sse_format()
+            # Only fold timings into the stored usage record when real model
+            # metrics exist, preserving the "don't store empty usage" behavior.
+            if accumulated_metrics:
+                accumulated_metrics.update(timing)
+            yield event.to_sse_format()
+            continue
 
         yield event.to_sse_format()
 

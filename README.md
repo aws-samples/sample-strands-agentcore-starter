@@ -18,6 +18,7 @@ Skip weeks of infrastructure setup and go straight to validating your agentic AI
 **User Experience**
 - 🤖 **AI-powered conversational agent** with short-term (STM) and long-term memory (LTM)
 - ⚡ **Real-time streaming** with token-by-token SSE responses and embedded memory viewer
+- 🔀 **Compare mode** - send one prompt to up to 3 models side-by-side, each in its own streaming lane with isolated memory
 - 📝 **Prompt templates** for quick access to pre-defined prompts
 - 🎨 **Customizable branding** - title, logos, and theme colors
 
@@ -44,6 +45,10 @@ Skip weeks of infrastructure setup and go straight to validating your agentic AI
 - 📡 **OpenTelemetry and Bedrock AgentCore Observability** with logs, traces, and metrics
 
 ![Usage Dashboard](/assets/usage.png?raw=true "Usage Dashboard")
+
+## Compare Mode
+
+Compare mode lets you send a single prompt to **up to three models at once** and watch their responses stream in side-by-side - useful for choosing the right model for a use case or spotting quality and latency differences. 
 
 ## Evaluations
 

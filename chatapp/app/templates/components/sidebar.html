@@ -178,7 +178,7 @@ async function loadSemanticMemoryByType(type, forceRefresh = false) {
     const container = document.getElementById(containerId);
     if (!container) return;
     
-    const currentSessionId = typeof getSessionId === 'function' ? getSessionId() : sessionId;
+    const currentSessionId = typeof getActiveMemorySessionId === 'function' ? getActiveMemorySessionId() : (typeof getSessionId === 'function' ? getSessionId() : sessionId);
     if (!forceRefresh && typeof memoryCache !== 'undefined' && memoryCache[type] && memoryCache.sessionId === currentSessionId) {
         renderSemanticMemoryItems(type, memoryCache[type], container);
         return;
@@ -187,7 +187,7 @@ async function loadSemanticMemoryByType(type, forceRefresh = false) {
     container.innerHTML = '<div class="flex items-center justify-center py-4"><svg class="w-5 h-5 animate-spin mr-2" style="color: var(--sidebar-badge-text);" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span class="text-sm" style="color: var(--sidebar-text-muted);">Loading ' + type + '...</span></div>';
     
     try {
-        const sid = typeof getSessionId === 'function' ? getSessionId() : sessionId;
+        const sid = typeof getActiveMemorySessionId === 'function' ? getActiveMemorySessionId() : (typeof getSessionId === 'function' ? getSessionId() : sessionId);
         const response = await fetch('/api/memory/semantic?session_id=' + sid + '&type=' + type);
         if (response.status === 401) { window.location.href = '/auth/login?error=session_expired'; return; }
         if (!response.ok) throw new Error('Failed to load ' + type);
@@ -249,7 +249,7 @@ async function loadEventMemory(forceRefresh) {
     var container = document.getElementById('event-memory-content');
     if (!container) return;
     
-    var currentSessionId = typeof getSessionId === 'function' ? getSessionId() : sessionId;
+    var currentSessionId = typeof getActiveMemorySessionId === 'function' ? getActiveMemorySessionId() : (typeof getSessionId === 'function' ? getSessionId() : sessionId);
     if (!forceRefresh && typeof memoryCache !== 'undefined' && memoryCache.events && memoryCache.sessionId === currentSessionId) {
         renderEventMemoryItems(memoryCache.events.messages || [], container);
         return;
@@ -258,7 +258,7 @@ async function loadEventMemory(forceRefresh) {
     container.innerHTML = '<div class="flex items-center justify-center py-4"><svg class="w-5 h-5 animate-spin mr-2" style="color: var(--sidebar-badge-text);" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span class="text-sm" style="color: var(--sidebar-text-muted);">Loading events...</span></div>';
     
     try {
-        var sid = typeof getSessionId === 'function' ? getSessionId() : sessionId;
+        var sid = typeof getActiveMemorySessionId === 'function' ? getActiveMemorySessionId() : (typeof getSessionId === 'function' ? getSessionId() : sessionId);
         var response = await fetch('/api/memory/events?session_id=' + sid);
         if (response.status === 401) { window.location.href = '/auth/login?error=session_expired'; return; }
         if (!response.ok) throw new Error('Failed to load events');
@@ -327,7 +327,7 @@ function renderEventMemoryItems(messages, container) {
 
 function addMessageToEventCache(role, content) {
     if (typeof memoryCache === 'undefined') return;
-    var currentSessionId = typeof getSessionId === 'function' ? getSessionId() : sessionId;
+    var currentSessionId = typeof getActiveMemorySessionId === 'function' ? getActiveMemorySessionId() : (typeof getSessionId === 'function' ? getSessionId() : sessionId);
     if (!memoryCache.events || memoryCache.sessionId !== currentSessionId) {
         memoryCache.events = { messages: [] };
         memoryCache.sessionId = currentSessionId;
@@ -345,14 +345,14 @@ function addMessageToEventCache(role, content) {
 async function loadEpisodicMemory(forceRefresh) {
     var container = document.getElementById('episodes-memory-content');
     if (!container) return;
-    var currentSessionId = typeof getSessionId === 'function' ? getSessionId() : sessionId;
+    var currentSessionId = typeof getActiveMemorySessionId === 'function' ? getActiveMemorySessionId() : (typeof getSessionId === 'function' ? getSessionId() : sessionId);
     if (!forceRefresh && typeof memoryCache !== 'undefined' && memoryCache.episodes && memoryCache.sessionId === currentSessionId) {
         renderEpisodicMemoryItems(memoryCache.episodes, container);
         return;
     }
     container.innerHTML = '<div class="flex items-center justify-center py-4"><svg class="w-5 h-5 animate-spin mr-2" style="color: var(--sidebar-badge-text);" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span class="text-sm" style="color: var(--sidebar-text-muted);">Loading episodes...</span></div>';
     try {
-        var sid = typeof getSessionId === 'function' ? getSessionId() : sessionId;
+        var sid = typeof getActiveMemorySessionId === 'function' ? getActiveMemorySessionId() : (typeof getSessionId === 'function' ? getSessionId() : sessionId);
         var response = await fetch('/api/memory/episodic?session_id=' + sid);
         if (response.status === 401) { window.location.href = '/auth/login?error=session_expired'; return; }
         if (!response.ok) throw new Error('Failed to load episodes');
