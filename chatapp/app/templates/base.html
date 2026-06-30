@@ -459,6 +459,23 @@
             position: relative;
         }
 
+        /* Compare mode: lanes are far narrower than the single-view column, so the
+           bubbles inherit sm:text-base (1rem), which reads large. Drop to text-sm
+           (0.875rem) for density. Scoped to .lane-transcript so single view is
+           unchanged; markdown headings use em units and scale down with it. */
+        .lane-transcript .message-content { font-size: 0.875rem; }
+
+        /* Compare mode: the footer is a single row (timestamp · model on the left,
+           metrics pill on the right via justify-between). In a narrow lane the two
+           groups collide and the pill wraps mid-value. Stack them so each gets the
+           full lane width; segments are individually nowrap so values never split. */
+        .lane-transcript .message-footer {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.25rem;
+        }
+        .lane-transcript .message-footer .metrics-pill { max-width: 100%; }
+
         /* Copy button - always visible with transition */
         .message-bubble .copy-message-btn { transition: all 0.2s ease; }
 
@@ -551,6 +568,21 @@
             color: #94a3b8;
         }
         [data-sidebar-theme="dark"] .markdown-content strong { color: #f1f5f9; }
+        /* Table headings/cells in the memory sidebar dark theme. The global table
+           rules color text with the page-level --text / --text-muted vars, which are
+           dark when the page theme is light — leaving the heading row nearly invisible
+           on the dark sidebar. Re-map to the sidebar's own light-on-dark palette. */
+        [data-sidebar-theme="dark"] .markdown-content thead { background: rgba(255, 255, 255, 0.06); }
+        [data-sidebar-theme="dark"] .markdown-content th {
+            color: var(--sidebar-text);
+            border-bottom-color: var(--sidebar-card-border);
+        }
+        [data-sidebar-theme="dark"] .markdown-content td {
+            color: var(--sidebar-text-muted);
+            border-bottom-color: var(--sidebar-card-border);
+        }
+        [data-sidebar-theme="dark"] .markdown-content table { border-color: var(--sidebar-card-border); }
+        [data-sidebar-theme="dark"] .markdown-content tbody tr:hover { background: rgba(255, 255, 255, 0.04); }
 
         /* Line clamp for memory content */
         .line-clamp-4 {
