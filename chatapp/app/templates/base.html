@@ -476,6 +476,23 @@
         }
         .lane-transcript .message-footer .metrics-pill { max-width: 100%; }
 
+        /* Compare mode: keep markdown tables inside the lane bubble. The global
+           table rules use width:100% with nowrap headers and no width
+           containment, so in a narrow lane the table spills past the bubble.
+           Fixed layout makes the columns share the available width, and allowing
+           cell/header text to wrap (overriding the global th nowrap) prevents the
+           table from forcing the lane wider than its column. */
+        .lane-transcript .markdown-content table {
+            table-layout: fixed;
+            width: 100%;
+            max-width: 100%;
+        }
+        .lane-transcript .markdown-content th,
+        .lane-transcript .markdown-content td {
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }
+
         /* Copy button - always visible with transition */
         .message-bubble .copy-message-btn { transition: all 0.2s ease; }
 
