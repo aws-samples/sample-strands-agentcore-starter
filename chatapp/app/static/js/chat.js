@@ -778,6 +778,24 @@ function getSessionId() {
 }
 
 /**
+ * Get the session id whose memory the sidebar should display.
+ *
+ * Single mode: the one chat session. Compare mode: the active lane's session
+ * (compare.js installs window.getCompareMemorySessionId). Centralizing this
+ * here lets the sidebar memory loaders stay lane-agnostic — they just ask for
+ * "the active memory session".
+ *
+ * @returns {string} The session id to load memory for
+ */
+function getActiveMemorySessionId() {
+    if (window.compareMode && typeof window.getCompareMemorySessionId === 'function') {
+        const laneSid = window.getCompareMemorySessionId();
+        if (laneSid) return laneSid;
+    }
+    return getSessionId();
+}
+
+/**
  * Clear the current session and generate a new one.
  * Used when starting a new chat conversation.
  * 
@@ -857,6 +875,13 @@ function buildChatEmptyState() {
  * Requirements: 3.2
  */
 function startNewChat() {
+    // In compare mode, the compare module resets every lane to a fresh base
+    // (new isolated sessions per lane) and clears their transcripts.
+    if (window.compareMode && typeof startNewChatCompare === 'function') {
+        startNewChatCompare();
+        return;
+    }
+
     // Generate new session ID
     clearAndCreateNewSession();
     
@@ -882,6 +907,115 @@ function startNewChat() {
 // ============================================================================
 
 /**
+ * Consume an SSE chat stream for a single assistant message.
+ *
+ * Shared by single chat (sendMessage) and compare mode (sendMessageCompare in
+ * compare.js). Given a prompt, session, model, and the DOM id of a streaming
+ * assistant message element, it POSTs to /api/chat, reads the SSE stream, and
+ * renders events into that message via handleSSEEvent/finalizeMessage.
+ *
+ * It is intentionally free of single-mode UI state (the connection pill, the
+ * memory cache, retry handling) so that it can run concurrently across several
+ * compare lanes without them stepping on each other. Callers own that state.
+ *
+ * @param {Object} opts
+ * @param {string} opts.prompt - User prompt to send
+ * @param {string} opts.sessionId - Session id (per-lane in compare mode)
+ * @param {string} opts.modelId - Model identifier
+ * @param {string} opts.assistantMsgId - DOM id of the streaming message element
+ * @param {Function} [opts.onFirstEvent] - Invoked once when the first event arrives
+ * @returns {Promise<{hasReceivedContent: boolean, content: string, aborted?: boolean}>}
+ * @throws {Error} On non-OK HTTP responses (the caller renders the error)
+ */
+async function consumeChatStream(opts) {
+    const prompt = opts.prompt;
+    const sessionId = opts.sessionId;
+    const modelId = opts.modelId;
+    const assistantMsgId = opts.assistantMsgId;
+    const onFirstEvent = opts.onFirstEvent || function () {};
+
+    const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            prompt: prompt,
+            session_id: sessionId,
+            model_id: modelId
+        })
+    });
+
+    // Handle 401 - session expired, redirect to login
+    if (response.status === 401) {
+        console.log('Session expired, redirecting to login');
+        window.location.href = '/auth/login?error=session_expired';
+        return { hasReceivedContent: false, content: '', aborted: true };
+    }
+
+    if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        let errorMessage = `Request failed with status ${response.status}`;
+
+        // Try to parse error response
+        try {
+            const errorJson = JSON.parse(errorText);
+            errorMessage = errorJson.detail || errorJson.message || errorMessage;
+        } catch {
+            if (errorText) errorMessage = errorText;
+        }
+
+        throw new Error(errorMessage);
+    }
+
+    // Process SSE stream (render incrementally)
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let fullContent = '';
+    let hasReceivedContent = false;
+    let finalized = false;
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const data = line.slice(6);
+
+            // Completion marker
+            if (data === '[DONE]') {
+                finalizeMessage(assistantMsgId, fullContent);
+                finalized = true;
+                hasReceivedContent = true;
+                continue;
+            }
+
+            try {
+                const sseEvent = JSON.parse(data);
+                if (!hasReceivedContent && sseEvent.type) onFirstEvent();
+                fullContent = handleSSEEvent(sseEvent, assistantMsgId, fullContent);
+                hasReceivedContent = true;
+            } catch (e) {
+                console.error('Failed to parse SSE event:', e, 'Data:', data);
+            }
+        }
+    }
+
+    // Finalize if we received content but never saw an explicit [DONE]
+    if (hasReceivedContent && fullContent && !finalized) {
+        finalizeMessage(assistantMsgId, fullContent);
+    }
+
+    return { hasReceivedContent: hasReceivedContent, content: fullContent };
+}
+
+/**
  * Send a chat message to the backend.
  * Handles form submission, SSE streaming, and UI updates.
  * 
@@ -891,7 +1025,14 @@ function startNewChat() {
  */
 async function sendMessage(event) {
     event.preventDefault();
-    
+
+    // In compare mode, fan the prompt out to every lane. The compare module
+    // (compare.js) owns the multi-lane flow; it reuses consumeChatStream per
+    // lane. Single-mode logic below is left untouched.
+    if (window.compareMode && typeof sendMessageCompare === 'function') {
+        return sendMessageCompare();
+    }
+
     const input = document.getElementById('message-input');
     const message = input.value.trim();
     
@@ -938,99 +1079,26 @@ async function sendMessage(event) {
             assistantMsgEl.dataset.modelName = selectedModel.name;
         }
 
-        const response = await fetch('/api/chat', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                prompt: message,
-                session_id: getSessionId(),
-                model_id: selectedModel.id
-            })
+        const result = await consumeChatStream({
+            prompt: message,
+            sessionId: getSessionId(),
+            modelId: selectedModel.id,
+            assistantMsgId: assistantMsgId,
+            // Transition to streaming state once the first event arrives
+            onFirstEvent: function () { setConnectionState('streaming'); },
         });
-        
-        // Handle 401 - session expired, redirect to login
-        if (response.status === 401) {
-            console.log('Session expired, redirecting to login');
-            window.location.href = '/auth/login?error=session_expired';
-            return;
-        }
-        
-        if (!response.ok) {
-            const errorText = await response.text().catch(() => '');
-            let errorMessage = `Request failed with status ${response.status}`;
-            
-            // Try to parse error response
-            try {
-                const errorJson = JSON.parse(errorText);
-                errorMessage = errorJson.detail || errorJson.message || errorMessage;
-            } catch {
-                if (errorText) errorMessage = errorText;
-            }
-            
-            throw new Error(errorMessage);
-        }
-        
-        // Process SSE stream (Requirement 2.3 - render incrementally)
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let fullContent = '';
-        let hasReceivedContent = false;
-        
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
-            
-            for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    const data = line.slice(6);
-                    
-                    // Handle done event (Requirement 2.6 - completion indicator)
-                    if (data === '[DONE]') {
-                        finalizeMessage(assistantMsgId, fullContent);
-                        // Add assistant message to memory cache
-                        if (typeof addMessageToEventCache === 'function' && fullContent) {
-                            addMessageToEventCache('assistant', fullContent);
-                        }
-                        hasReceivedContent = true;
-                        fullContent = ''; // Clear to prevent double finalization
-                        continue;
-                    }
-                    
-                    try {
-                        const sseEvent = JSON.parse(data);
-                        
-                        // Transition to streaming state once we receive any valid event
-                        if (!hasReceivedContent && sseEvent.type) {
-                            setConnectionState('streaming');
-                        }
-                        
-                        fullContent = handleSSEEvent(sseEvent, assistantMsgId, fullContent);
-                        hasReceivedContent = true;
-                    } catch (e) {
-                        console.error('Failed to parse SSE event:', e, 'Data:', data);
-                    }
-                }
-            }
-        }
-        
-        // Finalize if we received content but no explicit [DONE]
-        if (hasReceivedContent && fullContent) {
-            finalizeMessage(assistantMsgId, fullContent);
-            // Add assistant message to memory cache
-            if (typeof addMessageToEventCache === 'function') {
-                addMessageToEventCache('assistant', fullContent);
-            }
+
+        // 401 was handled inside consumeChatStream (redirect already issued)
+        if (result.aborted) return;
+
+        // Add assistant message to memory cache (single-mode only; compare
+        // lanes never touch the shared single-session cache)
+        if (result.hasReceivedContent && result.content && typeof addMessageToEventCache === 'function') {
+            addMessageToEventCache('assistant', result.content);
         }
         
         // Handle empty response - agent returned nothing (likely an error upstream)
-        if (!hasReceivedContent) {
+        if (!result.hasReceivedContent) {
             const msgEl = document.getElementById(assistantMsgId);
             if (msgEl) {
                 const contentDiv = msgEl.querySelector('.message-content');
@@ -1230,7 +1298,7 @@ function handleSSEEvent(event, msgId, currentContent) {
             contentDiv.appendChild(cursor);
             
             // Auto-scroll to keep latest content visible
-            scrollToBottom();
+            scrollMessageContainer(msgElement);
             break;
             
         case 'tool_use':
@@ -1305,7 +1373,7 @@ function handleSSEEvent(event, msgId, currentContent) {
             updateToolsVisibility(toolsContainer);
             // Mark that a tool ran so the next narration chunk gets a paragraph break
             msgElement.dataset.afterTool = '1';
-            scrollToBottom();
+            scrollMessageContainer(msgElement);
             break;
             
         case 'tool_result':
@@ -1408,7 +1476,7 @@ function handleSSEEvent(event, msgId, currentContent) {
                     }
                 }
             }
-            scrollToBottom();
+            scrollMessageContainer(msgElement);
             break;
             
         case 'error':
@@ -1427,7 +1495,7 @@ function handleSSEEvent(event, msgId, currentContent) {
             // Store metadata for potential display (token usage, etc.)
             // Metadata can come as event.data or event.usage
             const usageData = event.data || event.usage || event;
-            if (usageData && (usageData.inputTokens !== undefined || usageData.outputTokens !== undefined || usageData.latencyMs !== undefined)) {
+            if (usageData && (usageData.inputTokens !== undefined || usageData.outputTokens !== undefined || usageData.latencyMs !== undefined || usageData.ttftMs !== undefined || usageData.totalMs !== undefined)) {
                 msgElement.dataset.tokenUsage = JSON.stringify(usageData);
             }
             break;
@@ -1835,9 +1903,12 @@ function filterThinkingTags(content) {
  * 
  * Requirements: 5.4 (style user messages distinctly from assistant)
  */
-function addMessage(role, content) {
-    const messageList = document.getElementById('message-list');
-    const msgId = 'msg-' + role + '-' + Date.now();
+function addMessage(role, content, targetList) {
+    const messageList = targetList || document.getElementById('message-list');
+    if (!messageList) return;
+    // Random suffix keeps ids unique even when several lanes append in the
+    // same millisecond during a compare fan-out.
+    const msgId = 'msg-' + role + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
     
     const isUser = role === 'user';
     // Distinct styling for user vs assistant (Requirement 5.4)
@@ -1870,8 +1941,11 @@ function addMessage(role, content) {
     
     messageList.insertAdjacentHTML('beforeend', html);
     
-    // Force scroll for user messages, regular scroll for assistant
-    if (isUser) {
+    // In compare mode each lane scrolls its own column; in single mode use the
+    // global message-list scroll (force for user messages, soft for assistant).
+    if (targetList) {
+        scrollLaneToBottom(targetList);
+    } else if (isUser) {
         forceScrollToBottom();
     } else {
         scrollToBottom();
@@ -1883,8 +1957,9 @@ function addMessage(role, content) {
  * 
  * @param {string} msgId - Unique message ID
  */
-function addStreamingMessage(msgId) {
-    const messageList = document.getElementById('message-list');
+function addStreamingMessage(msgId, targetList) {
+    const messageList = targetList || document.getElementById('message-list');
+    if (!messageList) return;
     
     const html = `
         <div id="${msgId}" class="mb-6 message-fade-in flex flex-col items-start">
@@ -1926,7 +2001,11 @@ function addStreamingMessage(msgId) {
     `;
     
     messageList.insertAdjacentHTML('beforeend', html);
-    scrollToBottom();
+    if (targetList) {
+        scrollLaneToBottom(targetList);
+    } else {
+        scrollToBottom();
+    }
 }
 
 /**
@@ -2058,38 +2137,45 @@ function formatMetrics(usage) {
  */
 function createMetricsElement(usage) {
     if (!usage) return null;
-    
-    const parts = [];
-    
-    if (usage.inputTokens !== undefined) {
-        parts.push(`${usage.inputTokens} in`);
-    }
-    
-    if (usage.outputTokens !== undefined) {
-        parts.push(`${usage.outputTokens} out`);
-    }
-    
-    if (usage.latencyMs !== undefined) {
-        const latencySec = (usage.latencyMs / 1000).toFixed(2);
-        parts.push(`${latencySec}s`);
-    }
-    
-    if (parts.length === 0) return null;
-    
+
     const container = document.createElement('span');
-    container.className = 'px-2 py-0.5 bg-primary-50 rounded-full text-primary-600 font-medium';
-    
-    parts.forEach((text, index) => {
+    container.className = 'metrics-pill px-2 py-0.5 bg-primary-50 rounded-full text-primary-600 font-medium';
+
+    // Build display segments. Each is { text, title? }.
+    const segs = [];
+
+    if (usage.inputTokens !== undefined) segs.push({ text: `${usage.inputTokens} in` });
+    if (usage.outputTokens !== undefined) segs.push({ text: `${usage.outputTokens} out` });
+
+    // Timing: prefer the server-measured, consistently-clocked values
+    // (ttftMs = time to first token, totalMs = full wall-clock) so every lane
+    // is compared on the same clock. Fall back to the legacy single latencyMs
+    // for older payloads.
+    const ttftMs = usage.ttftMs;
+    const totalMs = (usage.totalMs !== undefined) ? usage.totalMs : usage.latencyMs;
+    if (ttftMs !== undefined && totalMs !== undefined) {
+        segs.push({
+            text: `${(ttftMs / 1000).toFixed(1)}s → ${(totalMs / 1000).toFixed(1)}s`,
+            title: 'Time to first token → total time'
+        });
+    } else if (totalMs !== undefined) {
+        segs.push({ text: `${(totalMs / 1000).toFixed(1)}s`, title: 'Total time' });
+    }
+
+    if (segs.length === 0) return null;
+
+    segs.forEach((seg, index) => {
         const span = document.createElement('span');
-        span.className = 'text-primary-500';
-        span.textContent = text;
+        span.className = 'text-primary-500 whitespace-nowrap';
+        span.textContent = seg.text;
+        if (seg.title) span.title = seg.title;
         container.appendChild(span);
-        
-        if (index < parts.length - 1) {
+
+        if (index < segs.length - 1) {
             container.appendChild(document.createTextNode(' • '));
         }
     });
-    
+
     return container;
 }
 
@@ -2397,6 +2483,33 @@ function forceScrollToBottom() {
         top: messageList.scrollHeight,
         behavior: 'smooth'
     });
+}
+
+/**
+ * Scroll a compare-lane transcript to its bottom. Each lane is its own scroll
+ * container, independent of the single-mode message-list scroll.
+ *
+ * @param {HTMLElement} laneList - The lane transcript element
+ */
+function scrollLaneToBottom(laneList) {
+    if (!laneList) return;
+    laneList.scrollTop = laneList.scrollHeight;
+}
+
+/**
+ * Scroll the container that owns a streaming message. In compare mode that is
+ * the message's lane transcript; in single mode it falls back to the global
+ * message-list scroll (which also manages the jump-to-bottom button).
+ *
+ * @param {HTMLElement} msgElement - The streaming message element
+ */
+function scrollMessageContainer(msgElement) {
+    const lane = (msgElement && msgElement.closest) ? msgElement.closest('.lane-transcript') : null;
+    if (lane) {
+        scrollLaneToBottom(lane);
+    } else {
+        scrollToBottom();
+    }
 }
 
 /**
