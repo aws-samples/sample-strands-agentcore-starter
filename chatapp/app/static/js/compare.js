@@ -66,6 +66,32 @@ function compareModelById(id) {
 }
 
 /**
+ * Cryptographically-secure RFC4122 v4 UUID. Used as the per-lane AgentCore
+ * runtimeSessionId base, which is a security-sensitive identifier, so it must
+ * come from a secure RNG (never Math.random). The hex+hyphen format also
+ * satisfies the runtimeSessionId charset and length once the "-lN" suffix is
+ * appended (36 + 3 = 39 chars, >= the 33-char minimum).
+ */
+function secureUuid() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+    // Fallback for older browsers: still a CSPRNG via crypto.getRandomValues.
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+    bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 10
+    const hex = [];
+    for (let i = 0; i < 16; i++) hex.push((bytes[i] + 0x100).toString(16).slice(1));
+    return hex.slice(0, 4).join('') + '-' + hex.slice(4, 6).join('') + '-' +
+           hex.slice(6, 8).join('') + '-' + hex.slice(8, 10).join('') + '-' +
+           hex.slice(10, 16).join('');
+}
+
+// Monotonic counter for unique per-lane message element ids (no randomness).
+let laneMsgSeq = 0;
+
+/**
  * Choose N distinct default model ids for the initial lanes. Prefers the
  * single-mode selected model first, then fills with other distinct models.
  *
@@ -164,9 +190,7 @@ function initCompare() {
     if (compareInitialized) return;
     compareInitialized = true;
 
-    compareBaseId = (typeof generateSessionId === 'function')
-        ? generateSessionId()
-        : String(Date.now()) + '-' + Math.random().toString(36).slice(2);
+    compareBaseId = secureUuid();
 
     const saved = loadCompareModels();
     const modelIds = (saved && saved.length)
@@ -331,6 +355,39 @@ function laneEmptyStateHtml(lane) {
     '</div>';
 }
 
+/**
+ * Render the lane empty-state into a container using DOM APIs (textContent),
+ * so the model name/id is never reinterpreted as HTML. Used when re-labelling
+ * an unused lane after a model change, where the id originates from a DOM
+ * attribute read.
+ *
+ * @param {HTMLElement} container
+ * @param {{modelId:string}} lane
+ */
+function renderLaneEmptyState(container, lane) {
+    const model = compareModelById(lane.modelId);
+    const name = model ? model.name : lane.modelId;
+
+    const outer = document.createElement('div');
+    outer.className = 'lane-empty flex-1 flex items-center justify-center text-center px-4';
+    const inner = document.createElement('div');
+
+    const title = document.createElement('p');
+    title.className = 'text-sm font-medium';
+    title.style.color = 'var(--text-muted)';
+    title.textContent = name;
+
+    const sub = document.createElement('p');
+    sub.className = 'text-xs mt-1';
+    sub.style.color = 'var(--text-subtle)';
+    sub.textContent = 'Awaiting your first prompt';
+
+    inner.appendChild(title);
+    inner.appendChild(sub);
+    outer.appendChild(inner);
+    container.replaceChildren(outer);
+}
+
 /** Update the toolbar count + Add-button enabled/visibility. */
 function updateCompareToolbar() {
     const count = document.getElementById('compare-count');
@@ -422,7 +479,7 @@ function pickLaneModel(slot, modelId) {
         const empty = col.querySelector('.lane-empty');
         if (empty) {
             const transcript = document.getElementById('lane-transcript-' + slot);
-            if (transcript) transcript.innerHTML = laneEmptyStateHtml(lane);
+            if (transcript) renderLaneEmptyState(transcript, lane);
         }
     }
 
@@ -478,13 +535,16 @@ function ensureLaneModelMenu() {
     menu.style.background = 'var(--surface)';
     menu.style.border = '1px solid var(--border)';
 
-    // Event delegation: a click on a model row applies it to the target lane
+    // Event delegation: a click on a model row applies it to the target lane.
+    // Resolve the raw data-model-id against the known catalog and forward only
+    // the canonical id, keeping untrusted DOM attribute text out of the
+    // downstream render path (and rejecting unknown ids).
     menu.addEventListener('click', function (e) {
         const row = e.target.closest ? e.target.closest('[data-model-id]') : null;
         if (!row) return;
-        const modelId = row.getAttribute('data-model-id');
-        if (laneMenuTargetSlot != null && modelId) {
-            pickLaneModel(laneMenuTargetSlot, modelId);
+        const known = compareModelById(row.getAttribute('data-model-id'));
+        if (laneMenuTargetSlot != null && known) {
+            pickLaneModel(laneMenuTargetSlot, known.id);
         }
     });
 
@@ -600,7 +660,7 @@ async function streamLane(lane, message) {
 
     addMessage('user', message, transcript);
 
-    const assistantMsgId = 'msg-assistant-l' + lane.slot + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+    const assistantMsgId = 'msg-assistant-l' + lane.slot + '-' + Date.now() + '-' + (++laneMsgSeq);
     addStreamingMessage(assistantMsgId, transcript);
 
     const model = compareModelById(lane.modelId);
@@ -681,9 +741,7 @@ function stripStreamingAffordances(msgEl) {
  * cleared transcripts.
  */
 function startNewChatCompare() {
-    compareBaseId = (typeof generateSessionId === 'function')
-        ? generateSessionId()
-        : String(Date.now()) + '-' + Math.random().toString(36).slice(2);
+    compareBaseId = secureUuid();
 
     // Keep the same models and slots, just hand each lane a fresh session id
     compareLanes = compareLanes.map(function (lane) {
