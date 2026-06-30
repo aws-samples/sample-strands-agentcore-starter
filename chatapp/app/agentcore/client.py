@@ -4,9 +4,11 @@ This module provides the AgentCoreClient class for streaming responses
 from the AgentCore Runtime and converting them to typed SSE events.
 """
 
+import asyncio
 import json
 import re
-from typing import AsyncGenerator, Optional, Dict, Any
+import threading
+from typing import AsyncGenerator, Generator, Optional, Dict, Any
 
 import boto3
 from botocore.config import Config
@@ -348,15 +350,89 @@ class AgentCoreClient:
         model_api: str = "messages",
     ) -> AsyncGenerator[SSEEvent, None]:
         """Invoke AgentCore Runtime and stream the response.
-        
+
+        The underlying boto3 ``invoke_agent_runtime`` call and its streaming body
+        are fully synchronous and blocking. Iterating that body directly on the
+        asyncio event loop freezes the loop between chunks, which prevents
+        already-produced SSE bytes from being flushed to the browser and, in
+        compare mode, serializes the per-lane streams so the UI only paints once
+        everything has arrived.
+
+        To keep the event loop free, the blocking read+parse runs in a worker
+        thread (``_invoke_stream_sync``) and the parsed events are bridged back
+        to this coroutine over a thread-safe queue. The loop can then flush each
+        token as it arrives and genuinely interleave multiple concurrent lanes.
+
         Args:
             prompt: User message to send to the agent
             session_id: Session ID for conversation context
             user_id: User ID for memory operations
             model_id: Model identifier for LLM selection
-            
+            model_api: Which Mantle API the model uses (chat/responses/messages)
+
         Yields:
             SSE events as they are received from AgentCore
+        """
+        loop = asyncio.get_running_loop()
+        queue: "asyncio.Queue[Any]" = asyncio.Queue()
+        stop_event = threading.Event()
+        _DONE = object()
+
+        def _pump() -> None:
+            # Runs on a worker thread: drive the blocking sync generator and hand
+            # each event to the loop. call_soon_threadsafe is the supported way to
+            # touch loop/Queue state from another thread.
+            try:
+                for ev in self._invoke_stream_sync(
+                    prompt=prompt,
+                    session_id=session_id,
+                    user_id=user_id,
+                    model_id=model_id,
+                    model_api=model_api,
+                    stop_event=stop_event,
+                ):
+                    loop.call_soon_threadsafe(queue.put_nowait, ev)
+            except Exception as exc:  # noqa: BLE001 - safety net; sync gen maps known errors
+                loop.call_soon_threadsafe(
+                    queue.put_nowait,
+                    ErrorEvent(message='Failed to invoke AgentCore', details=str(exc)),
+                )
+                loop.call_soon_threadsafe(queue.put_nowait, DoneEvent())
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, _DONE)
+
+        # Keep a reference so the executor future isn't GC'd mid-flight.
+        pump_future = loop.run_in_executor(None, _pump)
+        try:
+            while True:
+                item = await queue.get()
+                if item is _DONE:
+                    break
+                yield item
+        finally:
+            # On client disconnect / early close, signal the worker to stop after
+            # its current (uninterruptible) read so it unwinds the boto3 stream.
+            # We intentionally don't await the future here: this finally can run
+            # during generator finalization/cancellation, where awaiting risks a
+            # GeneratorExit/CancelledError clash. The thread observes the flag and
+            # exits on its own after the in-flight read returns.
+            stop_event.set()
+
+    def _invoke_stream_sync(
+        self,
+        prompt: str,
+        session_id: str,
+        user_id: str,
+        model_id: str = "anthropic.claude-haiku-4-5",
+        model_api: str = "messages",
+        stop_event: Optional[threading.Event] = None,
+    ) -> Generator[SSEEvent, None, None]:
+        """Blocking AgentCore invocation + NDJSON parse, as a sync generator.
+
+        Intended to be driven from a worker thread by :meth:`invoke_stream`.
+        Yields the same typed SSE events; checks ``stop_event`` between chunks so
+        a disconnected client unwinds the read promptly (a chunk already in
+        flight cannot be interrupted).
         """
         import codecs
         
@@ -401,6 +477,11 @@ class AgentCoreClient:
             
             # Read chunks from the stream - StreamingBody yields bytes directly
             for chunk in stream:
+                # Stop early if the consumer (client) has gone away. The current
+                # in-flight read cannot be interrupted, but we won't start
+                # parsing/yielding more once cancellation is signalled.
+                if stop_event is not None and stop_event.is_set():
+                    break
                 # Handle different chunk formats and get raw bytes
                 raw_bytes = None
                 if isinstance(chunk, bytes):
