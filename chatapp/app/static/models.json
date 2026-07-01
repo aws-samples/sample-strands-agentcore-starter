@@ -13,6 +13,7 @@
     { "id": "openai.gpt-5.4", "name": "GPT 5.4", "api": "responses", "input": 2.75, "output": 16.50, "tier": "frontier" },
     { "id": "xai.grok-4.3", "name": "Grok 4.3", "api": "responses", "input": 3.00, "output": 15.00, "tier": "frontier" },
 
+    { "id": "anthropic.claude-sonnet-5", "name": "Claude Sonnet 5", "api": "messages", "input": 2.20, "output": 11.00, "tier": "strong" },
     { "id": "zai.glm-5", "name": "Z.AI GLM 5", "api": "chat", "input": 1.00, "output": 3.20, "tier": "strong" },
     { "id": "minimax.minimax-m2.5", "name": "MiniMax M2.5", "api": "chat", "input": 0.30, "output": 1.20, "tier": "strong" },
     { "id": "moonshotai.kimi-k2.5", "name": "Kimi K2.5", "api": "chat", "input": 0.60, "output": 3.00, "tier": "strong" },
