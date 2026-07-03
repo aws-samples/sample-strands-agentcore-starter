@@ -12,7 +12,6 @@ Consumers:
 
 import json
 import logging
-from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List
 
@@ -24,9 +23,8 @@ _CATALOG_PATH = Path(__file__).resolve().parent.parent / "static" / "models.json
 _FALLBACK = {"default_model_id": "", "models": []}
 
 
-@lru_cache(maxsize=1)
 def load_catalog() -> dict:
-    """Load and cache the model catalog JSON. Never raises."""
+    """Load the model catalog JSON. Never raises."""
     try:
         with open(_CATALOG_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -64,12 +62,15 @@ def model_name(model_id: str) -> str:
     return model_id
 
 
-def get_model_api(model_id: str) -> str:
+def get_model_api(model_id: str | None) -> str:
     """Get the API type for a model ('chat', 'responses', or 'messages').
-    
+
     Returns 'chat' as default if model not found or api field missing.
     """
+    if not model_id:
+        return "chat"
     for m in get_models():
         if m.get("id") == model_id:
             return m.get("api", "chat")
+    logger.warning("Unknown model_id %r — defaulting api to 'chat'", model_id)
     return "chat"

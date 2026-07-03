@@ -9,29 +9,24 @@ from typing import Dict
 from app.helpers.model_catalog import get_pricing
 
 
-# Model pricing in USD per 1 million tokens, sourced from the single
-# source of truth at app/static/models.json (shared with the front-end).
-# Format: {"model_id": {"input": rate, "output": rate}}
-MODEL_PRICING: Dict[str, Dict[str, float]] = get_pricing()
-
 # Default pricing for unknown models
 DEFAULT_PRICING = {"input": 0.00, "output": 0.00}
 
 
 class CostCalculator:
     """Calculate costs based on token usage and model pricing.
-    
+
     This class provides methods to calculate costs for token usage
     and project monthly costs based on usage patterns.
     """
-    
+
     def __init__(self, pricing: Dict[str, Dict[str, float]] = None):
         """Initialize the cost calculator.
-        
+
         Args:
-            pricing: Optional custom pricing dictionary. Defaults to MODEL_PRICING.
+            pricing: Optional custom pricing dictionary. Defaults to live catalog pricing.
         """
-        self.pricing = pricing or MODEL_PRICING
+        self.pricing = pricing if pricing is not None else get_pricing()
 
     def _resolve_rates(self, model_id: str) -> Dict[str, float]:
         """Resolve pricing rates for a model id.
