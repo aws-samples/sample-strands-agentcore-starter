@@ -3,7 +3,6 @@
 import pytest
 from app.admin.cost_calculator import (
     CostCalculator,
-    MODEL_PRICING,
     DEFAULT_PRICING,
 )
 
