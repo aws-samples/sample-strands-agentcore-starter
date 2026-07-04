@@ -149,7 +149,7 @@ aws s3 sync "$CHATAPP_DIR" "s3://${S3_BUCKET}/chatapp-source/" \
     --exclude "deploy/*" \
     --exclude "*.log" \
     --exclude ".DS_Store" \
-    --exclude "tests/*" \
+    --exclude ".coverage" \
     --region "$AWS_REGION" \
     --delete
 
