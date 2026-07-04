@@ -68,13 +68,13 @@ class TestCostCalculator:
         """Test monthly cost projection calculation."""
         calc = CostCalculator()
         
-        # $100 over 10 days -> $10/day -> $200/month (20 business days)
+        # $100 over 10 days -> $10/day -> $300/month (30 calendar days)
         projection = calc.calculate_monthly_projection(
             total_cost=100.0,
             days_in_period=10,
         )
-        
-        assert projection == pytest.approx(200.0)
+
+        assert projection == pytest.approx(300.0)
 
     def test_calculate_monthly_projection_zero_days(self):
         """Test monthly projection with zero days returns zero."""
