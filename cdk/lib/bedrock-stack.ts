@@ -361,7 +361,7 @@ export class BedrockStack extends cdk.Stack {
           knowledgeBaseId: this.knowledgeBase.attrKnowledgeBaseId,
           dataSourceId: this.dataSource.attrDataSourceId,
           description: 'Re-ingestion of seeded Knowledge Base documents',
-          clientToken: ingestionTimestamp.replace(/[^a-zA-Z0-9]/g, '').substring(0, 32),
+          clientToken: (ingestionTimestamp.replace(/[^a-zA-Z0-9]/g, '') + config.appName.replace(/[^a-zA-Z0-9]/g, '')).padEnd(33, '0').substring(0, 64),
         },
         physicalResourceId: cr.PhysicalResourceId.of(`${config.appName}-kb-seed-ingestion`),
       },
