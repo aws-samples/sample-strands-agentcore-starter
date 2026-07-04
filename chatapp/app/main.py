@@ -94,7 +94,9 @@ if hot_reload:
     templates.env.globals["hot_reload"] = hot_reload
 
 # Add proxy headers middleware (for ALB/reverse proxy HTTPS handling)
-app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=["*"])
+_trusted_proxies_env = os.environ.get("TRUSTED_PROXY_HOSTS", "").strip()
+_trusted_proxy_hosts = [h.strip() for h in _trusted_proxies_env.split(",") if h.strip()] or ["127.0.0.1"]
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=_trusted_proxy_hosts)
 
 # Add authentication middleware
 app.add_middleware(AuthMiddleware)

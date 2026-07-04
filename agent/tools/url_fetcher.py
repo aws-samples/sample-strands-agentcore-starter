@@ -89,6 +89,24 @@ async def fetch_url_content(
                 "url": url
             })
 
+        # Block SSRF targets: link-local, loopback, and private ranges
+        import ipaddress
+        import socket
+        try:
+            from urllib.parse import urlparse
+            hostname = urlparse(url).hostname or ""
+            resolved = socket.getaddrinfo(hostname, None)
+            for _, _, _, _, sockaddr in resolved:
+                ip = ipaddress.ip_address(sockaddr[0])
+                if ip.is_loopback or ip.is_link_local or ip.is_private:
+                    return json.dumps({
+                        "success": False,
+                        "error": "URL resolves to a private or reserved address",
+                        "url": url,
+                    })
+        except Exception as e:
+            return json.dumps({"success": False, "error": f"URL validation failed: {e}", "url": url})
+
         # Fetch URL with timeout
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
             headers = {

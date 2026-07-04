@@ -370,13 +370,6 @@ class CognitoAuth:
                         groups = list(id_claims.get("cognito:groups") or [])
                 except Exception as e:
                     logger.warning(f"Failed to verify ID token: {e}")
-                    # Fall back to unverified claims for email (non-critical)
-                    try:
-                        id_claims = jwt.get_unverified_claims(id_token)
-                        email = id_claims.get("email")
-                        username = id_claims.get("cognito:username") or email
-                    except Exception:
-                        pass
             
             return UserInfo(
                 user_id=user_id,

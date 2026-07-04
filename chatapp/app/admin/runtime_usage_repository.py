@@ -260,8 +260,8 @@ class RuntimeUsageRepository:
         for page in paginator.paginate(
             TableName=self.table_name,
             FilterExpression="#ts BETWEEN :start AND :end",
-            ProjectionExpression="session_id, vcpu_hours, memory_gb_hours, time_elapsed_seconds, #ts",
-            ExpressionAttributeNames={"#ts": "timestamp"},
+            ProjectionExpression="session_id, vcpu_hours, memory_gb_hours, time_elapsed_seconds, #ts, agent_name, #r, date_partition",
+            ExpressionAttributeNames={"#ts": "timestamp", "#r": "region"},
             ExpressionAttributeValues={
                 ":start": {"N": str(start_timestamp_ms)},
                 ":end": {"N": str(end_timestamp_ms)},

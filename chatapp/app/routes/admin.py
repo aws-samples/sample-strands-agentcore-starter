@@ -161,8 +161,7 @@ async def dashboard(
     # Calculate total cost (token + runtime)
     total_cost = aggregate_stats.total_cost + float(runtime_stats.total_runtime_cost)
     
-    # Calculate projected monthly cost (30 calendar days)
-    projected_monthly = (total_cost / days_in_period) * 30 if days_in_period > 0 else 0.0
+    projected_monthly = CostCalculator().calculate_monthly_projection(total_cost, days_in_period)
     
     return templates.TemplateResponse(
         "admin/dashboard.html",

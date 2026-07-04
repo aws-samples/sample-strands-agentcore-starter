@@ -12,6 +12,7 @@ Consumers:
 
 import json
 import logging
+from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List
 
@@ -23,6 +24,7 @@ _CATALOG_PATH = Path(__file__).resolve().parent.parent / "static" / "models.json
 _FALLBACK = {"default_model_id": "", "models": []}
 
 
+@lru_cache(maxsize=None)
 def load_catalog() -> dict:
     """Load the model catalog JSON. Never raises."""
     try:

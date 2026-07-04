@@ -93,20 +93,20 @@ class CostCalculator:
     ) -> float:
         """Project monthly cost based on average daily usage.
         
-        Uses the formula: (total_cost / days_in_period) * 20
-        
+        Uses the formula: (total_cost / days_in_period) * 30
+
         Args:
             total_cost: Total cost for the period in USD
             days_in_period: Number of days in the measurement period
-            
+
         Returns:
             Projected monthly cost in USD
         """
         if days_in_period <= 0:
             return 0.0
-        
+
         daily_average = total_cost / days_in_period
-        return daily_average * 20
+        return daily_average * 30
     
     def get_model_rates(self, model_id: str) -> Dict[str, float]:
         """Get pricing rates for a specific model.
