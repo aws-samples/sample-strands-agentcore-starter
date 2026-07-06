@@ -70,7 +70,10 @@ const SIDEBAR_THEME_KEY = 'agentcore-sidebar-theme';
 
 function initSidebarTheme() {
     const savedTheme = localStorage.getItem(SIDEBAR_THEME_KEY);
-    applySidebarTheme(savedTheme || 'dark');
+    // No saved preference: follow the app theme so the sidebar respects
+    // dark/light mode (matches the pre-paint resolution in chat.html's head).
+    const appTheme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    applySidebarTheme(savedTheme || appTheme);
 }
 
 function toggleSidebarTheme() {
@@ -91,6 +94,10 @@ function applySidebarTheme(theme) {
     if (sidebar) sidebar.dataset.sidebarTheme = theme;
     if (sidebarInner) sidebarInner.dataset.sidebarTheme = theme;
     if (collapsedToggle) collapsedToggle.dataset.sidebarTheme = theme;
+    // Keep the <html> flag in sync with the live theme so the pre-paint
+    // no-flash rule (chat.html head) always matches; when set to 'light' the
+    // dark cascade from <html> is removed and the :root light vars apply.
+    document.documentElement.setAttribute('data-sidebar-theme', theme);
     
     if (sunIcon && moonIcon) {
         if (theme === 'dark') {

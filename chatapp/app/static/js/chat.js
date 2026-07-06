@@ -809,62 +809,31 @@ function clearAndCreateNewSession() {
 }
 
 /**
- * Build the chat empty-state element using safe DOM APIs.
+ * Pristine copy of the empty state captured at load. The markup is defined
+ * ONCE, server-side, in chat.html (#empty-state) so it paints without a flash;
+ * we snapshot it here before the first message can remove it, so "new chat" can
+ * restore a visually identical state instead of re-defining the markup in JS.
+ */
+const CHAT_EMPTY_STATE_TEMPLATE = (function () {
+    const el = document.getElementById('empty-state');
+    return el ? el.cloneNode(true) : null;
+})();
+
+/**
+ * Build the chat empty-state element by cloning the server-rendered template
+ * (the single source of truth). Guarantees the page-load and "new chat" states
+ * are byte-for-byte identical.
  *
- * Single source of truth for the empty state shared between the
- * server-rendered markup in chat.html and the JS-rendered "new chat"
- * state, so the two stay visually identical in both light and dark themes.
- *
- * @returns {HTMLElement} The #empty-state element
+ * @returns {HTMLElement} A fresh #empty-state element
  */
 function buildChatEmptyState() {
+    if (CHAT_EMPTY_STATE_TEMPLATE) {
+        return CHAT_EMPTY_STATE_TEMPLATE.cloneNode(true);
+    }
+    // Fallback if the template wasn't present at load (shouldn't happen).
     const emptyState = document.createElement('div');
     emptyState.id = 'empty-state';
     emptyState.className = 'flex items-center justify-center h-full p-8';
-
-    const inner = document.createElement('div');
-    inner.className = 'text-center max-w-lg rise-in';
-
-    // Logo with soft glow
-    const logoContainer = document.createElement('div');
-    logoContainer.className = 'mb-7 flex justify-center';
-    const logoRelative = document.createElement('div');
-    logoRelative.className = 'relative';
-    const glow = document.createElement('div');
-    glow.className = 'absolute inset-0 blur-2xl opacity-40 rounded-full';
-    glow.style.background = 'radial-gradient(circle, var(--primary), transparent 70%)';
-    const logoImg = document.createElement('img');
-    logoImg.src = window.chatLogoUrl || '/static/chat-placeholder.svg';
-    logoImg.alt = 'Chat Logo';
-    logoImg.className = 'relative w-24 h-24 rounded-2xl shadow-lg';
-    logoRelative.appendChild(glow);
-    logoRelative.appendChild(logoImg);
-    logoContainer.appendChild(logoRelative);
-    inner.appendChild(logoContainer);
-
-    // Greeting (only when the user email is available)
-    if (window.userEmail) {
-        const eyebrow = document.createElement('p');
-        eyebrow.className = 'text-xs font-mono uppercase tracking-[0.2em] mb-3';
-        eyebrow.style.color = 'var(--text-subtle)';
-        eyebrow.textContent = 'Welcome back';
-        inner.appendChild(eyebrow);
-
-        const name = document.createElement('h2');
-        name.className = 'font-display text-2xl sm:text-3xl font-bold mb-3';
-        name.style.color = 'var(--text)';
-        name.textContent = String(window.userEmail).split('@')[0];
-        inner.appendChild(name);
-    }
-
-    // Instruction text (configurable welcome message)
-    const instructionP = document.createElement('p');
-    instructionP.className = 'text-base leading-relaxed';
-    instructionP.style.color = 'var(--text-muted)';
-    instructionP.textContent = window.welcomeMessage || 'Start a conversation by typing a message below';
-    inner.appendChild(instructionP);
-
-    emptyState.appendChild(inner);
     return emptyState;
 }
 
@@ -3032,7 +3001,12 @@ function expandMemorySidebar(skipRefresh = false) {
     if (collapsed) {
         collapsed.classList.add('hidden');
     }
-    
+
+    // Keep the <html> flag in sync so the no-flash CSS (chat.html head) matches
+    // the live state; otherwise the pre-paint rules would fight the toggle.
+    document.documentElement.classList.add('memory-expanded');
+    document.documentElement.classList.remove('memory-collapsed');
+
     // Refresh memory when expanding (unless skipped during init)
     if (!skipRefresh) {
         refreshMemory();
@@ -3054,6 +3028,11 @@ function collapseMemorySidebar() {
     if (collapsed) {
         collapsed.classList.remove('hidden');
     }
+
+    // Keep the <html> flag in sync so the no-flash CSS (chat.html head) matches
+    // the live state; otherwise the pre-paint rules would fight the toggle.
+    document.documentElement.classList.add('memory-collapsed');
+    document.documentElement.classList.remove('memory-expanded');
 }
 
 /**

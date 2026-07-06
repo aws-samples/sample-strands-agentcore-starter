@@ -6,10 +6,103 @@
 <link rel="icon" type="image/svg+xml" href="{{ logo_url if logo_url is defined else '/static/favicon.svg' }}">
 {% endblock %}
 
+{% block head %}
+<!-- No-flash chat-mode init: apply the persisted Single/Compare mode before the
+     first paint so compare users never see the single-chat view flash in. This
+     mirrors the theme no-flash init in base.html. compare.js keeps the
+     `chat-mode-compare` class in sync on subsequent toggles (see setChatMode). -->
+<script>
+    (function () {
+        var d = document.documentElement;
+        try {
+            if (localStorage.getItem('agentcore-chat-mode') === 'compare') {
+                d.classList.add('chat-mode-compare');
+            }
+        } catch (e) { /* localStorage unavailable - default to single */ }
+
+        // Memory sidebar initial state, mirroring initializeMemorySidebar() in
+        // chat.js: honor the saved preference, else default to collapsed below
+        // the 1024px breakpoint. Applying this before first paint keeps the main
+        // column (and the header inside it) at their final width, so the header
+        // logo doesn't visibly jump left when the sidebar expands on load.
+        var collapsed;
+        try {
+            var pref = localStorage.getItem('agentcore-memory-collapsed');
+            collapsed = (pref !== null) ? (pref === 'true') : (window.innerWidth < 1024);
+        } catch (e) {
+            collapsed = (window.innerWidth < 1024);
+        }
+        d.classList.add(collapsed ? 'memory-collapsed' : 'memory-expanded');
+
+        // Memory sidebar theme: honor the saved preference, else follow the app
+        // theme (data-theme, set earlier in base.html). Applying data-sidebar-theme
+        // to <html> before first paint means the [data-sidebar-theme="dark"] vars
+        // cascade to the sidebar immediately, so its background doesn't flash white
+        // in dark mode. initSidebarTheme()/applySidebarTheme() keep this in sync.
+        try {
+            var sb = localStorage.getItem('agentcore-sidebar-theme');
+            if (sb !== 'light' && sb !== 'dark') {
+                sb = (d.getAttribute('data-theme') === 'dark') ? 'dark' : 'light';
+            }
+            d.setAttribute('data-sidebar-theme', sb);
+        } catch (e) {
+            d.setAttribute('data-sidebar-theme', (d.getAttribute('data-theme') === 'dark') ? 'dark' : 'light');
+        }
+    })();
+</script>
+<style>
+    /* When compare mode is the persisted mode, hide the single-view message
+       list and reveal the compare root immediately, before compare.js runs.
+       The !important + html-scoped selector outrank Tailwind's `.hidden`
+       (display:none) so no single-chat content paints first. compare.js then
+       renders the lanes into #compare-root on DOMContentLoaded. */
+    html.chat-mode-compare #message-list { display: none !important; }
+    html.chat-mode-compare #compare-root { display: block !important; }
+
+    /* Reflect the compare selection on the header segmented toggle up front so
+       the "Single" pill doesn't flash as active. These html-scoped rules
+       (specificity id+class+type) outrank the header's
+       .mode-toggle-btn[aria-selected] styling until JS sets the attributes. */
+    html.chat-mode-compare #mode-single-btn {
+        background: transparent;
+        color: var(--header-text-muted);
+        box-shadow: none;
+    }
+    html.chat-mode-compare #mode-compare-btn {
+        background: var(--primary);
+        color: #fff;
+        box-shadow: 0 6px 16px -6px rgba(var(--primary-rgb), 0.55);
+    }
+
+    /* No-flash memory sidebar: apply the persisted/responsive sidebar state
+       before first paint so the main column (and header) start at their final
+       width, preventing the header logo from jumping left when the sidebar
+       expands on load. These html-scoped selectors (id+class+type specificity)
+       outrank the elements' own hidden/flex classes; chat.js keeps the html
+       flag in sync on toggle (expand/collapseMemorySidebar). */
+    html.memory-expanded #memory-sidebar { display: flex !important; }
+    html.memory-expanded #memory-toggle-collapsed { display: none !important; }
+    html.memory-collapsed #memory-sidebar { display: none !important; }
+    html.memory-collapsed #memory-toggle-collapsed { display: block !important; }
+
+    /* The sidebar/collapsed-toggle sit at the END of the body, so the header
+       (inside #chat-main, earlier in the DOM) would otherwise paint at full
+       width and then jump left once the sidebar is parsed. Reserving the
+       sidebar's in-flow width on #chat-main up front makes the header lay out at
+       its final width from the first paint. The sidebar is w-96 (24rem); the
+       collapsed toggle strip is ~45px. Only reserve the expanded sidebar at
+       >=1024px, where it is in-flow (below that it's a fixed overlay). */
+    @media (min-width: 1024px) {
+        html.memory-expanded #chat-main { max-width: calc(100% - 24rem); }
+    }
+    html.memory-collapsed #chat-main { max-width: calc(100% - 45px); }
+</style>
+{% endblock %}
+
 {% block body %}
 <div class="chat-container overflow-hidden flex flex-row">
     <!-- Main chat area -->
-    <div class="flex-1 flex flex-col min-w-0">
+    <div id="chat-main" class="flex-1 flex flex-col min-w-0">
         <!-- Header -->
         {% set show_admin_btn = is_admin %}
         {% set mode_toggle = true %}
@@ -43,7 +136,7 @@
                         <p class="text-xs font-mono uppercase tracking-[0.2em] mb-3" style="color: var(--text-subtle);">
                             Welcome back
                         </p>
-                        <h2 class="font-display text-2xl sm:text-3xl font-700 mb-3" style="color: var(--text);">
+                        <h2 class="font-display text-2xl sm:text-3xl font-bold mb-3" style="color: var(--text);">
                             {{ user_email.split('@')[0] }}
                         </h2>
                         {% endif %}
@@ -58,8 +151,45 @@
 
             <!-- Compare mode container (multi-model lanes). Hidden in single
                  mode; compare.js renders the lanes grid here and toggles
-                 visibility against #message-list. -->
-            <div id="compare-root" class="hidden h-full overflow-hidden"></div>
+                 visibility against #message-list.
+
+                 The static skeleton below is server-rendered so that, when the
+                 persisted mode is Compare, the lane layout paints immediately
+                 (the no-flash CSS in the head block reveals #compare-root
+                 before compare.js runs). Without it the browser paints an empty
+                 pane during the chat.js/compare.js fetch, then the lanes pop in
+                 a frame later - the residual flash. compare.js's
+                 renderCompareLanes() clears this via root.textContent and
+                 swaps in the interactive lanes, so the layout stays stable. -->
+            <div id="compare-root" class="hidden h-full overflow-hidden">
+                <div id="compare-skeleton" class="flex flex-col h-full" aria-hidden="true">
+                    <!-- Toolbar placeholder (mirrors #compare-toolbar) -->
+                    <div class="shrink-0 flex items-center justify-between gap-3 px-3 sm:px-4 md:px-6 py-2"
+                         style="border-bottom: 1px solid var(--border);">
+                        <div class="h-3 w-24 rounded shimmer" style="background: var(--surface-2);"></div>
+                        <div class="h-7 w-28 rounded-lg shimmer" style="background: var(--surface-2);"></div>
+                    </div>
+                    <!-- Lane columns placeholder (mirrors #compare-columns) -->
+                    <div class="flex-1 overflow-hidden px-3 sm:px-4 md:px-6 py-3">
+                        <div class="flex gap-3 h-full">
+                            <!-- Two default lanes to match COMPARE_DEFAULT_LANES -->
+                            {% for _ in range(2) %}
+                            <div class="flex flex-col rounded-xl overflow-hidden flex-1 min-w-[280px]"
+                                 style="background: var(--surface); border: 1px solid var(--border);">
+                                <div class="shrink-0 flex items-center gap-2 px-3 py-2"
+                                     style="border-bottom: 1px solid var(--border); background: var(--surface-2);">
+                                    <div class="w-5 h-5 rounded shimmer" style="background: var(--surface);"></div>
+                                    <div class="h-3 w-28 rounded shimmer" style="background: var(--surface);"></div>
+                                </div>
+                                <div class="flex-1 flex items-center justify-center p-3">
+                                    <div class="h-3 w-32 rounded shimmer" style="background: var(--surface-2);"></div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             <!-- Scroll to bottom button (shown when user scrolls up during streaming) -->
             <button
@@ -248,13 +378,8 @@
 {% endblock %}
 
 {% block scripts %}
-<!-- Pass user email and welcome message to JavaScript for new chat empty state -->
-<script>
-    window.userEmail = {{ user_email|tojson if user_email else 'null' }};
-    window.welcomeMessage = {{ (welcome_message if welcome_message is defined else 'Start a conversation by typing a message below')|tojson }};
-    window.chatLogoUrl = {{ (chat_logo_url if chat_logo_url is defined else '/static/chat-placeholder.svg')|tojson }};
-</script>
-<!-- Chat application JavaScript -->
+<!-- Chat application JavaScript. The empty state is defined once in the
+     server-rendered #empty-state above; chat.js clones it for new chats. -->
 <script src="/static/js/chat.js?v={{ asset_version() }}"></script>
 <!-- Compare mode (multi-model side-by-side). Loads after chat.js and reuses
      its globals (consumeChatStream, addMessage, AVAILABLE_MODELS, etc.). -->

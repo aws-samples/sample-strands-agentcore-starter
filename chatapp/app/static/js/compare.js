@@ -219,6 +219,12 @@ function setChatMode(mode) {
     window.compareMode = compare;
     try { localStorage.setItem(COMPARE_MODE_KEY, compare ? 'compare' : 'single'); } catch (e) {}
 
+    // Keep the <html> flag in sync with the active mode. The no-flash CSS in
+    // chat.html keys off this class (with !important) to pre-hide the single
+    // view on load; without keeping it current, switching back to single at
+    // runtime would leave #message-list forced hidden.
+    document.documentElement.classList.toggle('chat-mode-compare', compare);
+
     // Reflect state on the segmented toggle (CSS keys off aria-selected)
     const singleBtn = document.getElementById('mode-single-btn');
     const compareBtn = document.getElementById('mode-compare-btn');
