@@ -113,7 +113,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         This MUST run on BOTH the normal auth path and the token-refresh path.
         If only the normal path sets it, a request that triggers a token refresh
         (e.g. the first page load after the access token expires during
-        inactivity) renders with is_admin unset — the admin button disappears
+        inactivity) renders with is_admin unset - the admin button disappears
         until the next reload, and admin-route authorization is skipped.
 
         Returns:

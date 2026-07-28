@@ -3,10 +3,10 @@
 Powers the **Knowledge Base Explorer** page (``/admin/kb``). Two data sources,
 both the very same ones the agent relies on at query time:
 
-1. **Source documents** — the files the Knowledge Base was built from, stored in
+1. **Source documents** - the files the Knowledge Base was built from, stored in
    the KB source S3 bucket under the ``documents/`` prefix. They can be listed,
    read (when text-based), and new ones can be uploaded.
-2. **Semantic retrieval** — ``bedrock-agent-runtime:Retrieve`` against the
+2. **Semantic retrieval** - ``bedrock-agent-runtime:Retrieve`` against the
    vector Knowledge Base, i.e. exactly what the agent sees for a query.
 
 There are **no document scopes** here: the explorer shows a single flat list of
@@ -43,7 +43,7 @@ _UPLOAD_PREFIX = "documents/uploads/"
 
 # Read cap so a huge file can't blow up the page.
 _MAX_READ_BYTES = 512_000
-# Upload cap (10 MB) — generous for documents, bounded for safety.
+# Upload cap (10 MB) - generous for documents, bounded for safety.
 _MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 # File extensions we render inline as text.
@@ -264,7 +264,7 @@ async def upload_document(filename: str, data: bytes, content_type: str = "") ->
         logger.warning("KB upload put_object failed (%s): %s", key, e)
         return {"error": "Upload failed. Check the server logs for details."}
 
-    # Best-effort ingestion trigger — the file is stored even if this fails.
+    # Best-effort ingestion trigger - the file is stored even if this fails.
     job_id: Optional[str] = None
     ingestion_error: Optional[str] = None
     try:

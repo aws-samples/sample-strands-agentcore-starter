@@ -1,4 +1,4 @@
-/* Knowledge Base Explorer — browse, search, read, and upload the documents the
+/* Knowledge Base Explorer - browse, search, read, and upload the documents the
  * agent's Bedrock Knowledge Base is built from. Flat list (no scopes). Data
  * loads lazily from /api/kb/* so a slow call never blocks the page. */
 (function () {

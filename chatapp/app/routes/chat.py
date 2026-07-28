@@ -151,7 +151,7 @@ async def _stream_chat_response(
     _stream_start = _time.time()
     # Server-measured time-to-first-token (ms). Set when the first answer token
     # (MessageEvent) arrives. Measured the SAME way for every model so the
-    # per-lane footer in compare mode is an apples-to-apples comparison —
+    # per-lane footer in compare mode is an apples-to-apples comparison -
     # provider self-reported latency is inconsistent (some report
     # generation-only, some omit it and we'd fall back to wall-clock).
     _first_token_ms = None
@@ -179,7 +179,7 @@ async def _stream_chat_response(
     # onto a Queue. The consumer waits on the queue with a timeout; on timeout
     # it yields an SSE comment (invisible to the browser, resets the idle timer)
     # and loops. The generator task is never interrupted.
-    KEEPALIVE_INTERVAL = 15  # seconds — well under typical 60s LB idle timeouts
+    KEEPALIVE_INTERVAL = 15  # seconds - well under typical 60s LB idle timeouts
     _SENTINEL = object()  # signals end-of-stream
     queue: asyncio.Queue = asyncio.Queue(maxsize=64)
 
@@ -205,7 +205,7 @@ async def _stream_chat_response(
         try:
             item = await asyncio.wait_for(queue.get(), timeout=KEEPALIVE_INTERVAL)
         except asyncio.TimeoutError:
-            # No event within the interval — send an SSE comment to reset the
+            # No event within the interval - send an SSE comment to reset the
             # proxy/LB idle timer. Comments are ignored by EventSource clients.
             yield ": keepalive\n\n"
             continue

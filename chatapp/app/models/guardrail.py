@@ -218,6 +218,6 @@ class GuardrailRecord:
                             max_confidence = confidence
         
         return {
-            "strength": max_strength or "—",
-            "confidence": max_confidence or "—",
+            "strength": max_strength or "-",
+            "confidence": max_confidence or "-",
         }

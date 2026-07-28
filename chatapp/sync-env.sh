@@ -114,7 +114,7 @@ GUARDRAIL_ID=$(echo "$SECRET_VALUE" | jq -r '.guardrail_id // empty')
 GUARDRAIL_VERSION=$(echo "$SECRET_VALUE" | jq -r '.guardrail_version // empty')
 KB_ID=$(echo "$SECRET_VALUE" | jq -r '.kb_id // empty')
 
-# KB_SOURCE_BUCKET is not stored in the secret — it has a deterministic name
+# KB_SOURCE_BUCKET is not stored in the secret - it has a deterministic name
 # (${APP_NAME}-kb-${ACCOUNT}-${REGION}, see cdk/lib/bedrock-stack.ts SourceBucket).
 # Resolve the account ID so the Knowledge Base Explorer can list/read/upload
 # documents during local development.

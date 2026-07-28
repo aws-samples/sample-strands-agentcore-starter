@@ -124,7 +124,7 @@ def _run_binary_judge(
 
         # Run the judge with the SDK's own prompt composition (identical to
         # OutputEvaluator) but invoke the agent directly so we can capture the
-        # judge call's token usage — OutputEvaluator.evaluate() discards it.
+        # judge call's token usage - OutputEvaluator.evaluate() discards it.
         evaluation_case = EvaluationData(input=judge_input, actual_output=judge_output)
         judge_prompt = compose_test_prompt(
             evaluation_case=evaluation_case, rubric=rubric, include_inputs=True

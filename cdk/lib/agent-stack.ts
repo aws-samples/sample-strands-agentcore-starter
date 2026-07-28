@@ -520,12 +520,12 @@ def handler(event, context):
         GUARDRAIL_ID: guardrailId,
         GUARDRAIL_VERSION: guardrailVersion,
         KB_ID: knowledgeBaseId,
-        // Mantle inference region — defaults to us-east-1 for broadest model availability.
+        // Mantle inference region - defaults to us-east-1 for broadest model availability.
         // Override via MANTLE_REGION env var at CDK synth time.
         MANTLE_REGION: config.mantleRegion,
         OPENAI_BASE_URL: `https://bedrock-mantle.${config.mantleRegion}.api.aws/v1`,
         MANTLE_PROJECT: 'default',
-        // NOTE: no OPENAI_API_KEY — auth uses a runtime-minted token (Req 6.2)
+        // NOTE: no OPENAI_API_KEY - auth uses a runtime-minted token (Req 6.2)
       },
       tags: {
         Application: config.appName,
@@ -1237,7 +1237,7 @@ def handler(event, context):
       })
     );
 
-    // The service name for the agent — follows the pattern <runtime-name>.<endpoint-name>
+    // The service name for the agent - follows the pattern <runtime-name>.<endpoint-name>
     // For agents with a DEFAULT endpoint, the service name is <runtime-name>.DEFAULT
     const evalServiceName = `${config.agentRuntimeName}.DEFAULT`;
 

@@ -100,7 +100,7 @@
                         {% if stats.top_filter %}
                         <p class="text-xl font-bold text-red-600 mt-1">{{ stats.top_filter }}</p>
                         {% else %}
-                        <p class="text-xl font-bold text-gray-400 mt-1">—</p>
+                        <p class="text-xl font-bold text-gray-400 mt-1">-</p>
                         {% endif %}
                     </div>
                     <div class="p-3 bg-red-100 rounded-full">
@@ -288,7 +288,7 @@
                                 {% elif details.strength == 'LOW' %}
                                 <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">LOW</span>
                                 {% else %}
-                                <span class="text-sm text-gray-400">—</span>
+                                <span class="text-sm text-gray-400">-</span>
                                 {% endif %}
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
@@ -299,7 +299,7 @@
                                 {% elif details.confidence == 'LOW' %}
                                 <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">LOW</span>
                                 {% else %}
-                                <span class="text-sm text-gray-400">—</span>
+                                <span class="text-sm text-gray-400">-</span>
                                 {% endif %}
                             </td>
                         </tr>

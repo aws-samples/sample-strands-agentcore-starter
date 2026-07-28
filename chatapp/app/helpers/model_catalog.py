@@ -5,8 +5,8 @@ browser uses via ``/static/models.json``) so model ids, display names, and
 pricing are defined in exactly one place for both Python and JavaScript.
 
 Consumers:
-  * ``admin/cost_calculator.py`` — pricing (USD per 1M input/output tokens)
-  * ``templates_config`` — injects the catalog as a template global so the
+  * ``admin/cost_calculator.py`` - pricing (USD per 1M input/output tokens)
+  * ``templates_config`` - injects the catalog as a template global so the
     front-end (``static/js/chat.js``) reads the very same data.
 """
 
@@ -74,5 +74,5 @@ def get_model_api(model_id: str | None) -> str:
     for m in get_models():
         if m.get("id") == model_id:
             return m.get("api", "chat")
-    logger.warning("Unknown model_id %r — defaulting api to 'chat'", model_id)
+    logger.warning("Unknown model_id %r - defaulting api to 'chat'", model_id)
     return "chat"

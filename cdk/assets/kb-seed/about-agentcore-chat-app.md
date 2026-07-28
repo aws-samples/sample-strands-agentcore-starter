@@ -33,16 +33,16 @@ Core capabilities:
 
 The system is composed of four parts:
 
-1. **Agent backend** — a Python agent using the Strands Agents framework, deployed to the
+1. **Agent backend** - a Python agent using the Strands Agents framework, deployed to the
    Amazon Bedrock AgentCore Runtime. It exposes tools for web search, URL fetching,
    weather lookup, and Knowledge Base search.
-2. **Chat application** — a FastAPI service that renders Jinja2 templates, proxies chat
+2. **Chat application** - a FastAPI service that renders Jinja2 templates, proxies chat
    requests to the AgentCore Runtime, and serves the admin dashboard. Styling uses
    Tailwind CSS via CDN; streaming uses vanilla JavaScript.
-3. **Memory and storage** — AgentCore Memory provides event and semantic memory for
+3. **Memory and storage** - AgentCore Memory provides event and semantic memory for
    conversation persistence. DynamoDB stores usage records, feedback, guardrail
    violations, prompt templates, application settings, and runtime usage.
-4. **Knowledge Base** — an Amazon Bedrock Knowledge Base backed by S3 Vectors. Source
+4. **Knowledge Base** - an Amazon Bedrock Knowledge Base backed by S3 Vectors. Source
    documents live in an S3 bucket under the `documents/` prefix and are embedded with the
    Amazon Titan Text Embeddings V2 model.
 
@@ -77,11 +77,11 @@ for testing.
 
 The application is deployed with the AWS CDK (TypeScript). Four stacks are provisioned:
 
-- **Foundation** — Cognito, DynamoDB tables, IAM roles, and Secrets Manager.
-- **Bedrock** — the Guardrail, the Knowledge Base (with its S3 Vectors index and source
+- **Foundation** - Cognito, DynamoDB tables, IAM roles, and Secrets Manager.
+- **Bedrock** - the Guardrail, the Knowledge Base (with its S3 Vectors index and source
   bucket), and AgentCore Memory.
-- **Agent** — the ECR repository, CodeBuild project, AgentCore Runtime, and observability.
-- **ChatApp** — the web front end, hosted on ECS Express Mode or on CloudFront with a
+- **Agent** - the ECR repository, CodeBuild project, AgentCore Runtime, and observability.
+- **ChatApp** - the web front end, hosted on ECS Express Mode or on CloudFront with a
   Lambda Web Adapter.
 
 The default foundation model is Anthropic Claude Sonnet. The embedding model for the

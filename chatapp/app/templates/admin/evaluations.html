@@ -84,7 +84,7 @@
                             {{ "%.1f"|format(overall_pass * 100) }}%
                         </p>
                         {% else %}
-                        <p class="text-2xl font-bold text-gray-400 mt-1">—</p>
+                        <p class="text-2xl font-bold text-gray-400 mt-1">-</p>
                         {% endif %}
                     </div>
                     <div class="p-3 bg-emerald-100 rounded-full">
@@ -96,7 +96,7 @@
                 <p class="mt-2 text-xs text-gray-500">Messages passing all evaluations</p>
             </div>
 
-            <!-- Evaluation (LLM judge) cost — tracked separately from agent inference cost -->
+            <!-- Evaluation (LLM judge) cost - tracked separately from agent inference cost -->
             <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                 <div class="flex items-center justify-between">
                     <div>
@@ -179,7 +179,7 @@
                                     {{ "%.0f"|format(score * 100) }}%
                                 </span>
                                 {% else %}
-                                <span class="text-gray-300">—</span>
+                                <span class="text-gray-300">-</span>
                                 {% endif %}
                             </td>
                             {% endfor %}

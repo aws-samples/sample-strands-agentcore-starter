@@ -2,9 +2,9 @@
 
 A browser over the documents the agent's Bedrock Knowledge Base is built from:
 
-* **Documents** — a flat list of every source document (no scopes). Browse the
+* **Documents** - a flat list of every source document (no scopes). Browse the
   list, read text-based files inline, and upload new documents.
-* **Semantic search** — run the same retrieval the agent uses to validate what
+* **Semantic search** - run the same retrieval the agent uses to validate what
   it will see for a given question.
 
 The page (``/admin/kb``) is admin-gated by ``AuthMiddleware`` (ADMIN_PREFIXES).

@@ -782,7 +782,7 @@ function getSessionId() {
  *
  * Single mode: the one chat session. Compare mode: the active lane's session
  * (compare.js installs window.getCompareMemorySessionId). Centralizing this
- * here lets the sidebar memory loaders stay lane-agnostic — they just ask for
+ * here lets the sidebar memory loaders stay lane-agnostic - they just ask for
  * "the active memory session".
  *
  * @returns {string} The session id to load memory for
@@ -1223,7 +1223,7 @@ function handleSSEEvent(event, msgId, currentContent) {
             // Inject a paragraph break when assistant narration resumes after a
             // tool ran, so tool output and following text don't run together.
             // (Replaces the old server-side break injection in chat.py.)
-            // Only break when the pre-tool narration ended a sentence — the
+            // Only break when the pre-tool narration ended a sentence - the
             // model often emits a word or two ("Here's") and then calls a tool
             // mid-sentence, and we must not split that ("Here's" + break +
             // "the current weather"). Mirrors the original server-side guard.
@@ -1477,8 +1477,8 @@ function handleSSEEvent(event, msgId, currentContent) {
 
         case 'reasoning':
             // Append reasoning content to a collapsible details element placed
-            // at the very top of the message bubble — above the tool calls and
-            // the answer — so the model's "Thinking..." precedes what it did.
+            // at the very top of the message bubble - above the tool calls and
+            // the answer - so the model's "Thinking..." precedes what it did.
             if (event.content) {
                 const msgEl = document.getElementById(msgId);
                 if (msgEl) {

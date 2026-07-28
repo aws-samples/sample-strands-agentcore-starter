@@ -97,11 +97,11 @@ class AgentConfig:
         kb_max_results = int(os.getenv("KB_MAX_RESULTS", "5"))
         kb_min_score = float(os.getenv("KB_MIN_SCORE", "0.5"))
         
-        # Mantle inference region — can differ from app deployment region for
+        # Mantle inference region - can differ from app deployment region for
         # broader model availability (e.g., us-east-1 has more models than us-west-2)
         mantle_region = os.getenv("MANTLE_REGION", "").strip() or aws_region
 
-        # Mantle endpoint base URL — explicit override or derived from mantle_region
+        # Mantle endpoint base URL - explicit override or derived from mantle_region
         openai_base_url = os.getenv("OPENAI_BASE_URL", "").strip() or derive_mantle_base_url(mantle_region)
         
         # Optional Mantle token override (advanced/local). When unset, the agent

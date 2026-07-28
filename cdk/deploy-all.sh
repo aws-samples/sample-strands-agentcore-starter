@@ -322,7 +322,7 @@ else
         done
 
         if [ "$BUILD_STATUS" = "IN_PROGRESS" ]; then
-            echo -e "\n${YELLOW}Build still in progress after 10 minutes — continuing without waiting${NC}"
+            echo -e "\n${YELLOW}Build still in progress after 10 minutes - continuing without waiting${NC}"
         fi
     fi
 
@@ -331,7 +331,7 @@ else
     RUNTIME_ARN=$(jq -r --arg key "$AGENT_STACK_KEY" '.[$key].AgentRuntimeArn // ""' cdk-outputs.json 2>/dev/null)
 
     if [ -z "$RUNTIME_ARN" ] || [ "$RUNTIME_ARN" = "null" ]; then
-        echo -e "${YELLOW}AgentCore Runtime ARN not found in cdk-outputs.json — skipping refresh${NC}"
+        echo -e "${YELLOW}AgentCore Runtime ARN not found in cdk-outputs.json - skipping refresh${NC}"
     elif [ "$BUILD_STATUS" = "SUCCEEDED" ]; then
         RUNTIME_ID="${RUNTIME_ARN##*/}"
         echo -e "${YELLOW}Refreshing AgentCore Runtime: ${RUNTIME_ID}${NC}"
@@ -369,7 +369,7 @@ else
                 fi
             fi
         else
-            echo -e "${RED}Failed to fetch runtime config — skipping refresh${NC}"
+            echo -e "${RED}Failed to fetch runtime config - skipping refresh${NC}"
         fi
     else
         echo -e "${YELLOW}Skipping runtime refresh (build did not succeed)${NC}"
@@ -449,7 +449,7 @@ if [ "$DRY_RUN" != true ]; then
     echo -e "${BLUE}Application Endpoints:${NC}"
     
     if [ "$SKIP_CHATAPP" = true ]; then
-        echo -e "${YELLOW}ChatApp was skipped — no application endpoints to display${NC}"
+        echo -e "${YELLOW}ChatApp was skipped - no application endpoints to display${NC}"
         echo ""
         echo -e "${YELLOW}AgentCore Runtime ARN:${NC}"
         AGENT_STACK_KEY="${APP_NAME}-agent"

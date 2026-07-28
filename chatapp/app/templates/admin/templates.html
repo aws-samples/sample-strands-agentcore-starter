@@ -637,7 +637,7 @@
         var required = ['template_id', 'title', 'description', 'prompt_detail'];
         var errors = [];
         if (templates.length === 0) {
-            return { valid: false, errors: ['Array is empty — add at least one template.'] };
+            return { valid: false, errors: ['Array is empty - add at least one template.'] };
         }
         templates.forEach(function(item, idx) {
             if (typeof item !== 'object' || item === null || Array.isArray(item)) {
@@ -690,7 +690,7 @@
 
         // All good
         setBulkBorder('valid');
-        bulkSuccessDiv.textContent = '✓ Valid — ' + result.data.length + ' template(s) ready to upload.';
+        bulkSuccessDiv.textContent = '✓ Valid - ' + result.data.length + ' template(s) ready to upload.';
         bulkSuccessDiv.classList.remove('hidden');
     }
 

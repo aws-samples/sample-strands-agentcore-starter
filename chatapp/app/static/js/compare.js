@@ -123,7 +123,7 @@ function pickAdditionalModelId() {
 }
 
 // ============================================================================
-// Persistence (lane model selection only — never the chosen prompt/content)
+// Persistence (lane model selection only - never the chosen prompt/content)
 // ============================================================================
 
 function saveCompareModels() {
@@ -183,7 +183,7 @@ function laneBySlot(slot) {
 
 /**
  * Lazily initialize compare state and DOM on first entry into compare mode.
- * Does not invoke any model — only renders lanes and loads the active lane's
+ * Does not invoke any model - only renders lanes and loads the active lane's
  * (cheap) memory.
  */
 function initCompare() {

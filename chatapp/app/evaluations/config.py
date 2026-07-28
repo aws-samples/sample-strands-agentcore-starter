@@ -22,9 +22,9 @@ class EvalConfig:
             Programmatic evaluators always run. Defaults to 1.0 (every turn);
             lower it to control cost in higher-traffic deployments.
         max_output_length: Max chars of agent output to send to judge. 0 (default)
-            means no truncation — send the full response.
+            means no truncation - send the full response.
         max_context_length: Max chars of retrieved source context to send to the
-            faithfulness judge. 0 (default) means no truncation — send the full
+            faithfulness judge. 0 (default) means no truncation - send the full
             source material so grounding is never cut.
         max_reason_length: Max chars to store for evaluation reasons
     """
@@ -38,7 +38,7 @@ class EvalConfig:
         "tool_selection",
     ])
     llm_sample_rate: float = 1.0
-    # 0 (or any non-positive value) means "no truncation" — send the full agent
+    # 0 (or any non-positive value) means "no truncation" - send the full agent
     # output and full source context to the judge. Truncating either causes
     # faithfulness/quality false negatives because the judge can't see the
     # content the response is actually grounded in. Set a positive limit only if
