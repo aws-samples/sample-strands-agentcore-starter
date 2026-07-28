@@ -37,6 +37,14 @@
     "source-map-support": "^0.5.21"
   },
   "overrides": {
-    "@babel/core": "^7.29.6"
+    "@babel/core": "^7.29.6",
+    "@istanbuljs/load-nyc-config": {
+      "js-yaml": "^3.15.0"
+    },
+    "brace-expansion@^5.0.2": "^5.0.8",
+    "test-exclude": "^7.0.2",
+    "ts-node": {
+      "diff": "^4.0.4"
+    }
   }
 }
