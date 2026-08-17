@@ -386,6 +386,11 @@ export class AgentStack extends cdk.Stack {
           sourceLocationOverride: `${this.sourceBucket.bucketName}/agent-source/`,
         },
         physicalResourceId: cr.PhysicalResourceId.fromResponse('build.id'),
+        // Only build.id is consumed. Without this the whole startBuild response
+        // (including the inline buildspec) is flattened into custom resource
+        // Data, which has a hard 4096-byte limit. Same exposure as the ChatApp
+        // build triggers.
+        outputPaths: ['build.id'],
       },
       onUpdate: {
         service: 'CodeBuild',
@@ -396,6 +401,11 @@ export class AgentStack extends cdk.Stack {
           sourceLocationOverride: `${this.sourceBucket.bucketName}/agent-source/`,
         },
         physicalResourceId: cr.PhysicalResourceId.fromResponse('build.id'),
+        // Only build.id is consumed. Without this the whole startBuild response
+        // (including the inline buildspec) is flattened into custom resource
+        // Data, which has a hard 4096-byte limit. Same exposure as the ChatApp
+        // build triggers.
+        outputPaths: ['build.id'],
       },
       policy: cr.AwsCustomResourcePolicy.fromStatements([
         new iam.PolicyStatement({
