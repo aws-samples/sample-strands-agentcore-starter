@@ -324,7 +324,10 @@ export class ChatAppStack extends cdk.Stack {
             commands: [
               'echo Build started on `date`',
               'echo Running unit tests...',
-              'pip install -r requirements.txt -q',
+              // Retry pip to survive transient PyPI/CDN 502s. A brief upstream
+              // outage must not fail the whole deploy, since the BuildWaiter
+              // custom resource blocks on this project succeeding.
+              'for i in 1 2 3 4 5; do pip install -r requirements.txt -q --retries 10 --timeout 30 && break; if [ "$i" = 5 ]; then echo "pip install failed after 5 attempts"; exit 1; fi; echo "pip install attempt $i failed; retrying in $((i * 15))s"; sleep $((i * 15)); done',
               'python -m pytest tests/ -v --tb=short',
               'echo Tests passed, building Docker image...',
               'docker build --platform linux/amd64 -t $ECR_REPO_URI:$IMAGE_TAG .',
@@ -773,7 +776,10 @@ def handler(event, context):
             commands: [
               'echo Build started on `date`',
               'echo Running unit tests...',
-              'pip install -r requirements.txt -q',
+              // Retry pip to survive transient PyPI/CDN 502s. A brief upstream
+              // outage must not fail the whole deploy, since the BuildWaiter
+              // custom resource blocks on this project succeeding.
+              'for i in 1 2 3 4 5; do pip install -r requirements.txt -q --retries 10 --timeout 30 && break; if [ "$i" = 5 ]; then echo "pip install failed after 5 attempts"; exit 1; fi; echo "pip install attempt $i failed; retrying in $((i * 15))s"; sleep $((i * 15)); done',
               'python -m pytest tests/ -v --tb=short',
               'echo Tests passed, building Docker image...',
               'docker build -f Dockerfile.lambda --platform linux/amd64 -t $ECR_REPO_URI:$IMAGE_TAG .',
