@@ -324,7 +324,10 @@ export class ChatAppStack extends cdk.Stack {
             commands: [
               'echo Build started on `date`',
               'echo Running unit tests...',
-              'pip install -r requirements.txt -q',
+              // Retry pip to survive transient PyPI/CDN 502s. A brief upstream
+              // outage must not fail the whole deploy, since the BuildWaiter
+              // custom resource blocks on this project succeeding.
+              'for i in 1 2 3 4 5; do pip install -r requirements.txt -q --retries 10 --timeout 30 && break; if [ "$i" = 5 ]; then echo "pip install failed after 5 attempts"; exit 1; fi; echo "pip install attempt $i failed; retrying in $((i * 15))s"; sleep $((i * 15)); done',
               'python -m pytest tests/ -v --tb=short',
               'echo Tests passed, building Docker image...',
               'docker build --platform linux/amd64 -t $ECR_REPO_URI:$IMAGE_TAG .',
@@ -362,6 +365,9 @@ export class ChatAppStack extends cdk.Stack {
           sourceLocationOverride: `${this.sourceBucket.bucketName}/chatapp-source/`,
         },
         physicalResourceId: cr.PhysicalResourceId.fromResponse('build.id'),
+        // Restrict the response so the buildspec is not echoed back into
+        // custom resource Data. See TriggerLambdaBuild for the full rationale.
+        outputPaths: ['build.id'],
       },
       onUpdate: {
         service: 'CodeBuild',
@@ -374,6 +380,8 @@ export class ChatAppStack extends cdk.Stack {
           idempotencyToken: buildTimestamp.replace(/[^a-zA-Z0-9]/g, '').substring(0, 64),
         },
         physicalResourceId: cr.PhysicalResourceId.fromResponse('build.id'),
+        // See note on onCreate: keeps the response under the 4096-byte limit.
+        outputPaths: ['build.id'],
       },
       policy: cr.AwsCustomResourcePolicy.fromStatements([
         new iam.PolicyStatement({
@@ -768,7 +776,10 @@ def handler(event, context):
             commands: [
               'echo Build started on `date`',
               'echo Running unit tests...',
-              'pip install -r requirements.txt -q',
+              // Retry pip to survive transient PyPI/CDN 502s. A brief upstream
+              // outage must not fail the whole deploy, since the BuildWaiter
+              // custom resource blocks on this project succeeding.
+              'for i in 1 2 3 4 5; do pip install -r requirements.txt -q --retries 10 --timeout 30 && break; if [ "$i" = 5 ]; then echo "pip install failed after 5 attempts"; exit 1; fi; echo "pip install attempt $i failed; retrying in $((i * 15))s"; sleep $((i * 15)); done',
               'python -m pytest tests/ -v --tb=short',
               'echo Tests passed, building Docker image...',
               'docker build -f Dockerfile.lambda --platform linux/amd64 -t $ECR_REPO_URI:$IMAGE_TAG .',
@@ -806,6 +817,13 @@ def handler(event, context):
           sourceLocationOverride: `${this.sourceBucket.bucketName}/chatapp-source/`,
         },
         physicalResourceId: cr.PhysicalResourceId.fromResponse('build.id'),
+        // Only build.id is consumed (see getResponseField below). Without this,
+        // the ENTIRE startBuild response is flattened into the custom resource
+        // Data, including build.source.buildspec (the whole buildspec inline).
+        // That payload sits just under CloudFormation's hard 4096-byte limit,
+        // so any growth in the buildspec fails the deploy with
+        // "Response object is too long."
+        outputPaths: ['build.id'],
       },
       onUpdate: {
         service: 'CodeBuild',
@@ -818,6 +836,8 @@ def handler(event, context):
           idempotencyToken: lambdaBuildTimestamp.replace(/[^a-zA-Z0-9]/g, '').substring(0, 64),
         },
         physicalResourceId: cr.PhysicalResourceId.fromResponse('build.id'),
+        // See note on onCreate: keeps the response under the 4096-byte limit.
+        outputPaths: ['build.id'],
       },
       policy: cr.AwsCustomResourcePolicy.fromStatements([
         new iam.PolicyStatement({

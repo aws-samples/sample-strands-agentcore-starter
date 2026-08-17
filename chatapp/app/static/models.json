@@ -9,14 +9,14 @@
   "models": [
     { "id": "anthropic.claude-opus-5", "name": "Claude Opus 5", "api": "messages", "input": 5.00, "output": 25.00, "tier": "frontier" },
     { "id": "openai.gpt-5.6-sol", "name": "GPT-5.6 Sol", "api": "responses", "input": 5.50, "output": 33.00, "tier": "frontier" },
-    { "id": "openai.gpt-5.6-terra", "name": "GPT-5.6 Terra", "api": "responses", "input": 2.75, "output": 16.50, "tier": "frontier" },
+    { "id": "openai.gpt-5.6-terra", "name": "GPT-5.6 Terra", "api": "responses", "input": 2.20, "output": 13.20, "tier": "frontier" },
     { "id": "anthropic.claude-opus-4-8", "name": "Claude Opus 4.8", "api": "messages", "input": 5.00, "output": 25.00, "tier": "frontier" },
     { "id": "openai.gpt-5.5", "name": "GPT 5.5", "api": "responses", "input": 5.50, "output": 33.00, "tier": "frontier" },
     { "id": "anthropic.claude-opus-4-7", "name": "Claude Opus 4.7", "api": "messages", "input": 5.00, "output": 25.00, "tier": "frontier" },
     { "id": "openai.gpt-5.4", "name": "GPT 5.4", "api": "responses", "input": 2.75, "output": 16.50, "tier": "frontier" },
     { "id": "xai.grok-4.3", "name": "Grok 4.3", "api": "responses", "input": 1.25, "output": 2.50, "tier": "frontier" },
 
-    { "id": "openai.gpt-5.6-luna", "name": "GPT-5.6 Luna", "api": "responses", "input": 1.10, "output": 6.60, "tier": "strong" },
+    { "id": "openai.gpt-5.6-luna", "name": "GPT-5.6 Luna", "api": "responses", "input": 0.22, "output": 1.32, "tier": "strong" },
     { "id": "anthropic.claude-sonnet-5", "name": "Claude Sonnet 5", "api": "messages", "input": 2.20, "output": 11.00, "tier": "strong" },
     { "id": "zai.glm-5", "name": "Z.AI GLM 5", "api": "chat", "input": 1.00, "output": 3.20, "tier": "strong" },
     { "id": "minimax.minimax-m2.5", "name": "MiniMax M2.5", "api": "chat", "input": 0.30, "output": 1.20, "tier": "strong" },
