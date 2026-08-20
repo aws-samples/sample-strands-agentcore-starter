@@ -421,7 +421,7 @@ _**Note:** Telemetry data is provided for monitoring purposes. Actual billing is
 Models are served through the **Amazon Bedrock Mantle** OpenAI-compatible endpoint. The catalog is defined in `chatapp/app/static/models.json` - the single source of truth shared by both the front-end and the Python backend. Each entry declares which Mantle API it uses:
 
 - **`chat`** - OpenAI Chat Completions (`/v1`) - the majority of models (DeepSeek, Mistral, Qwen, Gemma 3, MiniMax, Kimi, GLM, etc.)
-- **`responses`** - OpenAI Responses API (`/openai/v1`) - GPT-5.x, Gemma 4, Grok 4.x
+- **`responses`** - OpenAI Responses API (`/openai/v1`) - GPT-5.x, Gemma 4, Grok 4.3
 - **`messages`** - Anthropic Messages API (`/v1`) - Claude models
 
 The agent (`agent/my_agent.py`) reads the `modelApi` field per request and routes to the matching Strands provider (`OpenAIModel`, `OpenAIResponsesModel`, or `AnthropicModel`). The default model is **Claude Haiku 4.5** (`anthropic.claude-haiku-4-5`).
