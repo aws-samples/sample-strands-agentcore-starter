@@ -421,7 +421,7 @@ _**Note:** Telemetry data is provided for monitoring purposes. Actual billing is
 Models are served through the **Amazon Bedrock Mantle** OpenAI-compatible endpoint. The catalog is defined in `chatapp/app/static/models.json` - the single source of truth shared by both the front-end and the Python backend. Each entry declares which Mantle API it uses:
 
 - **`chat`** - OpenAI Chat Completions (`/v1`) - the majority of models (DeepSeek, Mistral, Qwen, Gemma 3, MiniMax, Kimi, GLM, etc.)
-- **`responses`** - OpenAI Responses API (`/openai/v1`) - GPT-5.x, Gemma 4, Grok 4.3
+- **`responses`** - OpenAI Responses API (`/openai/v1`) - GPT-5.x, Gemma 4, Grok 4.x
 - **`messages`** - Anthropic Messages API (`/v1`) - Claude models
 
 The agent (`agent/my_agent.py`) reads the `modelApi` field per request and routes to the matching Strands provider (`OpenAIModel`, `OpenAIResponsesModel`, or `AnthropicModel`). The default model is **Claude Haiku 4.5** (`anthropic.claude-haiku-4-5`).
@@ -479,6 +479,18 @@ Add tools in `agent/tools/` and register them in `my_agent.py`.
 
 ## Changing Models
 Edit `chatapp/app/static/models.json` - the single source of truth for model IDs, display names, pricing, and the `api` field (`chat`, `responses`, or `messages`). Both the front-end model selector and the Python cost calculator read from this file, so no code changes are needed to add, remove, or reprice a model. Ensure the model ID matches a Mantle model ID (see the `/v1/models` endpoint) and that the `api` field reflects which Mantle API the model supports.
+
+### Per-model regions
+
+Mantle model availability is not uniform across regions, so an entry may add an optional `region` field to pin itself to a region that can serve it:
+
+```json
+{ "id": "xai.grok-4.6", "name": "Grok 4.6", "api": "responses", "input": 2.20, "output": 6.60, "tier": "frontier", "region": "us-west-2" }
+```
+
+The agent normally calls the region set by `MANTLE_REGION` / `OPENAI_BASE_URL`. When an entry declares a `region`, the chatapp sends it as `modelRegion` and the agent overrides both the endpoint and the region its Mantle token is minted for, just for that request. Omit the field unless the default region returns `404 - The model '<id>' does not exist`; those models work fine without it.
+
+Region coverage shifts as models launch, so confirm with `GET https://bedrock-mantle.{region}.api.aws/v1/models` rather than assuming. At the time of writing, `us-east-1` serves every catalog model except `xai.grok-4.6`, while six entries (Claude Opus 4.7/4.8/5, Claude Sonnet 5, GPT 5.5, GPT-5.6 Sol) are absent from `us-west-2` - which is why the region travels per model instead of being switched globally.
 
 ## Extending Analytics
 The `UsageRepository` class in `chatapp/app/admin/repository.py` provides query methods that can be extended for custom analytics.

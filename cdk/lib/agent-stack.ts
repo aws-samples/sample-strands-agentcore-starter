@@ -14,6 +14,7 @@ import * as cdk from 'aws-cdk-lib';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
+import * as s3assets from 'aws-cdk-lib/aws-s3-assets';
 import * as codebuild from 'aws-cdk-lib/aws-codebuild';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
@@ -158,6 +159,13 @@ export class AgentStack extends cdk.Stack {
             type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
             value: this.agentRepository.repositoryUri,
           },
+          // Overridden per build by TriggerCodeBuild with the agent source hash.
+          // The 'latest' default keeps a manually started build (console or CLI,
+          // with no override) working - it just retags latest onto itself.
+          IMAGE_TAG: {
+            type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
+            value: 'latest',
+          },
         },
       },
       buildSpec: codebuild.BuildSpec.fromObject({
@@ -173,8 +181,10 @@ export class AgentStack extends cdk.Stack {
             commands: [
               'echo Build started on `date`',
               'echo Building the Docker image...',
+              'echo Image tag: $IMAGE_TAG',
               'docker build -t $ECR_REPO_URI:latest .',
               'docker tag $ECR_REPO_URI:latest $ECR_REPO_URI:$CODEBUILD_BUILD_NUMBER',
+              'docker tag $ECR_REPO_URI:latest $ECR_REPO_URI:$IMAGE_TAG',
             ],
           },
           post_build: {
@@ -183,6 +193,9 @@ export class AgentStack extends cdk.Stack {
               'echo Pushing the Docker image...',
               'docker push $ECR_REPO_URI:latest',
               'docker push $ECR_REPO_URI:$CODEBUILD_BUILD_NUMBER',
+              // The runtime resolves its container by this immutable tag, so the
+              // push must succeed for the runtime update to find the image.
+              'docker push $ECR_REPO_URI:$IMAGE_TAG',
               'echo Image pushed successfully',
             ],
           },
@@ -344,29 +357,43 @@ export class AgentStack extends cdk.Stack {
     // Requirements: 1.4, 2.1
     // ========================================================================
 
+    // --- Agent source asset ---
+    // Built as an explicit Asset (rather than inline in the BucketDeployment) so
+    // its content hash is available at synth time. That hash is what makes agent
+    // code changes actually redeploy: it becomes both the CodeBuild trigger's
+    // changing input and the container image tag the runtime points at. See the
+    // TriggerCodeBuild and CfnRuntime comments below.
+    const agentSourceAsset = new s3assets.Asset(this, 'AgentSourceAsset', {
+      path: path.join(__dirname, '../../agent'),
+      exclude: [
+        '.venv/**',
+        'venv/**',
+        '__pycache__/**',
+        '*.pyc',
+        '.git/**',
+        'node_modules/**',
+        '.env',
+        '.bedrock_agentcore/**',
+        '.bedrock_agentcore.yaml',
+        '*.egg-info/**',
+        '.pytest_cache/**',
+        '.mypy_cache/**',
+        '.ruff_cache/**',
+        'deploy/**',
+        '*.log',
+        '.DS_Store',
+      ],
+    });
+
+    // Immutable, content-derived image tag. Changes if and only if agent source
+    // changes, which is precisely when a rebuild and a runtime roll are needed.
+    const agentImageTag = agentSourceAsset.assetHash;
+
     // --- Deploy agent source files to S3 ---
+    // Sourced from the asset above so the zip is uploaded once, not twice.
     const agentSourceDeployment = new s3deploy.BucketDeployment(this, 'AgentSourceDeployment', {
       sources: [
-        s3deploy.Source.asset(path.join(__dirname, '../../agent'), {
-          exclude: [
-            '.venv/**',
-            'venv/**',
-            '__pycache__/**',
-            '*.pyc',
-            '.git/**',
-            'node_modules/**',
-            '.env',
-            '.bedrock_agentcore/**',
-            '.bedrock_agentcore.yaml',
-            '*.egg-info/**',
-            '.pytest_cache/**',
-            '.mypy_cache/**',
-            '.ruff_cache/**',
-            'deploy/**',
-            '*.log',
-            '.DS_Store',
-          ],
-        }),
+        s3deploy.Source.bucket(agentSourceAsset.bucket, agentSourceAsset.s3ObjectKey),
       ],
       destinationBucket: this.sourceBucket,
       destinationKeyPrefix: 'agent-source',
@@ -376,15 +403,32 @@ export class AgentStack extends cdk.Stack {
     });
 
     // --- Trigger CodeBuild ---
+    // IMAGE_TAG carries the agent source hash. It is what the image is tagged
+    // with, and it is also the only part of these parameters that ever changes.
+    // That matters: AwsCustomResource renders onCreate/onUpdate into the custom
+    // resource's CloudFormation properties, and CloudFormation only invokes
+    // onUpdate when those properties differ from the deployed ones. With the
+    // parameters fully static (as they were), editing agent source uploaded a new
+    // S3 bundle but produced no property diff, so no build was ever started and
+    // the deploy silently shipped stale code.
+    const buildParameters = {
+      projectName: this.buildProject.projectName,
+      sourceTypeOverride: 'S3',
+      sourceLocationOverride: `${this.sourceBucket.bucketName}/agent-source/`,
+      environmentVariablesOverride: [
+        {
+          name: 'IMAGE_TAG',
+          value: agentImageTag,
+          type: 'PLAINTEXT',
+        },
+      ],
+    };
+
     const triggerBuild = new cr.AwsCustomResource(this, 'TriggerCodeBuild', {
       onCreate: {
         service: 'CodeBuild',
         action: 'startBuild',
-        parameters: {
-          projectName: this.buildProject.projectName,
-          sourceTypeOverride: 'S3',
-          sourceLocationOverride: `${this.sourceBucket.bucketName}/agent-source/`,
-        },
+        parameters: buildParameters,
         physicalResourceId: cr.PhysicalResourceId.fromResponse('build.id'),
         // Only build.id is consumed. Without this the whole startBuild response
         // (including the inline buildspec) is flattened into custom resource
@@ -395,11 +439,7 @@ export class AgentStack extends cdk.Stack {
       onUpdate: {
         service: 'CodeBuild',
         action: 'startBuild',
-        parameters: {
-          projectName: this.buildProject.projectName,
-          sourceTypeOverride: 'S3',
-          sourceLocationOverride: `${this.sourceBucket.bucketName}/agent-source/`,
-        },
+        parameters: buildParameters,
         physicalResourceId: cr.PhysicalResourceId.fromResponse('build.id'),
         // Only build.id is consumed. Without this the whole startBuild response
         // (including the inline buildspec) is flattened into custom resource
@@ -515,7 +555,15 @@ def handler(event, context):
       description: `AgentCore Runtime for ${config.appName}`,
       agentRuntimeArtifact: {
         containerConfiguration: {
-          containerUri: `${this.agentRepository.repositoryUri}:latest`,
+          // Pinned to the content-derived tag, not ':latest'. With ':latest' this
+          // property never changed between deploys, so CloudFormation saw no diff,
+          // never updated the runtime, and AgentCore kept serving the previously
+          // pulled image even after a new one was pushed under the same tag. The
+          // dependency on buildWaiter below is ordering only - it does not make
+          // CloudFormation notice a new image. Using the hash means a source
+          // change updates this property, which creates a new runtime version
+          // that pulls the image built from exactly that source.
+          containerUri: `${this.agentRepository.repositoryUri}:${agentImageTag}`,
         },
       },
       networkConfiguration: {

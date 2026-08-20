@@ -76,3 +76,27 @@ def get_model_api(model_id: str | None) -> str:
             return m.get("api", "chat")
     logger.warning("Unknown model_id %r - defaulting api to 'chat'", model_id)
     return "chat"
+
+
+def get_model_region(model_id: str | None) -> str | None:
+    """Get the Mantle region that serves a model, or None to use the default.
+
+    Mantle model availability is not uniform across regions, so a catalog entry
+    may pin itself to a specific region with an optional ``region`` field. Only
+    models that the agent's configured region cannot serve need it.
+
+    Example: xai.grok-4.6 is served only from us-west-2, while the six Claude
+    Opus/Sonnet and GPT-5.5/5.6-Sol entries are served only from us-east-1.
+    Repointing the agent's region wholesale would trade one broken model for
+    six, so the region travels per model instead.
+
+    Returns None when the model has no override, meaning the agent falls back to
+    its own MANTLE_REGION/OPENAI_BASE_URL configuration.
+    """
+    if not model_id:
+        return None
+    for m in get_models():
+        if m.get("id") == model_id:
+            region = m.get("region")
+            return region.strip() if isinstance(region, str) and region.strip() else None
+    return None

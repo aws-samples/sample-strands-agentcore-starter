@@ -12,7 +12,7 @@ from strands.models.anthropic import AnthropicModel
 from strands_tools import calculator, current_time
 from aws_bedrock_token_generator import provide_token
 
-from config import AgentConfig
+from config import AgentConfig, derive_mantle_base_url
 from guardrails import NotifyOnlyGuardrailsHook
 from logger import setup_logger
 from telemetry import setup_telemetry, is_telemetry_initialized
@@ -279,12 +279,31 @@ async def invoke(payload, context):
     # Default API must match DEFAULT_MODEL_ID's catalog entry. The default model
     # (anthropic.claude-haiku-4-5) is served via the Anthropic Messages API.
     model_api = payload.get("modelApi", "messages")  # "chat", "responses", or "messages"
-    log.info(f"Using model: {model_id} (api: {model_api})")
-    
+
+    # Optional per-model Mantle region, sent by the chatapp from the catalog's
+    # `region` field. Mantle model availability is not uniform across regions:
+    # xai.grok-4.6 is only served from us-west-2, while the Claude Opus/Sonnet
+    # and GPT-5.5/5.6-Sol entries are only served from us-east-1. Repointing
+    # MANTLE_REGION wholesale would trade one unavailable model for six, so the
+    # region travels per request instead. Absent (the common case) means "use
+    # whatever this runtime is configured for".
+    #
+    # This overrides OPENAI_BASE_URL when set. That is deliberate: the deployed
+    # runtime pins OPENAI_BASE_URL to its own region, so honoring the env var
+    # first would send the request straight back to the region that 404s.
+    model_region = (payload.get("modelRegion") or "").strip() or None
+    mantle_region = model_region or config.mantle_region
+    log.info(
+        f"Using model: {model_id} (api: {model_api}, region: {mantle_region}"
+        f"{', pinned by catalog' if model_region else ''})"
+    )
+
     # Mint a fresh short-term Bedrock token for THIS invocation.
+    # The token is region-scoped, so it must be minted for the same region the
+    # request is sent to - otherwise a pinned model gets a token for the wrong one.
     # The optional config override short-circuits token generation for local/advanced use.
     try:
-        api_key = config.openai_api_key or provide_token(region=config.mantle_region)
+        api_key = config.openai_api_key or provide_token(region=mantle_region)
     except Exception as e:
         raise ValueError(
             "Failed to mint a Bedrock Mantle token. Verify AWS credentials are "
@@ -299,7 +318,12 @@ async def invoke(payload, context):
     # - "messages" → AnthropicModel (Anthropic Messages API at /v1)
     # - "responses" → OpenAIResponsesModel (Responses API at /openai/v1)
     # - "chat" → OpenAIModel (Chat Completions at /v1)
-    mantle_base = config.openai_base_url.rstrip('/')  # e.g. https://bedrock-mantle.us-east-1.api.aws/v1
+    # e.g. https://bedrock-mantle.us-east-1.api.aws/v1. A catalog-pinned region
+    # wins over the configured base URL; see the model_region note above.
+    if model_region:
+        mantle_base = derive_mantle_base_url(model_region).rstrip('/')
+    else:
+        mantle_base = config.openai_base_url.rstrip('/')
 
     if model_api == "messages":
         # Anthropic models use the Messages API.

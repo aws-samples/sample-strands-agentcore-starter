@@ -348,6 +348,7 @@ class AgentCoreClient:
         user_id: str,
         model_id: str = "anthropic.claude-haiku-4-5",
         model_api: str = "messages",
+        model_region: Optional[str] = None,
     ) -> AsyncGenerator[SSEEvent, None]:
         """Invoke AgentCore Runtime and stream the response.
 
@@ -369,6 +370,9 @@ class AgentCoreClient:
             user_id: User ID for memory operations
             model_id: Model identifier for LLM selection
             model_api: Which Mantle API the model uses (chat/responses/messages)
+            model_region: Mantle region that serves this model, or None to let
+                the agent use its own configured region. Set only for models
+                their default region cannot serve (see get_model_region).
 
         Yields:
             SSE events as they are received from AgentCore
@@ -389,6 +393,7 @@ class AgentCoreClient:
                     user_id=user_id,
                     model_id=model_id,
                     model_api=model_api,
+                    model_region=model_region,
                     stop_event=stop_event,
                 ):
                     loop.call_soon_threadsafe(queue.put_nowait, ev)
@@ -425,6 +430,7 @@ class AgentCoreClient:
         user_id: str,
         model_id: str = "anthropic.claude-haiku-4-5",
         model_api: str = "messages",
+        model_region: Optional[str] = None,
         stop_event: Optional[threading.Event] = None,
     ) -> Generator[SSEEvent, None, None]:
         """Blocking AgentCore invocation + NDJSON parse, as a sync generator.
@@ -455,6 +461,10 @@ class AgentCoreClient:
                 'guardrailVersion': config.guardrail_version,
                 'guardrailEnabled': config.guardrail_enabled,
             }
+            # Only sent for models pinned to a region their agent's default
+            # cannot serve, so the payload stays unchanged for every other model.
+            if model_region:
+                payload_dict['modelRegion'] = model_region
             payload_bytes = json.dumps(payload_dict).encode('utf-8')
             
             # Invoke the agent runtime

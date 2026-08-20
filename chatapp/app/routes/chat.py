@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from app.auth.cognito import extract_user_id, TokenValidationError
 from app.auth.middleware import SESSION_COOKIE_NAME
 from app.agentcore.client import AgentCoreClient
-from app.helpers.model_catalog import get_model_api
+from app.helpers.model_catalog import get_model_api, get_model_region
 from app.models.events import MessageEvent, MetadataEvent, ToolUseEvent, ToolResultEvent, GuardrailEvent, ReasoningEvent, DoneEvent
 from app.models.guardrail import GuardrailRecord
 from app.models.usage import UsageRecord, ToolUsageRecord
@@ -123,6 +123,7 @@ async def _stream_chat_response(
     user_id: str,
     model_id: str = "anthropic.claude-haiku-4-5",
     model_api: str = "messages",
+    model_region: str | None = None,
     user_email: str | None = None,
 ):
     """Generate SSE stream from AgentCore response.
@@ -191,6 +192,7 @@ async def _stream_chat_response(
                 user_id=user_id,
                 model_id=model_id,
                 model_api=model_api,
+                model_region=model_region,
             ):
                 await queue.put(ev)
         except Exception as exc:
@@ -609,6 +611,7 @@ async def chat(request: Request, body: ChatRequest):
             user_id=user_id,
             model_id=body.model_id,
             model_api=get_model_api(body.model_id),
+            model_region=get_model_region(body.model_id),
             user_email=user_email,
         ),
         media_type="text/event-stream",
