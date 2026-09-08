@@ -1,11 +1,15 @@
 /**
  * Bedrock Stack - Consolidated stack for all Bedrock-related resources.
- * 
+ *
  * This stack combines:
  * - Guardrail (from guardrail-stack.ts) - Content filtering
- * - Knowledge Base (from knowledgebase-stack.ts) - Semantic search with S3 Vectors
+ * - Knowledge Base - Semantic search (supports VECTOR with S3 Vectors or MANAGED type)
  * - Memory (from memory-stack.ts) - AgentCore Memory for conversation persistence
- * 
+ *
+ * Knowledge Base type is controlled via CDK context parameter:
+ *   --context knowledgeBaseType=MANAGED  (Bedrock manages embedding and storage)
+ *   --context knowledgeBaseType=VECTOR   (uses Titan Embed v2 + S3 Vectors storage)
+ *
  * Exports:
  * - GuardrailId, GuardrailVersion, GuardrailArn
  * - KnowledgeBaseId, KnowledgeBaseArn, SourceBucketName
@@ -50,6 +54,9 @@ export class BedrockStack extends cdk.Stack {
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
+
+    // Determine Knowledge Base type from CDK context (default: VECTOR for backward compatibility)
+    const knowledgeBaseType = (this.node.tryGetContext('knowledgeBaseType') || 'VECTOR').toUpperCase() as 'VECTOR' | 'MANAGED';
 
     // ========================================================================
     // GUARDRAIL SECTION
@@ -112,7 +119,7 @@ export class BedrockStack extends cdk.Stack {
     // Requirements: 1.3, 2.1
     // ========================================================================
 
-    // Resource naming
+    // Resource naming (used by VECTOR type only)
     const vectorBucketName = `${config.appName}-vectors-${this.region}`;
     const vectorIndexName = `${config.appName}-index-${this.region}`;
 
@@ -132,15 +139,17 @@ export class BedrockStack extends cdk.Stack {
       description: 'IAM role for Bedrock Knowledge Base operations',
     });
 
-    // Bedrock model invocation permission for Titan Embed v2
-    this.kbRole.addToPolicy(new iam.PolicyStatement({
-      sid: 'BedrockInvokeModel',
-      effect: iam.Effect.ALLOW,
-      actions: ['bedrock:InvokeModel'],
-      resources: [
-        `arn:aws:bedrock:${this.region}::foundation-model/amazon.titan-embed-text-v2:0`,
-      ],
-    }));
+    // Bedrock model invocation permission for Titan Embed v2 (VECTOR type only)
+    if (knowledgeBaseType === 'VECTOR') {
+      this.kbRole.addToPolicy(new iam.PolicyStatement({
+        sid: 'BedrockInvokeModel',
+        effect: iam.Effect.ALLOW,
+        actions: ['bedrock:InvokeModel'],
+        resources: [
+          `arn:aws:bedrock:${this.region}::foundation-model/amazon.titan-embed-text-v2:0`,
+        ],
+      }));
+    }
 
     // Create S3 source bucket for documents
     // Import access logs bucket from Foundation stack
@@ -175,146 +184,174 @@ export class BedrockStack extends cdk.Stack {
       ],
     }));
 
-    // S3 Vectors permissions for KB role
-    this.kbRole.addToPolicy(new iam.PolicyStatement({
-      sid: 'S3VectorsAccess',
-      effect: iam.Effect.ALLOW,
-      actions: [
-        's3vectors:CreateIndex',
-        's3vectors:DeleteIndex',
-        's3vectors:GetIndex',
-        's3vectors:ListIndexes',
-        's3vectors:PutVectors',
-        's3vectors:GetVectors',
-        's3vectors:DeleteVectors',
-        's3vectors:QueryVectors',
-      ],
-      resources: [
-        `arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}`,
-        `arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}/index/*`,
-      ],
-    }));
+    if (knowledgeBaseType === 'VECTOR') {
+      // ====================================================================
+      // VECTOR type: S3 Vectors storage with Titan Embed v2
+      // ====================================================================
 
-    // Custom resource to create S3 vector bucket
-    const createVectorBucket = new cr.AwsCustomResource(this, 'CreateVectorBucket', {
-      onCreate: {
-        service: 's3vectors',
-        action: 'CreateVectorBucket',
-        parameters: {
-          vectorBucketName: vectorBucketName,
-        },
-        physicalResourceId: cr.PhysicalResourceId.of(vectorBucketName),
-      },
-      onDelete: {
-        service: 's3vectors',
-        action: 'DeleteVectorBucket',
-        parameters: {
-          vectorBucketName: vectorBucketName,
-        },
-      },
-      policy: cr.AwsCustomResourcePolicy.fromStatements([
-        new iam.PolicyStatement({
-          effect: iam.Effect.ALLOW,
-          actions: [
-            's3vectors:CreateVectorBucket',
-            's3vectors:DeleteVectorBucket',
-            's3vectors:GetVectorBucket',
-          ],
-          resources: ['*'],
-        }),
-      ]),
-    });
+      // S3 Vectors permissions for KB role
+      this.kbRole.addToPolicy(new iam.PolicyStatement({
+        sid: 'S3VectorsAccess',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          's3vectors:CreateIndex',
+          's3vectors:DeleteIndex',
+          's3vectors:GetIndex',
+          's3vectors:ListIndexes',
+          's3vectors:PutVectors',
+          's3vectors:GetVectors',
+          's3vectors:DeleteVectors',
+          's3vectors:QueryVectors',
+        ],
+        resources: [
+          `arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}`,
+          `arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}/index/*`,
+        ],
+      }));
 
-    // Custom resource to create vector index
-    const createVectorIndex = new cr.AwsCustomResource(this, 'CreateVectorIndex', {
-      onCreate: {
-        service: 's3vectors',
-        action: 'CreateIndex',
-        parameters: {
-          vectorBucketName: vectorBucketName,
-          indexName: vectorIndexName,
-          dataType: 'float32',
-          dimension: 1024, // Titan Embed v2 dimensions
-          distanceMetric: 'cosine',
-          metadataConfiguration: {
-            nonFilterableMetadataKeys: ['AMAZON_BEDROCK_TEXT', 'AMAZON_BEDROCK_METADATA'],
+      // Custom resource to create S3 vector bucket
+      const createVectorBucket = new cr.AwsCustomResource(this, 'CreateVectorBucket', {
+        onCreate: {
+          service: 's3vectors',
+          action: 'CreateVectorBucket',
+          parameters: {
+            vectorBucketName: vectorBucketName,
+          },
+          physicalResourceId: cr.PhysicalResourceId.of(vectorBucketName),
+        },
+        onDelete: {
+          service: 's3vectors',
+          action: 'DeleteVectorBucket',
+          parameters: {
+            vectorBucketName: vectorBucketName,
           },
         },
-        physicalResourceId: cr.PhysicalResourceId.of(`${vectorBucketName}/${vectorIndexName}`),
-      },
-      onDelete: {
-        service: 's3vectors',
-        action: 'DeleteIndex',
-        parameters: {
-          vectorBucketName: vectorBucketName,
-          indexName: vectorIndexName,
+        policy: cr.AwsCustomResourcePolicy.fromStatements([
+          new iam.PolicyStatement({
+            effect: iam.Effect.ALLOW,
+            actions: [
+              's3vectors:CreateVectorBucket',
+              's3vectors:DeleteVectorBucket',
+              's3vectors:GetVectorBucket',
+            ],
+            resources: ['*'],
+          }),
+        ]),
+      });
+
+      // Custom resource to create vector index
+      const createVectorIndex = new cr.AwsCustomResource(this, 'CreateVectorIndex', {
+        onCreate: {
+          service: 's3vectors',
+          action: 'CreateIndex',
+          parameters: {
+            vectorBucketName: vectorBucketName,
+            indexName: vectorIndexName,
+            dataType: 'float32',
+            dimension: 1024, // Titan Embed v2 dimensions
+            distanceMetric: 'cosine',
+            metadataConfiguration: {
+              nonFilterableMetadataKeys: ['AMAZON_BEDROCK_TEXT', 'AMAZON_BEDROCK_METADATA'],
+            },
+          },
+          physicalResourceId: cr.PhysicalResourceId.of(`${vectorBucketName}/${vectorIndexName}`),
         },
-      },
-      policy: cr.AwsCustomResourcePolicy.fromStatements([
-        new iam.PolicyStatement({
-          effect: iam.Effect.ALLOW,
-          actions: [
-            's3vectors:CreateIndex',
-            's3vectors:DeleteIndex',
-            's3vectors:GetIndex',
-          ],
-          resources: [
-            `arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}`,
-            `arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}/index/*`,
-          ],
-        }),
-      ]),
-    });
-
-    // Ensure index is created after bucket
-    createVectorIndex.node.addDependency(createVectorBucket);
-
-    // Build ARNs for S3 Vectors
-    const vectorBucketArn = `arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}`;
-    const indexArn = `arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}/index/${vectorIndexName}`;
-
-    // Create Bedrock Knowledge Base
-    this.knowledgeBase = new bedrock.CfnKnowledgeBase(this, 'KnowledgeBase', {
-      name: config.kbName,
-      description: `Knowledge Base for ${config.appName} agent`,
-      roleArn: this.kbRole.roleArn,
-      
-      // Vector knowledge base configuration with Titan Embed v2
-      knowledgeBaseConfiguration: {
-        type: 'VECTOR',
-        vectorKnowledgeBaseConfiguration: {
-          embeddingModelArn: `arn:aws:bedrock:${this.region}::foundation-model/amazon.titan-embed-text-v2:0`,
+        onDelete: {
+          service: 's3vectors',
+          action: 'DeleteIndex',
+          parameters: {
+            vectorBucketName: vectorBucketName,
+            indexName: vectorIndexName,
+          },
         },
-      },
-      
-      // S3 Vectors storage configuration
-      storageConfiguration: {
-        type: 'S3_VECTORS',
-        s3VectorsConfiguration: {
-          vectorBucketArn: vectorBucketArn,
-          indexArn: indexArn,
-        },
-      },
-    });
+        policy: cr.AwsCustomResourcePolicy.fromStatements([
+          new iam.PolicyStatement({
+            effect: iam.Effect.ALLOW,
+            actions: [
+              's3vectors:CreateIndex',
+              's3vectors:DeleteIndex',
+              's3vectors:GetIndex',
+            ],
+            resources: [
+              `arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}`,
+              `arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}/index/*`,
+            ],
+          }),
+        ]),
+      });
 
-    // Ensure KB is created after vector index
-    this.knowledgeBase.node.addDependency(createVectorIndex);
+      // Ensure index is created after bucket
+      createVectorIndex.node.addDependency(createVectorBucket);
+
+      // Build ARNs for S3 Vectors
+      const vectorBucketArn = `arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}`;
+      const indexArn = `arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}/index/${vectorIndexName}`;
+
+      // Create Bedrock Knowledge Base (VECTOR type)
+      this.knowledgeBase = new bedrock.CfnKnowledgeBase(this, 'KnowledgeBase', {
+        name: config.kbName,
+        description: `Knowledge Base for ${config.appName} agent`,
+        roleArn: this.kbRole.roleArn,
+
+        // Vector knowledge base configuration with Titan Embed v2
+        knowledgeBaseConfiguration: {
+          type: 'VECTOR',
+          vectorKnowledgeBaseConfiguration: {
+            embeddingModelArn: `arn:aws:bedrock:${this.region}::foundation-model/amazon.titan-embed-text-v2:0`,
+          },
+        },
+
+        // S3 Vectors storage configuration
+        storageConfiguration: {
+          type: 'S3_VECTORS',
+          s3VectorsConfiguration: {
+            vectorBucketArn: vectorBucketArn,
+            indexArn: indexArn,
+          },
+        },
+      });
+
+      // Ensure KB is created after vector index
+      this.knowledgeBase.node.addDependency(createVectorIndex);
+
+    } else {
+      // ====================================================================
+      // MANAGED type: Bedrock manages embedding and storage automatically
+      // ====================================================================
+
+      // Create Bedrock Knowledge Base (MANAGED type)
+      this.knowledgeBase = new bedrock.CfnKnowledgeBase(this, 'KnowledgeBase', {
+        name: config.kbName,
+        description: `Knowledge Base for ${config.appName} agent`,
+        roleArn: this.kbRole.roleArn,
+
+        // Managed knowledge base configuration - Bedrock handles embedding and storage
+        knowledgeBaseConfiguration: {
+          type: 'MANAGED',
+          managedKnowledgeBaseConfiguration: {
+            embeddingModelType: 'MANAGED',
+          },
+        },
+        // No storageConfiguration needed for MANAGED type
+      } as any);
+    }
 
     // Create data source connecting KB to S3
     this.dataSource = new bedrock.CfnDataSource(this, 'DataSource', {
       knowledgeBaseId: this.knowledgeBase.attrKnowledgeBaseId,
       name: `${config.appName}-kb-datasource`,
       description: `S3 data source for ${config.appName} Knowledge Base`,
-      
-      // S3 data source configuration
-      dataSourceConfiguration: {
-        type: 'S3',
-        s3Configuration: {
-          bucketArn: this.sourceBucket.bucketArn,
-          inclusionPrefixes: ['documents/'],
-        },
-      },
-      
+
+      dataSourceConfiguration: knowledgeBaseType === 'MANAGED'
+        ? { type: 'MANAGED_KNOWLEDGE_BASE_CONNECTOR' } as any
+        : {
+            type: 'S3',
+            s3Configuration: {
+              bucketArn: this.sourceBucket.bucketArn,
+              inclusionPrefixes: ['documents/'],
+            },
+          },
+
       // Retain data when data source is deleted
       dataDeletionPolicy: 'RETAIN',
     });
@@ -377,6 +414,21 @@ export class BedrockStack extends cdk.Stack {
     // Ingestion must wait for the documents to land and the data source to exist.
     startIngestion.node.addDependency(seedDeployment);
     startIngestion.node.addDependency(this.dataSource);
+
+    // For MANAGED type, override the connector config with raw camelCase (CDK doesn't know these properties)
+    if (knowledgeBaseType === 'MANAGED') {
+      this.dataSource.addPropertyOverride('DataSourceConfiguration.ManagedKnowledgeBaseConnectorConfiguration', {
+        ConnectorParameters: {
+          type: 'S3',
+          version: '1',
+          connectionConfiguration: {
+            bucketName: this.sourceBucket.bucketName,
+            bucketOwnerAccountId: this.account,
+            inclusionPrefixes: ['documents/'],
+          },
+        },
+      });
+    }
 
 
     // ========================================================================
@@ -526,6 +578,7 @@ def handler(event, context):
           guardrail_id: this.guardrail.attrGuardrailId,
           guardrail_version: this.guardrailVersion.attrVersion,
           kb_id: this.knowledgeBase.attrKnowledgeBaseId,
+          kb_type: knowledgeBaseType,
           memory_id: this.memory.attrMemoryId,
         }),
         Timestamp: Date.now().toString(),
@@ -593,15 +646,22 @@ def handler(event, context):
       description: 'S3 bucket for Knowledge Base source documents',
     });
 
-    new cdk.CfnOutput(this, 'VectorBucketName', {
-      value: vectorBucketName,
-      description: 'S3 vector bucket name',
+    new cdk.CfnOutput(this, 'KnowledgeBaseType', {
+      value: knowledgeBaseType,
+      description: 'Knowledge Base type (VECTOR or MANAGED)',
     });
 
-    new cdk.CfnOutput(this, 'VectorIndexName', {
-      value: vectorIndexName,
-      description: 'S3 vector index name',
-    });
+    if (knowledgeBaseType === 'VECTOR') {
+      new cdk.CfnOutput(this, 'VectorBucketName', {
+        value: vectorBucketName,
+        description: 'S3 vector bucket name',
+      });
+
+      new cdk.CfnOutput(this, 'VectorIndexName', {
+        value: vectorIndexName,
+        description: 'S3 vector index name',
+      });
+    }
 
     new cdk.CfnOutput(this, 'DataSourceId', {
       value: this.dataSource.attrDataSourceId,
@@ -611,53 +671,68 @@ def handler(event, context):
     // ========================================================================
     // CDK-NAG SUPPRESSIONS
     // ========================================================================
-    
+
     applyCommonSuppressions(this);
     applyBucketDeploymentSuppressions(this);
     applyCustomResourceSuppressions(this);
 
-    // Suppress S3 vectors custom resource wildcards
-    NagSuppressions.addResourceSuppressionsByPath(
-      this,
-      `/${config.appName}-Bedrock/CreateVectorBucket/CustomResourcePolicy/Resource`,
-      [
-        {
-          id: 'AwsSolutions-IAM5',
-          reason: 'S3 Vectors CreateVectorBucket requires wildcard as bucket name is dynamic. This is a one-time setup operation.',
-          appliesTo: ['Resource::*'],
-        },
-      ]
-    );
+    if (knowledgeBaseType === 'VECTOR') {
+      // Suppress S3 vectors custom resource wildcards (VECTOR type only)
+      NagSuppressions.addResourceSuppressionsByPath(
+        this,
+        `/${config.appName}-Bedrock/CreateVectorBucket/CustomResourcePolicy/Resource`,
+        [
+          {
+            id: 'AwsSolutions-IAM5',
+            reason: 'S3 Vectors CreateVectorBucket requires wildcard as bucket name is dynamic. This is a one-time setup operation.',
+            appliesTo: ['Resource::*'],
+          },
+        ]
+      );
 
-    NagSuppressions.addResourceSuppressionsByPath(
-      this,
-      `/${config.appName}-Bedrock/CreateVectorIndex/CustomResourcePolicy/Resource`,
-      [
-        {
-          id: 'AwsSolutions-IAM5',
-          reason: 'S3 Vectors index operations require wildcard for index name. Scoped to specific vector bucket.',
-          appliesTo: [`Resource::arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}/index/*`],
-        },
-      ]
-    );
+      NagSuppressions.addResourceSuppressionsByPath(
+        this,
+        `/${config.appName}-Bedrock/CreateVectorIndex/CustomResourcePolicy/Resource`,
+        [
+          {
+            id: 'AwsSolutions-IAM5',
+            reason: 'S3 Vectors index operations require wildcard for index name. Scoped to specific vector bucket.',
+            appliesTo: [`Resource::arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}/index/*`],
+          },
+        ]
+      );
 
-    // Suppress Knowledge Base role wildcards
-    NagSuppressions.addResourceSuppressionsByPath(
-      this,
-      `/${config.appName}-Bedrock/KnowledgeBaseRole/DefaultPolicy/Resource`,
-      [
-        {
-          id: 'AwsSolutions-IAM5',
-          reason: 'Knowledge Base needs access to all objects in source bucket for document ingestion.',
-          appliesTo: ['Resource::<SourceBucketDDD2130A.Arn>/*'],
-        },
-        {
-          id: 'AwsSolutions-IAM5',
-          reason: 'S3 Vectors index operations require wildcard for vector operations. Scoped to specific vector bucket.',
-          appliesTo: [`Resource::arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}/index/*`],
-        },
-      ]
-    );
+      // Suppress Knowledge Base role wildcards (VECTOR type includes S3 Vectors wildcard)
+      NagSuppressions.addResourceSuppressionsByPath(
+        this,
+        `/${config.appName}-Bedrock/KnowledgeBaseRole/DefaultPolicy/Resource`,
+        [
+          {
+            id: 'AwsSolutions-IAM5',
+            reason: 'Knowledge Base needs access to all objects in source bucket for document ingestion.',
+            appliesTo: ['Resource::<SourceBucketDDD2130A.Arn>/*'],
+          },
+          {
+            id: 'AwsSolutions-IAM5',
+            reason: 'S3 Vectors index operations require wildcard for vector operations. Scoped to specific vector bucket.',
+            appliesTo: [`Resource::arn:aws:s3vectors:${this.region}:${this.account}:bucket/${vectorBucketName}/index/*`],
+          },
+        ]
+      );
+    } else {
+      // Suppress Knowledge Base role wildcards (MANAGED type - source bucket only)
+      NagSuppressions.addResourceSuppressionsByPath(
+        this,
+        `/${config.appName}-Bedrock/KnowledgeBaseRole/DefaultPolicy/Resource`,
+        [
+          {
+            id: 'AwsSolutions-IAM5',
+            reason: 'Knowledge Base needs access to all objects in source bucket for document ingestion.',
+            appliesTo: ['Resource::<SourceBucketDDD2130A.Arn>/*'],
+          },
+        ]
+      );
+    }
 
     // Suppress update secret function wildcards
     NagSuppressions.addResourceSuppressionsByPath(

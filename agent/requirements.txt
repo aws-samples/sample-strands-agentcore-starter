@@ -8,3 +8,4 @@ psutil
 httpx
 beautifulsoup4
 lxml
+boto3>=1.43.32

@@ -25,10 +25,13 @@ Skip weeks of infrastructure setup and go straight to validating your agentic AI
 **Agent Capabilities**
 - 🧠 **Amazon Bedrock AgentCore** with Strands Agents SDK
 - 🌐 **Amazon Bedrock Mantle** for an OpenAI-compatible endpoint with 30+ models across Anthropic, OpenAI, Google, Mistral, DeepSeek, Qwen, and more
-- 📚 **Knowledge Base integration** for semantic search over your documents (S3 Vectors)
+- 📚 **Knowledge Base integration** for semantic search over your documents — supports both **Managed Knowledge Bases** (recommended, no vector store needed) and S3 Vectors
 - 🗂️ **Knowledge Base Explorer** to browse source documents, run the agent's semantic search, read contents, and upload new files (auto-ingested)
 - 🛠️ **Pre-built tools** - web search, URL fetcher, weather, calculator, current time
 - 🔬 **Strands Evaluation** is run for every response using LLM-as-a-judge to measure and improve the system
+- 💸 **Cost-optimized** - Serverless options with pay-per-use pricing
+- 🔐 **Cognito authentication** with secure token management
+- 📡 **OpenTelemetry and Bedrock AgentCore Observability** with logs, traces, and metrics
 
 **POC Analytics & Insights**
 - 📊 **Admin dashboard** with usage analytics - cost breakdown by model plus top users and tools
@@ -37,12 +40,8 @@ Skip weeks of infrastructure setup and go straight to validating your agentic AI
 - 👍 **User feedback capture** with sentiment ratings and comments
 - 🛡️ **Guardrails analytics** with violation tracking and content filtering
 - 🔧 **Tool usage analytics** with per-tool invocation metrics and success rates
+- 🔬 **Automated evaluations** of every response (answer quality, faithfulness, tool selection) with CloudWatch trace deep links
 
-**Infrastructure**
-- ☁️ **Flexible deployment options** - ECS Express Mode or CloudFront + Lambda Web Adapter
-- 💸 **Cost-optimized** - Serverless options with pay-per-use pricing
-- 🔐 **Cognito authentication** with secure token management
-- 📡 **OpenTelemetry and Bedrock AgentCore Observability** with logs, traces, and metrics
 
 ![Usage Dashboard](/assets/usage.png?raw=true "Usage Dashboard")
 
@@ -529,6 +528,42 @@ are wired automatically by CDK). Uploads are admin-only.
 
 > You can also upload and ingest documents directly from the Knowledge Base Explorer; the
 > steps below are the manual CLI equivalent.
+
+#### Managed Knowledge Bases (Recommended)
+
+Managed knowledge bases let Bedrock handle embedding, storage, and retrieval automatically — no external vector store required:
+
+```bash
+# In your .env or CDK context:
+KNOWLEDGE_BASE_TYPE=MANAGED
+```
+
+The CDK stack creates a managed knowledge base by default. Managed KBs support agentic retrieval with intelligent query decomposition and managed reranking.
+
+To use a vector knowledge base instead (requires OpenSearch Serverless or similar):
+```bash
+KNOWLEDGE_BASE_TYPE=VECTOR
+```
+
+> **SDK requirements:** `boto3 >= 1.43` for managed search and agentic retrieval.
+
+**Reranking options** for managed search: `MANAGED` (default — automatic), `NONE` (disable reranking), `CUSTOM` (your own Bedrock reranking model e.g. Cohere Rerank v3.5).
+
+**Required IAM Permissions:**
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "bedrock:Retrieve",
+    "bedrock:AgenticRetrieveStream"
+  ],
+  "Resource": "arn:aws:bedrock:<region>:<account-id>:knowledge-base/<kb-id>"
+}
+```
+
+**Resources:** [Build a Managed KB](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-build-managed.html) | [Retrieve API](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-test-retrieve.html) | [Agentic Retrieval](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-test-agentic.html)
+
+### Upload and Ingest Documents
 
 1. **Upload documents to S3**:
    ```bash
