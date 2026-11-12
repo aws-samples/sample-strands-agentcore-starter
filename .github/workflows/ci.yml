@@ -63,6 +63,9 @@ jobs:
           uv venv -p 3.11 .venv
           uv pip install -p .venv/bin/python -r requirements.txt pytest pytest-asyncio
       - name: Run tests
+        # boto3 clients are created at import time and need a region; tests make no AWS calls.
+        env:
+          AWS_DEFAULT_REGION: us-east-1
         run: .venv/bin/python -m pytest -q
 
   # Merges Dependabot patch and minor updates only after every job above passes.
