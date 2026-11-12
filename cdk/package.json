@@ -23,16 +23,16 @@
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/node": "^20.19.0",
-    "aws-cdk": "^2.1136.0",
+    "aws-cdk": "^2.1148.0",
     "cdk-nag": "^2.37.55",
-    "jest": "^30.2.0",
-    "ts-jest": "^29.4.6",
+    "jest": "^30.5.2",
+    "ts-jest": "^29.4.15",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.5"
   },
   "dependencies": {
-    "aws-cdk-lib": "^2.265.0",
-    "constructs": "^10.4.2",
+    "aws-cdk-lib": "^2.275.0",
+    "constructs": "^10.8.1",
     "fast-check": "^3.19.0",
     "source-map-support": "^0.5.21"
   },
