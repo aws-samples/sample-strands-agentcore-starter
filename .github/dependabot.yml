@@ -1,0 +1,32 @@
+version: 2
+updates:
+  # CDK app: one grouped PR per week for patch and minor updates, and one
+  # grouped PR for security fixes. Major updates still arrive as separate PRs
+  # for human review.
+  - package-ecosystem: npm
+    directory: /cdk
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      cdk-security:
+        applies-to: security-updates
+        patterns: ["*"]
+      cdk-minor-and-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  # Keeps the SHA-pinned actions in .github/workflows current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions:
+        patterns: ["*"]
