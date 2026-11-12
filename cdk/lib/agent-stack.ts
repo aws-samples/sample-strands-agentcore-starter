@@ -578,6 +578,7 @@ def handler(event, context):
         GUARDRAIL_ID: guardrailId,
         GUARDRAIL_VERSION: guardrailVersion,
         KB_ID: knowledgeBaseId,
+        KNOWLEDGE_BASE_TYPE: (this.node.tryGetContext('knowledgeBaseType') || 'VECTOR').toUpperCase(),
         // Mantle inference region - defaults to us-east-1 for broadest model availability.
         // Override via MANTLE_REGION env var at CDK synth time.
         MANTLE_REGION: config.mantleRegion,
