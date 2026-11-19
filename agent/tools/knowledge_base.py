@@ -15,8 +15,22 @@ logger = logging.getLogger(__name__)
 def _get_kb_client():
     """Get boto3 bedrock-agent-runtime client."""
     import boto3
+    from botocore.config import Config
     region = os.getenv("AWS_REGION", "us-east-1")
-    return boto3.client("bedrock-agent-runtime", region_name=region)
+    return boto3.client(
+        "bedrock-agent-runtime",
+        region_name=region,
+        config=Config(user_agent_extra="aws-agentcore-starter/bedrock-kb"),
+    )
+
+
+def _get_kb_type() -> str:
+    """Get the Knowledge Base type from environment.
+
+    Returns:
+        'MANAGED' or 'VECTOR' (default 'VECTOR')
+    """
+    return os.getenv("KNOWLEDGE_BASE_TYPE", "VECTOR").upper()
 
 
 def _parse_retrieve_response(response: dict) -> list[dict]:
@@ -105,16 +119,67 @@ def search_knowledge_base(
     
     try:
         client = _get_kb_client()
-        
-        # Call retrieve API
-        response = client.retrieve(
-            knowledgeBaseId=kb_id,
-            retrievalQuery={"text": query.strip()},
-            retrievalConfiguration={
+        kb_type = _get_kb_type()
+
+        # Build retrieval configuration based on KB type
+        if kb_type == "MANAGED":
+            # Primary: AgenticRetrieveStream (disable with USE_AGENTIC_RETRIEVAL=false)
+            use_agentic = os.getenv("USE_AGENTIC_RETRIEVAL", "true").lower() == "true"
+            if use_agentic:
+                try:
+                    response = client.agentic_retrieve_stream(
+                        messages=[{"content": {"text": query.strip()}, "role": "user"}],
+                        retrievers=[{
+                            "configuration": {
+                                "knowledgeBase": {
+                                    "knowledgeBaseId": kb_id,
+                                    "retrievalOverrides": {"maxNumberOfResults": max_results},
+                                }
+                            }
+                        }],
+                        agenticRetrieveConfiguration={
+                            "foundationModelType": "MANAGED",
+                            "rerankingModelType": "MANAGED",
+                        },
+                        generateResponse=os.getenv("GENERATE_RESPONSE", "false").lower() == "true",
+                    )
+                    results = []
+                    for event in response.get("stream", []):
+                        if "result" in event:
+                            results = event["result"].get("results", [])
+                    if results:
+                        parsed = _parse_retrieve_response({"retrievalResults": results})
+                        # Agentic retrieval doesn't return relevance scores — skip min_score filtering
+                        filtered = parsed[:max_results]
+                        return json.dumps({
+                            "success": True,
+                            "query": query,
+                            "result_count": len(filtered),
+                            "results": filtered
+                        }, indent=2)
+                except Exception:
+                    logger.warning("AgenticRetrieveStream failed, falling back to standard Retrieve", exc_info=True)
+
+            # Fallback: Retrieve with managedSearchConfiguration
+            retrieval_configuration = {
+                "managedSearchConfiguration": {
+                    "numberOfResults": max_results
+                }
+            }
+
+        else:
+            # VECTOR type (default for backward compatibility)
+            retrieval_configuration = {
                 "vectorSearchConfiguration": {
                     "numberOfResults": max_results
                 }
             }
+
+        # Call retrieve API
+        response = client.retrieve(
+            knowledgeBaseId=kb_id,
+            retrievalQuery={"text": query.strip()},
+            retrievalConfiguration=retrieval_configuration
         )
         
         # Parse response

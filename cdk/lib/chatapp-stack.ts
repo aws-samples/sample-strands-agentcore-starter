@@ -599,6 +599,10 @@ def handler(event, context):
             valueFrom: `${secretArn}:kb_id::`,
           },
           {
+            name: 'KNOWLEDGE_BASE_TYPE',
+            valueFrom: `${secretArn}:kb_type::`,
+          },
+          {
             name: 'EVALUATIONS_TABLE_NAME',
             valueFrom: `${secretArn}:evaluations_table_name::`,
           },
@@ -1015,6 +1019,7 @@ def handler(event, context):
       'GUARDRAIL_ID': 'guardrail_id',
       'GUARDRAIL_VERSION': 'guardrail_version',
       'KB_ID': 'kb_id',
+      'KNOWLEDGE_BASE_TYPE': 'kb_type',
       'EVALUATIONS_TABLE_NAME': 'evaluations_table_name',
       'APP_SETTINGS_TABLE_NAME': 'app_settings_table_name',
       'RUNTIME_USAGE_TABLE_NAME': 'runtime_usage_table_name',

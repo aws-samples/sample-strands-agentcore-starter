@@ -60,7 +60,7 @@ _SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 @lru_cache(maxsize=1)
 def _cfg() -> Config:
-    return Config(region_name=_REGION, retries={"max_attempts": 2, "mode": "adaptive"})
+    return Config(region_name=_REGION, retries={"max_attempts": 2, "mode": "adaptive"}, user_agent_extra="sample-strands-agentcore-starter/bedrock-kb")
 
 
 @lru_cache(maxsize=1)
@@ -174,10 +174,16 @@ async def get_document(key: str) -> dict[str, Any]:
 
 # ── Semantic search ────────────────────────────────────────────────────────────
 def _retrieve_sync(kb_id: str, query: str, n: int) -> list[dict[str, Any]]:
+    kb_type = os.environ.get("KNOWLEDGE_BASE_TYPE", "VECTOR").upper()
+    if kb_type == "MANAGED":
+        retrieval_config: dict[str, Any] = {"managedSearchConfiguration": {"numberOfResults": n}}
+    else:
+        retrieval_config = {"vectorSearchConfiguration": {"numberOfResults": n}}
+
     resp = _kb_runtime().retrieve(
         knowledgeBaseId=kb_id,
         retrievalQuery={"text": query},
-        retrievalConfiguration={"vectorSearchConfiguration": {"numberOfResults": n}},
+        retrievalConfiguration=retrieval_config,
     )
     hits = []
     for r in resp.get("retrievalResults", []):
@@ -230,6 +236,79 @@ def _start_ingestion_sync(kb_id: str) -> Optional[str]:
     return job.get("ingestionJob", {}).get("ingestionJobId")
 
 
+
+
+_ds_cache: dict[str, Any] = {}
+
+
+def _ingest_direct_sync(kb_id: str, doc_id: str, data: bytes, content_type: str) -> Optional[str]:
+    """Ingest a document directly via IngestKnowledgeBaseDocuments API (CUSTOM data source).
+
+    Returns document status on success, or None if no CUSTOM data source found.
+    Requires a CUSTOM data source on the KB.
+    """
+    import base64
+    import mimetypes
+
+    # Cache data source lookups to avoid N+1 API calls
+    cache_key = f"{kb_id}:custom_ds"
+    if cache_key in _ds_cache:
+        custom_ds_id = _ds_cache[cache_key]
+    else:
+        ds = _kb_agent().list_data_sources(knowledgeBaseId=kb_id, maxResults=10)
+        summaries = ds.get("dataSourceSummaries", [])
+
+        custom_ds_id = None
+        for s in summaries:
+            ds_id = s["dataSourceId"]
+            ds_detail_key = f"{kb_id}:{ds_id}"
+            if ds_detail_key not in _ds_cache:
+                _ds_cache[ds_detail_key] = _kb_agent().get_data_source(
+                    knowledgeBaseId=kb_id, dataSourceId=ds_id
+                )
+            ds_detail = _ds_cache[ds_detail_key]
+            connector_config = ds_detail.get("dataSource", {}).get(
+                "dataSourceConfiguration", {}
+            ).get("managedKnowledgeBaseConnectorConfiguration", {})
+            # type is inside connectorParameters JSON string, not a top-level field
+            connector_params_str = connector_config.get("connectorParameters", "")
+            try:
+                import json as _json
+                connector_params = _json.loads(connector_params_str) if connector_params_str else {}
+            except (ValueError, TypeError):
+                connector_params = {}
+            if connector_params.get("type") == "CUSTOM":
+                custom_ds_id = ds_id
+                break
+
+        _ds_cache[cache_key] = custom_ds_id
+
+    if not custom_ds_id:
+        return None  # No CUSTOM DS — caller should fall back to S3 path
+
+    # Determine content format
+    mime = content_type or mimetypes.guess_type(doc_id)[0] or "text/plain"
+    if mime == "text/plain":
+        inline_content = {"type": "TEXT", "textContent": {"data": data.decode("utf-8", errors="replace")}}
+    else:
+        inline_content = {"type": "BYTE", "byteContent": {"data": base64.b64encode(data).decode(), "mimeType": mime}}
+
+    response = _kb_agent().ingest_knowledge_base_documents(
+        knowledgeBaseId=kb_id,
+        dataSourceId=custom_ds_id,
+        documents=[{
+            "content": {
+                "dataSourceType": "CUSTOM",
+                "custom": {
+                    "customDocumentIdentifier": {"id": doc_id},
+                    "sourceType": "IN_LINE",
+                    "inlineContent": inline_content,
+                },
+            },
+        }],
+    )
+    return response["documentDetails"][0].get("status", "UNKNOWN")
+
 def _put_object_sync(bucket: str, key: str, data: bytes, content_type: str) -> None:
     _s3().put_object(Bucket=bucket, Key=key, Body=data, ContentType=content_type)
 
@@ -256,6 +335,33 @@ async def upload_document(filename: str, data: bytes, content_type: str = "") ->
 
     key = f"{_UPLOAD_PREFIX}{safe}"
     loop = asyncio.get_event_loop()
+
+    # Try direct ingestion (DLA) first if enabled — avoids double ingestion
+    job_id: Optional[str] = None
+    ingestion_error: Optional[str] = None
+    dla_status: Optional[str] = None
+    use_direct = os.environ.get("USE_DIRECT_INGESTION", "false").lower() == "true"
+
+    if use_direct:
+        try:
+            dla_status = await loop.run_in_executor(
+                None, _ingest_direct_sync, kb_id, safe, data, content_type or "application/octet-stream"
+            )
+            if dla_status:
+                logger.info("Direct ingestion started: status=%s", dla_status)
+                return {
+                    "key": key,
+                    "name": safe,
+                    "size": len(data),
+                    "ingestion_job_id": None,
+                    "dla_status": dla_status,
+                    "ingestion_error": None,
+                }
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Direct ingestion failed, falling back to S3+sync: %s", e)
+            dla_status = None
+
+    # Fallback: upload to S3 + StartIngestionJob
     try:
         await loop.run_in_executor(
             None, _put_object_sync, bucket, key, data, content_type or "application/octet-stream"
